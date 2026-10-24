@@ -79,10 +79,12 @@ pnpm pipeline:dry-run   # フィクスチャソース → 試算 → 原稿 → 
 pnpm --filter site build  # プレビュー記事を含むサイトビルドの検証は tests/e2e が実施
 ~~~
 
-- `apps/worker` — パイプラインCLI（`run-pipeline` / `refresh` / `growth` / `report`）。dry-runは secrets 不要。
-- `packages/*` — domain（policy/state machine/logging）、db、llm（budget ledger）、integrations（source collector/allowlist/ASP取込/計測モック）、analysis（ジャンル別試算）、content（draft/QA）、agents、analytics。
-- `config/policy.dry-run.yaml` — フィクスチャ用 allowlist を含む検証済みポリシー。実運用では実ドメイン設定の別ポリシーを作る。
-- ライブパイプラインは `.github/workflows/pipeline.yml`（毎日 02:00 JST）で**dry-runのみ**実行。公開には `publish_enabled=true` かつ承認済みプログラム登録が必要（現状なし）。
+- `apps/worker` — パイプラインCLI。`run-pipeline`（dry-run）/ `run-pipeline --live`（実運用・前提条件を満たさなければ停止）/ `import-offers` / `import-conversions` / `serp-import` / `check-robots` / `refresh` / `growth` / `report`。dry-runは secrets 不要。
+- `packages/*` — domain（policy/state machine/logging）、db、llm（budget ledger / OpenAI互換provider）、integrations（source collector/allowlist/ASP取込/計測モック/robots確認）、analysis（ジャンル別試算）、content（draft/QA）、agents、analytics。
+- `config/policy.dry-run.yaml` — フィクスチャ用 allowlist を含む検証済みポリシー。
+- `config/policy.live.example.yaml` — 実運用ポリシーのテンプレート（allowlist未設定のままでは起動しない）。
+- **実運用への切替手順は [docs/16-live-rollout.md](docs/16-live-rollout.md)**（本人手続きチェックリスト含む）。
+- ライブパイプラインは `.github/workflows/pipeline.yml`（毎日 02:00 JST）で**dry-runのみ**実行。サイトのデプロイは `.github/workflows/deploy.yml`（手動、Cloudflare Pages secrets必須）。
 
 設計時の着手手順（履歴として保持）:
 

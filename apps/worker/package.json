@@ -17,6 +17,7 @@
     "@aff/llm": "workspace:*"
   },
   "devDependencies": {
+    "pg": "^8.16.0",
     "esbuild": "^0.25.0"
   }
 }

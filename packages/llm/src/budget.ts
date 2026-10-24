@@ -2,6 +2,7 @@ import type { z } from "zod";
 import {
   BudgetExceededError,
   LLMTimeoutError,
+  ProviderAuthError,
   ProviderPermanentError,
   RateLimitedError,
   SchemaValidationError,
@@ -154,7 +155,8 @@ export function createGateway(options: GatewayOptions, ledger: BudgetLedger): LL
             };
           } catch (error) {
             lastError = error;
-            if (error instanceof ProviderPermanentError) throw error;
+            // Auth failures abort the chain; other provider errors try the fallback.
+            if (error instanceof ProviderAuthError) throw error;
             continue;
           }
         }

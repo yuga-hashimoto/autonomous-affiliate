@@ -64,6 +64,14 @@ export class ProviderPermanentError extends Error {
   }
 }
 
+/** Auth/permission failures must never silently fall back to another provider. */
+export class ProviderAuthError extends ProviderPermanentError {
+  constructor(providerId: string, detail: string) {
+    super(providerId, detail);
+    this.name = "ProviderAuthError";
+  }
+}
+
 export class BudgetExceededError extends Error {
   constructor(
     public readonly requiredJpy: number,

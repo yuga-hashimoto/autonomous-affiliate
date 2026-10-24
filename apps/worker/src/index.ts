@@ -1,26 +1,35 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import {
   createLogger,
   dayKeyInTz,
   parsePolicyText,
-  newId,
   type AffiliateOffer,
   type PolicyConfig,
+  type SerpObservation,
 } from "@aff/domain";
-import { createMemoryRepository, type Repository } from "@aff/db";
-import { BudgetLedger, MockProvider, createGateway, mockJson } from "@aff/llm";
+import { createMemoryRepository, createPgRepository, type Repository } from "@aff/db";
+import {
+  BudgetLedger,
+  MockProvider,
+  OpenAiCompatibleProvider,
+  createGateway,
+  mockJson,
+} from "@aff/llm";
 import {
   runArticlePipeline,
   refreshSweep,
   growthPlan,
   FixtureFactExtractor,
+  LlmFactExtractor,
   type ArticlePlan,
 } from "@aff/agents";
-import { MapFetcher } from "@aff/integrations";
+import { AspReportImporter, HttpFetcher, MapFetcher, checkRobots } from "@aff/integrations";
 import { buildMonthlyReport, renderMonthlyReportMarkdown } from "@aff/analytics";
+import { LivePublisherIO } from "./live-io.js";
 import plansFixture from "../../../config/plans.dry-run.json" with { type: "json" };
 import offersFixture from "../../../config/offers.dry-run.json" with { type: "json" };
 
@@ -36,9 +45,11 @@ export interface WorkerOptions {
   repo?: Repository;
   logger?: ReturnType<typeof createLogger>;
   clock?: () => Date;
+  env?: NodeJS.ProcessEnv;
 }
 
 export interface PipelineRunResult {
+  mode: "dry-run" | "live";
   results: {
     slug: string;
     finalState: string;
@@ -46,21 +57,86 @@ export interface PipelineRunResult {
     published: boolean;
     publishReason?: string;
   }[];
-  publishedPreviews: string[];
+  llmCostJpy: number;
+}
+
+function resolveInputPath(path: string): string {
+  return isAbsolute(path) ? path : join(ROOT, path);
+}
+
+async function loadRepository(
+  options: WorkerOptions,
+  { requirePg }: { requirePg: boolean },
+): Promise<Repository> {
+  if (options.repo) return options.repo;
+  const env = options.env ?? process.env;
+  const databaseUrl = env.DATABASE_URL;
+  if (!databaseUrl) {
+    if (requirePg) {
+      throw new Error("DATABASE_URL is required for live operation (persistent state)");
+    }
+    return createMemoryRepository();
+  }
+  const { Pool } = await import("pg");
+  const pool = new Pool({ connectionString: databaseUrl, max: 5 });
+  const { runMigrations } = await import("@aff/db");
+  await runMigrations(pool);
+  return createPgRepository(pool);
+}
+
+function buildLlmFromEnv(env: NodeJS.ProcessEnv): OpenAiCompatibleProvider | null {
+  const apiKey = env.LLM_API_KEY;
+  const model = env.LLM_MODEL;
+  const inputRate = Number(env.LLM_INPUT_COST_JPY_PER_1M ?? NaN);
+  const outputRate = Number(env.LLM_OUTPUT_COST_JPY_PER_1M ?? NaN);
+  if (!apiKey || !model || !Number.isFinite(inputRate) || !Number.isFinite(outputRate)) {
+    return null;
+  }
+  if (inputRate <= 0 || outputRate <= 0) {
+    throw new Error(
+      "LLM cost rates must be positive numbers (JPY per 1M tokens); unpriceable calls are forbidden",
+    );
+  }
+  return new OpenAiCompatibleProvider({
+    providerId: "openai-compatible",
+    baseUrl: env.LLM_BASE_URL ?? "https://api.openai.com/v1",
+    apiKey,
+    model,
+    inputCostJpyPer1m: inputRate,
+    outputCostJpyPer1m: outputRate,
+  });
+}
+
+function assertLiveReadiness(policy: PolicyConfig, env: NodeJS.ProcessEnv): void {
+  if (policy.mode !== "live") {
+    throw new Error("live run refused: policy mode is not 'live'");
+  }
+  if (!policy.flags.publish_enabled) {
+    throw new Error("live run refused: flags.publish_enabled is false");
+  }
+  if (policy.security.allowed_source_domains.length === 0) {
+    throw new Error("live run refused: security.allowed_source_domains is empty (configure verified domains first)");
+  }
+  if (!env.DATABASE_URL) {
+    throw new Error("live run refused: DATABASE_URL is not configured");
+  }
+  if (!buildLlmFromEnv(env)) {
+    throw new Error(
+      "live run refused: LLM_API_KEY / LLM_MODEL / LLM_INPUT_COST_JPY_PER_1M / LLM_OUTPUT_COST_JPY_PER_1M must be configured",
+    );
+  }
 }
 
 /**
- * Executes the B023 vertical slice entirely offline:
- * fixture sources → fact extraction → analysis → draft → QA → preview write.
- * No secrets, no external accounts, no real publishing (docs/11).
+ * Dry-run: fixture sources → facts → analysis → draft → QA → preview write.
+ * No secrets, no network, no real publishing (docs/11 B023).
  */
 export async function runDryRunPipeline(options: WorkerOptions): Promise<PipelineRunResult> {
   const clock = options.clock ?? (() => new Date());
-  const policy = parsePolicyText(await readFile(join(ROOT, options.policyPath), "utf8"));
-  const repo = options.repo ?? createMemoryRepository();
+  const policy = parsePolicyText(await readFile(resolveInputPath(options.policyPath), "utf8"));
+  const repo = await loadRepository(options, { requirePg: false });
   const logger = options.logger ?? createLogger({ level: "info" });
 
-  // Offers/programs are only usable when approved in the registry fixture.
   for (const program of offersFixture.programs) {
     await repo.offers.upsertProgram({
       id: program.id,
@@ -73,22 +149,14 @@ export async function runDryRunPipeline(options: WorkerOptions): Promise<Pipelin
     await repo.offers.upsertOffer(offer as AffiliateOffer);
   }
 
-  // Budget ledger starts from the persisted month spend (0 in dry-run).
-  const monthKey = dayKeyInTz(clock()).slice(0, 7);
-  const ledger = new BudgetLedger(
-    policy.limits.monthly_operating_cost_jpy,
-    policy.limits.slow_down_threshold_percent,
-    await repo.spend.sumMonth(monthKey),
-  );
-  // The gateway exists for future LLM-assisted steps; the deterministic
-  // fixture extractor keeps the dry-run free of any model call.
+  const ledger = await createLedger(repo, policy, clock);
   const gateway = createGateway(
     { primary: new MockProvider("mock-primary", "mock-model", [mockJson({ facts: [] })]) },
     ledger,
   );
   void gateway;
 
-  const fetcher = await buildFixtureFetcher(policy);
+  const fetcher = await buildFixtureFetcher();
   const previewDir = join(ROOT, options.outDir);
   await mkdir(previewDir, { recursive: true });
 
@@ -100,18 +168,108 @@ export async function runDryRunPipeline(options: WorkerOptions): Promise<Pipelin
     },
   };
 
-  const results: PipelineRunResult["results"] = [];
-  for (const plan of (plansFixture as PlansFile).plans) {
-    const outcome = await runArticlePipeline(plan, {
-      repo,
-      policy,
-      logger,
-      fetcher,
-      extractor: new FixtureFactExtractor(),
-      publisherIO: io,
-      previewDir,
-      clock,
+  const results = await runPlans((plansFixture as PlansFile).plans, {
+    repo,
+    policy,
+    logger,
+    fetcher,
+    extractor: new FixtureFactExtractor(),
+    publisherIO: io,
+    previewDir,
+    clock,
+  });
+  return { mode: "dry-run", results, llmCostJpy: 0 };
+}
+
+/**
+ * Live: real sources via allowlist, LLM fact extraction with budget guard,
+ * artifacts committed to content/articles after a successful site build.
+ * Every precondition is re-checked here (fail closed).
+ */
+export async function runLivePipeline(
+  options: WorkerOptions,
+  plansPath: string,
+): Promise<PipelineRunResult> {
+  const clock = options.clock ?? (() => new Date());
+  const env = options.env ?? process.env;
+  const policy = parsePolicyText(await readFile(resolveInputPath(options.policyPath), "utf8"));
+  assertLiveReadiness(policy, env);
+  const repo = await loadRepository(options, { requirePg: true });
+  const logger = options.logger ?? createLogger({ level: "info" });
+
+  const ledger = await createLedger(repo, policy, clock);
+  const provider = buildLlmFromEnv(env)!;
+  const gateway = createGateway({ primary: provider }, ledger);
+  const extractor = new LlmFactExtractor(gateway, {
+    timeoutMs: 60_000,
+    maxCostJpy: policy.limits.max_job_cost_jpy,
+    attempts: policy.limits.task_retry_attempts,
+  });
+
+  const plansRaw = JSON.parse(await readFile(resolveInputPath(plansPath), "utf8")) as PlansFile;
+  if (!Array.isArray(plansRaw.plans) || plansRaw.plans.length === 0) {
+    throw new Error(`plans file has no plans: ${plansPath}`);
+  }
+  for (const url of plansRaw.plans.flatMap((p) => p.sourceUrls)) {
+    const host = new URL(url).hostname.toLowerCase();
+    const allowed = policy.security.allowed_source_domains.some(
+      (d) => host === d.toLowerCase() || host.endsWith(`.${d.toLowerCase()}`),
+    );
+    if (!allowed) {
+      throw new Error(`plan source ${url} is not in the policy allowlist; run check-robots and update the policy first`);
+    }
+  }
+
+  const io = new LivePublisherIO({
+    repoRoot: ROOT,
+    contentDir: join(ROOT, "content/articles"),
+  });
+
+  const spendBefore = await repo.spend.sumMonth(dayKeyInTz(clock()).slice(0, 7));
+  const results = await runPlans(plansRaw.plans, {
+    repo,
+    policy,
+    logger,
+    fetcher: new HttpFetcher(),
+    extractor,
+    publisherIO: io,
+    clock,
+  });
+  const llmCostJpy = (await repo.spend.sumMonth(dayKeyInTz(clock()).slice(0, 7))) - spendBefore;
+  const ledgerDelta = ledger.spentJpy - spendBefore;
+  if (ledgerDelta > 0) {
+    await repo.spend.recordSpend({
+      date: dayKeyInTz(clock()),
+      category: "llm",
+      provider: provider.id,
+      costJpy: ledgerDelta,
+      source: "pipeline",
+      estimated: true,
     });
+  }
+  return { mode: "live", results, llmCostJpy: Math.max(llmCostJpy, ledgerDelta) };
+}
+
+async function createLedger(
+  repo: Repository,
+  policy: PolicyConfig,
+  clock: () => Date,
+): Promise<BudgetLedger> {
+  const monthKey = dayKeyInTz(clock()).slice(0, 7);
+  return new BudgetLedger(
+    policy.limits.monthly_operating_cost_jpy,
+    policy.limits.slow_down_threshold_percent,
+    await repo.spend.sumMonth(monthKey),
+  );
+}
+
+async function runPlans(
+  plans: ArticlePlan[],
+  services: Parameters<typeof runArticlePipeline>[1],
+): Promise<PipelineRunResult["results"]> {
+  const results: PipelineRunResult["results"] = [];
+  for (const plan of plans) {
+    const outcome = await runArticlePipeline(plan, services);
     results.push({
       slug: outcome.slug,
       finalState: outcome.finalState,
@@ -120,11 +278,10 @@ export async function runDryRunPipeline(options: WorkerOptions): Promise<Pipelin
       publishReason: outcome.publishReason,
     });
   }
-  void newId; // ids are minted inside the pipeline; kept for future scheduling tasks
-  return { results, publishedPreviews: [] };
+  return results;
 }
 
-async function buildFixtureFetcher(policy: PolicyConfig): Promise<MapFetcher> {
+async function buildFixtureFetcher(): Promise<MapFetcher> {
   const fixturesDir = join(ROOT, "config/fixtures");
   const responses = new Map<string, { body: string; contentType?: string; status?: number }>();
   const manifest = JSON.parse(await readFile(join(fixturesDir, "manifest.json"), "utf8")) as Record<
@@ -132,28 +289,29 @@ async function buildFixtureFetcher(policy: PolicyConfig): Promise<MapFetcher> {
     string
   >;
   for (const [url, file] of Object.entries(manifest)) {
-    // Only fixture hosts in the policy allowlist may be wired.
-    new URL(url); // throws on malformed fixture manifest entries
-    responses.set(url, { body: await readFile(join(fixturesDir, file), "utf8"), contentType: "text/html; charset=utf-8" });
+    new URL(url);
+    responses.set(url, {
+      body: await readFile(join(fixturesDir, file), "utf8"),
+      contentType: "text/html; charset=utf-8",
+    });
   }
-  void policy;
   return new MapFetcher(responses);
 }
 
 export async function runRefresh(options: WorkerOptions): Promise<{ updateCandidates: string[]; revoked: string[] }> {
-  const policy = parsePolicyText(await readFile(join(ROOT, options.policyPath), "utf8"));
-  const repo = options.repo ?? createMemoryRepository();
+  const policy = parsePolicyText(await readFile(resolveInputPath(options.policyPath), "utf8"));
+  const repo = await loadRepository(options, { requirePg: false });
   return refreshSweep(repo, policy, options.clock?.() ?? new Date());
 }
 
 export async function runGrowth(options: WorkerOptions): Promise<ReturnType<typeof growthPlan>> {
-  const repo = options.repo ?? createMemoryRepository();
+  const repo = await loadRepository(options, { requirePg: false });
   const items = await repo.content.listAll();
   return growthPlan(repo, items.map((i) => i.id));
 }
 
 export async function runMonthlyReport(options: WorkerOptions, yearMonth: string): Promise<string> {
-  const repo = options.repo ?? createMemoryRepository();
+  const repo = await loadRepository(options, { requirePg: false });
   const report = buildMonthlyReport({
     yearMonth,
     conversions: await repo.offers.listConversions(),
@@ -161,6 +319,117 @@ export async function runMonthlyReport(options: WorkerOptions, yearMonth: string
     spend: [],
   });
   return renderMonthlyReportMarkdown(report);
+}
+
+// ---- registries: offers / conversions / SERP capture ----
+
+const registrySchema = z.object({
+  programs: z.array(
+    z.object({
+      id: z.string().min(1),
+      provider: z.string().min(1),
+      status: z.enum(["PENDING", "APPROVED", "REJECTED", "TERMINATED"]),
+      payoutCurrency: z.string().length(3),
+      termsUrl: z.string().url().optional(),
+      termsCheckedAt: z.string().datetime().optional(),
+    }),
+  ),
+  offers: z.array(
+    z.object({
+      id: z.string().min(1),
+      programId: z.string().min(1),
+      verticalId: z.string().min(1),
+      title: z.string().min(1),
+      landingUrl: z.string().url().optional(),
+      trackingUrlSecretRef: z.string().min(1).optional(),
+      rewardModel: z.enum(["fixed_jpy", "rate_percent", "unknown"]),
+      rewardAmountJpy: z.number().int().nonnegative().optional(),
+      conversionEvent: z.string().min(1).optional(),
+      channelPermissions: z.array(z.enum(["site", "search", "youtube", "x", "email"])),
+      active: z.boolean(),
+      status: z.enum(["PENDING", "APPROVED", "REJECTED"]),
+      constraints: z.record(z.union([z.string(), z.number(), z.boolean()])),
+    }),
+  ),
+});
+
+export interface RegistryImportResult {
+  programs: number;
+  offers: number;
+}
+
+/** Validates and stores the offer registry. Unapproved offers stay unusable. */
+export async function importOffers(options: WorkerOptions, registryPath: string): Promise<RegistryImportResult> {
+  const repo = await loadRepository(options, { requirePg: true });
+  const parsed = registrySchema.safeParse(
+    JSON.parse(await readFile(resolveInputPath(registryPath), "utf8")),
+  );
+  if (!parsed.success) {
+    throw new Error(`offer registry invalid: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+  }
+  for (const program of parsed.data.programs) {
+    await repo.offers.upsertProgram(program);
+  }
+  for (const offer of parsed.data.offers) {
+    if (!parsed.data.programs.some((p) => p.id === offer.programId)) {
+      throw new Error(`offer ${offer.id} references unknown program ${offer.programId}`);
+    }
+    await repo.offers.upsertOffer(offer);
+  }
+  return { programs: parsed.data.programs.length, offers: parsed.data.offers.length };
+}
+
+export interface ConversionImportResult {
+  imported: number;
+  skipped: number;
+  duplicates: number;
+  skippedReasons: string[];
+}
+
+export async function importConversions(
+  options: WorkerOptions,
+  csvPath: string,
+): Promise<ConversionImportResult> {
+  const repo = await loadRepository(options, { requirePg: true });
+  const importer = new AspReportImporter(repo.offers);
+  return importer.importCsv(await readFile(resolveInputPath(csvPath), "utf8"));
+}
+
+const serpSchema = z.array(
+  z.object({
+    id: z.string().min(1),
+    keyword: z.string().min(1),
+    capturedAt: z.string().datetime(),
+    country: z.literal("JP"),
+    language: z.literal("ja"),
+    device: z.enum(["desktop", "mobile"]),
+    position: z.number().int().min(1),
+    url: z.string().url(),
+    pageType: z.enum(["official", "corporate", "media", "personal", "comparison", "other"]),
+    serpFeatures: z.array(z.string()),
+    accessStatus: z.enum(["OK", "UNKNOWN"]),
+  }),
+);
+
+/** B000B: records manually captured SERP observations (JP/ja, with timestamps). */
+export async function importSerpObservations(
+  options: WorkerOptions,
+  observationsPath: string,
+): Promise<number> {
+  const repo = await loadRepository(options, { requirePg: true });
+  const parsed = serpSchema.safeParse(
+    JSON.parse(await readFile(resolveInputPath(observationsPath), "utf8")),
+  );
+  if (!parsed.success) {
+    throw new Error(`SERP observations invalid: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+  }
+  const observations: SerpObservation[] = parsed.data;
+  await repo.serp.saveObservations(observations);
+  return observations.length;
+}
+
+export async function runCheckRobots(url: string): Promise<unknown> {
+  return checkRobots(new HttpFetcher(), url);
 }
 
 // ---- CLI ----
@@ -175,21 +444,37 @@ if (isMain()) {
       policy: { type: "string", default: "config/policy.dry-run.yaml" },
       out: { type: "string", default: ".tmp/preview" },
       month: { type: "string" },
+      plans: { type: "string" },
+      live: { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: true,
   });
   const command = positionals[0] ?? "run-pipeline";
+  const arg = positionals[1];
   const options: WorkerOptions = {
     policyPath: values.policy ?? "config/policy.dry-run.yaml",
     outDir: values.out ?? ".tmp/preview",
   };
   try {
-    // Logs go to stderr; stdout carries only the machine-readable result.
     options.logger = createLogger({ level: "info", sink: (line) => process.stderr.write(`${line}\n`) });
     if (command === "run-pipeline") {
-      const result = await runDryRunPipeline(options);
+      const result = values.live
+        ? await runLivePipeline(options, values.plans ?? "config/plans.live.json")
+        : await runDryRunPipeline(options);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    } else if (command === "import-offers") {
+      if (!arg) throw new Error("usage: import-offers <registry.json>");
+      process.stdout.write(`${JSON.stringify(await importOffers(options, arg), null, 2)}\n`);
+    } else if (command === "import-conversions") {
+      if (!arg) throw new Error("usage: import-conversions <report.csv>");
+      process.stdout.write(`${JSON.stringify(await importConversions(options, arg), null, 2)}\n`);
+    } else if (command === "serp-import") {
+      if (!arg) throw new Error("usage: serp-import <observations.json>");
+      process.stdout.write(`${JSON.stringify(await importSerpObservations(options, arg), null, 2)}\n`);
+    } else if (command === "check-robots") {
+      if (!arg) throw new Error("usage: check-robots <page-url>");
+      process.stdout.write(`${JSON.stringify(await runCheckRobots(arg), null, 2)}\n`);
     } else if (command === "refresh") {
       process.stdout.write(`${JSON.stringify(await runRefresh(options), null, 2)}\n`);
     } else if (command === "growth") {

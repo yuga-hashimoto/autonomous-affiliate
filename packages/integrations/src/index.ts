@@ -6,3 +6,4 @@ export * from "./freshness.js";
 export * from "./analytics-adapters.js";
 export * from "./asp-report.js";
 export * from "./distribution.js";
+export * from "./robots.js";

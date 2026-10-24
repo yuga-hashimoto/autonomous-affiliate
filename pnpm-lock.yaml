@@ -109,6 +109,9 @@ importers:
       esbuild:
         specifier: ^0.25.0
         version: 0.25.12
+      pg:
+        specifier: ^8.16.0
+        version: 8.23.1
 
   packages/agents:
     dependencies:
