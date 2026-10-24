@@ -1,0 +1,6 @@
+{
+  "https://sim-a.example.com/price": "sim-a.html",
+  "https://sim-b.example.com/price": "sim-b.html",
+  "https://fiber-a.example.com/price": "fiber-a.html",
+  "https://water-a.example.com/price": "water-a.html"
+}

@@ -1,0 +1,173 @@
+{
+  "$comment": "B021: top-3 article candidates for the initial market test. Fixture data only (dry-run). Same currency (JPY), same billing unit (monthly x months), official sources attached.",
+  "plans": [
+    {
+      "slug": "sim-20gb-24month-total",
+      "title": "20GB系プランの24ヶ月総額比較（公式料金ベースの試算）",
+      "audience": "月20GB程度のデータ通信を検討している人",
+      "purpose": "公式料金・事務手数料・割引条件を同一条件で24ヶ月総額に換算して比較します。",
+      "verticalId": "mobile",
+      "keyword": "格安SIM 20GB 総額 比較",
+      "sourceUrls": [
+        "https://sim-a.example.com/price",
+        "https://sim-b.example.com/price"
+      ],
+      "calculators": [
+        {
+          "calculator": "sim",
+          "input": {
+            "offerId": "offer-sim-a",
+            "title": "SIM A 20GB",
+            "monthlyJpy": 2980,
+            "dataGb": 20,
+            "initialFeeJpy": 3300,
+            "months": 24,
+            "discountPeriods": [
+              {
+                "fromMonth": 1,
+                "toMonth": 6,
+                "monthlyJpy": 1080
+              }
+            ],
+            "universalServiceFeeJpy": 2
+          },
+          "conditions": {
+            "monthlyJpy": 2980,
+            "initialFeeJpy": 3300,
+            "dataGb": 20
+          }
+        },
+        {
+          "calculator": "sim",
+          "input": {
+            "offerId": "offer-sim-b",
+            "title": "SIM B 20GB",
+            "monthlyJpy": 2180,
+            "dataGb": 20,
+            "initialFeeJpy": 0,
+            "months": 24
+          },
+          "conditions": {
+            "monthlyJpy": 2180,
+            "initialFeeJpy": 0,
+            "dataGb": 20
+          }
+        }
+      ],
+      "offerIds": [
+        "offer-sim-a"
+      ],
+      "decisionCriteria": [
+        {
+          "id": "monthlyJpy",
+          "label": "月額基本料"
+        },
+        {
+          "id": "initialFeeJpy",
+          "label": "事務手数料"
+        },
+        {
+          "id": "cancellationFeeJpy",
+          "label": "解約金"
+        },
+        {
+          "id": "coverageArea",
+          "label": "対応エリア"
+        }
+      ]
+    },
+    {
+      "slug": "fiber-mansion-24month-total",
+      "title": "光回線マンションタイプの24ヶ月実質費用（工事費込み試算）",
+      "audience": "マンションで光回線の契約を検討している人",
+      "purpose": "月額と工事費を24ヶ月で平準化し、契約期間・解約金の条件と併せて比較します。",
+      "verticalId": "fiber",
+      "keyword": "光回線 マンション 実質費用 比較",
+      "sourceUrls": [
+        "https://fiber-a.example.com/price"
+      ],
+      "calculators": [
+        {
+          "calculator": "fiber",
+          "input": {
+            "offerId": "offer-fiber-a",
+            "title": "Fiber A マンション 1ギガ",
+            "monthlyJpy": 5390,
+            "months": 24,
+            "installationFeeJpy": 44000,
+            "installationFeeMonths": 24,
+            "contractTermMonths": 24,
+            "cancellationFeeJpy": 1000,
+            "apartmentType": "mansion"
+          },
+          "conditions": {
+            "offerId": "offer-fiber-a",
+            "title": "Fiber A マンション 1ギガ",
+            "monthlyJpy": 5390,
+            "contractTermMonths": 24,
+            "cancellationFeeJpy": 1000,
+            "apartmentType": "mansion"
+          }
+        }
+      ],
+      "offerIds": [],
+      "decisionCriteria": [
+        {
+          "id": "monthlyJpy",
+          "label": "月額基本料"
+        },
+        {
+          "id": "cancellationFeeJpy",
+          "label": "解約金"
+        }
+      ]
+    },
+    {
+      "slug": "water-server-24l-12month-total",
+      "title": "ウォーターサーバー月24Lの12ヶ月総費用（水代・配送・電気代）",
+      "audience": "家庭でウォーターサーバーの利用を検討している人",
+      "purpose": "水代に加えて配送料・電気代・解約条件まで含めた12ヶ月の総費用を公式情報から試算します。",
+      "verticalId": "water_delivery",
+      "keyword": "ウォーターサーバー 24L 総費用 比較",
+      "sourceUrls": [
+        "https://water-a.example.com/price"
+      ],
+      "calculators": [
+        {
+          "calculator": "water",
+          "input": {
+            "offerId": "offer-water-a",
+            "title": "Water A 月24L",
+            "waterChargeJpy": 4100,
+            "shippingFeeJpy": 260,
+            "electricityFeeJpy": 250,
+            "months": 12,
+            "initialFeeJpy": 0,
+            "cancellationFeeJpy": 11000,
+            "monthlyLiters": 24
+          },
+          "conditions": {
+            "offerId": "offer-water-a",
+            "title": "Water A 月24L",
+            "waterChargeJpy": 4100,
+            "shippingFeeJpy": 260,
+            "electricityFeeJpy": 250,
+            "initialFeeJpy": 0,
+            "cancellationFeeJpy": 11000
+          }
+        }
+      ],
+      "offerIds": [],
+      "decisionCriteria": [
+        {
+          "id": "waterChargeJpy",
+          "label": "水代（月）"
+        },
+        {
+          "id": "cancellationFeeJpy",
+          "label": "解約金"
+        }
+      ]
+    }
+  ]
+}

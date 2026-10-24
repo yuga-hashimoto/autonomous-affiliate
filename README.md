@@ -2,7 +2,9 @@
 
 AIが公式一次情報を調査・構造化し、比較分析・記事生成・公開・集客・収益分析・改善を行う、**無人運用を目標としたアフィリエイトメディア基盤**。
 
-> Status: **Design / Pre-implementation**（2026-10-24）。現時点では設計書のみです。サイト・ワーカー・収益化は稼働していません。
+> Status: **Dry-run MVP implemented / Live operation disabled**（2026-10-24）。
+> pnpm monorepo・記事パイプライン（公式ソース取得→Fact構造化→試算→原稿→自動QA→プレビュー公開）・Astroサイト・セキュリティ負例テストは実装済み（`pnpm test` で検証可能）。
+> **実サイトでの自動公開・収益化・実ASPデータの取り込み・GSC/GA4実接続は稼働していません。** 実データを用いる市場選定（B000A〜D）も未実施です。
 >
 > 方針: **運用フローに人間の承認ステップを置かない**。自動判定できない場合は公開・支出・外部操作を止める（fail closed）。本人確認、ASP入会審査、決済・税務などサービス側で本人対応が必要な手続きまで自動化可能と主張しません。
 
@@ -67,7 +69,22 @@ flowchart TD
 | [config/policy.example.yaml](config/policy.example.yaml) | 実行・公開・費用ポリシー例 |
 | [.env.example](.env.example) | 環境変数一覧（秘密情報は含めない） |
 
-## Quick start（実装着手手順）
+## Quick start（実装済み dry-run の実行手順）
+
+~~~bash
+pnpm install
+pnpm test        # unit / integration / e2e（セキュリティ負例を含む）
+pnpm lint && pnpm typecheck && pnpm build
+pnpm pipeline:dry-run   # フィクスチャソース → 試算 → 原稿 → QA → プレビュー出力（.tmp/preview）
+pnpm --filter site build  # プレビュー記事を含むサイトビルドの検証は tests/e2e が実施
+~~~
+
+- `apps/worker` — パイプラインCLI（`run-pipeline` / `refresh` / `growth` / `report`）。dry-runは secrets 不要。
+- `packages/*` — domain（policy/state machine/logging）、db、llm（budget ledger）、integrations（source collector/allowlist/ASP取込/計測モック）、analysis（ジャンル別試算）、content（draft/QA）、agents、analytics。
+- `config/policy.dry-run.yaml` — フィクスチャ用 allowlist を含む検証済みポリシー。実運用では実ドメイン設定の別ポリシーを作る。
+- ライブパイプラインは `.github/workflows/pipeline.yml`（毎日 02:00 JST）で**dry-runのみ**実行。公開には `publish_enabled=true` かつ承認済みプログラム登録が必要（現状なし）。
+
+設計時の着手手順（履歴として保持）:
 
 1. [docs/11-backlog.md](docs/11-backlog.md) を上から順に実装する。
 2. [docs/02-architecture.md](docs/02-architecture.md) のmonorepo構造を作り、テストと型検査を導入する。
@@ -76,7 +93,7 @@ flowchart TD
 5. まず dry-run で **公式情報収集 → 料金・機能を正規化 → 比較/試算 → 原稿 → QA → プレビュー** をE2E検証する。
 6. パブリッシュと配信の機能フラグを個別に有効化する。自動公開できないなら何も公開しない。
 
-**設計書に書かれた機能は現時点で未実装。** 現在の実行状況を示すバッジや収益数値は置かない。
+**実データの収集・公開は現時点で未実施。** 現在の実行状況を示すバッジや収益数値は置かない。
 
 ## 公式ポリシー参考
 

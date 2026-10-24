@@ -1,0 +1,46 @@
+{
+  "name": "autonomous-affiliate",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Autonomous affiliate engine - dry-run MVP. See docs/ for the design.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.28.2",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "pnpm -r build",
+    "worker": "tsx apps/worker/src/index.ts",
+    "pipeline:dry-run": "tsx apps/worker/src/index.ts run-pipeline",
+    "site:dev": "pnpm --filter site dev",
+    "site:build": "pnpm --filter site build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.0",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.30.0",
+    "pg": "^8.16.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.35.0",
+    "vitest": "^3.2.0"
+  },
+  "dependencies": {
+    "@aff/agents": "workspace:*",
+    "@aff/analysis": "workspace:*",
+    "@aff/analytics": "workspace:*",
+    "@aff/content": "workspace:*",
+    "@aff/db": "workspace:*",
+    "@aff/domain": "workspace:*",
+    "@aff/integrations": "workspace:*",
+    "@aff/llm": "workspace:*",
+    "yaml": "^2.8.0",
+    "zod": "^3.25.0"
+  }
+}

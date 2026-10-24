@@ -1,0 +1,60 @@
+{
+  "$comment": "Dry-run offer registry fixture. Monetizable CTAs require program.status=APPROVED and offer.status=APPROVED + active=true (docs/14). offer-sim-b is intentionally PENDING to exercise the gate.",
+  "programs": [
+    { "id": "prog-a8", "provider": "a8", "status": "APPROVED", "payoutCurrency": "JPY" }
+  ],
+  "offers": [
+    {
+      "id": "offer-sim-a",
+      "programId": "prog-a8",
+      "verticalId": "mobile",
+      "title": "SIM A 20GB",
+      "rewardModel": "fixed_jpy",
+      "rewardAmountJpy": 3000,
+      "conversionEvent": "application_approved",
+      "channelPermissions": ["site"],
+      "active": true,
+      "status": "APPROVED",
+      "constraints": { "cancellationFeeJpy": 0, "coverageArea": "全国" }
+    },
+    {
+      "id": "offer-sim-b",
+      "programId": "prog-a8",
+      "verticalId": "mobile",
+      "title": "SIM B 20GB",
+      "rewardModel": "fixed_jpy",
+      "rewardAmountJpy": 3500,
+      "conversionEvent": "application_approved",
+      "channelPermissions": ["site"],
+      "active": true,
+      "status": "PENDING",
+      "constraints": { "cancellationFeeJpy": 9900 }
+    },
+    {
+      "id": "offer-fiber-a",
+      "programId": "prog-a8",
+      "verticalId": "fiber",
+      "title": "Fiber A マンション",
+      "rewardModel": "fixed_jpy",
+      "rewardAmountJpy": 5000,
+      "conversionEvent": "installation_complete",
+      "channelPermissions": ["site"],
+      "active": false,
+      "status": "PENDING",
+      "constraints": { "cancellationFeeJpy": 1000 }
+    },
+    {
+      "id": "offer-water-a",
+      "programId": "prog-a8",
+      "verticalId": "water_delivery",
+      "title": "Water A 月24L",
+      "rewardModel": "fixed_jpy",
+      "rewardAmountJpy": 4000,
+      "conversionEvent": "contract_complete",
+      "channelPermissions": ["site"],
+      "active": true,
+      "status": "APPROVED",
+      "constraints": { "cancellationFeeJpy": 11000 }
+    }
+  ]
+}

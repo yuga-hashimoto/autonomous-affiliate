@@ -1,0 +1,40 @@
+name: pipeline
+
+# B013: scheduler. GitHub Actions cron is a trigger only — the worker owns
+# locking, retries and idempotency, so duplicated/overlapping runs never
+# double-publish. Live publishing stays disabled until the environment policy
+# sets mode=live + publish_enabled=true AND official program approvals exist.
+
+on:
+  schedule:
+    - cron: "0 17 * * *" # 02:00 JST, daily
+  workflow_dispatch:
+
+concurrency:
+  group: affiliate-pipeline
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Article pipeline (dry-run preview only)
+        run: pnpm tsx apps/worker/src/index.ts run-pipeline --out .tmp/preview
+        env:
+          NODE_ENV: production
+      - name: Refresh sweep (freshness patrol)
+        run: pnpm tsx apps/worker/src/index.ts refresh
+      - name: Upload preview artifacts for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-articles
+          path: .tmp/preview
+          retention-days: 14

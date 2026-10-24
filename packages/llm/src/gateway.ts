@@ -1,0 +1,117 @@
+import type { z } from "zod";
+
+export interface LLMUsage {
+  providerId: string;
+  modelId: string;
+  inputTokens: number;
+  outputTokens: number;
+  costJpy: number;
+  latencyMs: number;
+}
+
+export interface LLMRequestLimits {
+  timeoutMs: number;
+  maxCostJpy: number;
+  attempts: number;
+}
+
+export interface StructuredResult<T> {
+  output: T;
+  usage: LLMUsage;
+  /** Provider chain actually used; falls back happen left to right. */
+  attempts: number;
+}
+
+export interface CompleteRequest {
+  task: string;
+  system?: string;
+  prompt: string;
+  limits: LLMRequestLimits;
+}
+
+export interface ProviderResponse {
+  text: string;
+  inputTokens: number;
+  outputTokens: number;
+  costJpy: number;
+  modelId: string;
+}
+
+export class LLMTimeoutError extends Error {
+  constructor(public readonly providerId: string) {
+    super(`llm provider ${providerId} timed out`);
+    this.name = "LLMTimeoutError";
+  }
+}
+
+export class RateLimitedError extends Error {
+  constructor(
+    public readonly providerId: string,
+    public readonly retryAfterMs: number | null,
+  ) {
+    super(`llm provider ${providerId} rate limited (HTTP 429)`);
+    this.name = "RateLimitedError";
+  }
+}
+
+export class ProviderPermanentError extends Error {
+  constructor(
+    public readonly providerId: string,
+    detail: string,
+  ) {
+    super(`llm provider ${providerId} failed permanently: ${detail}`);
+    this.name = "ProviderPermanentError";
+  }
+}
+
+export class BudgetExceededError extends Error {
+  constructor(
+    public readonly requiredJpy: number,
+    public readonly remainingJpy: number,
+  ) {
+    super(
+      `budget exceeded: estimated ${requiredJpy} JPY but only ${remainingJpy} JPY remains this month`,
+    );
+    this.name = "BudgetExceededError";
+  }
+}
+
+export class SchemaValidationError extends Error {
+  constructor(
+    task: string,
+    public readonly issues: z.ZodIssue[],
+  ) {
+    super(`llm output failed schema validation for task ${task}`);
+    this.name = "SchemaValidationError";
+  }
+}
+
+/** Single model endpoint. Implementations must not retry internally. */
+export interface LLMProvider {
+  readonly id: string;
+  readonly modelId: string;
+  complete(request: CompleteRequest, signal: AbortSignal): Promise<ProviderResponse>;
+}
+
+/**
+ * Model-agnostic gateway (ADR-003): structured generation with schema
+ * validation, timeout, bounded retries with backoff, provider fallback and
+ * budget reservation before every call.
+ */
+export interface LLMGateway {
+  generateStructured<T>(request: {
+    task: string;
+    system?: string;
+    input: Record<string, unknown>;
+    schema: z.ZodType<T>;
+    limits: LLMRequestLimits;
+  }): Promise<StructuredResult<T>>;
+}
+
+export interface GatewayOptions {
+  primary: LLMProvider;
+  fallback?: LLMProvider;
+  /** Milliseconds between retry attempts; grows exponentially. */
+  backoffBaseMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+}

@@ -1,0 +1,24 @@
+---
+import { getCollection } from "astro:content";
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const articles = (await getCollection("articles")).sort(
+  (a, b) => Date.parse(b.data.pubDate) - Date.parse(a.data.pubDate),
+);
+---
+
+<BaseLayout title="Autonomous Affiliate Engine（設計段階）">
+  <h1>記事一覧</h1>
+  <p>公式一次情報に基づく比較記事（自動QA合格分のみ掲載）。</p>
+  {articles.length === 0 && <p>公開済みの記事はまだありません。</p>}
+  <ul>
+    {
+      articles.map((article) => (
+        <li>
+          <a href={`/articles/${article.id}/`}>{article.data.title}</a>
+          <span>（確認日: {article.data.pubDate.slice(0, 10)}）</span>
+        </li>
+      ))
+    }
+  </ul>
+</BaseLayout>

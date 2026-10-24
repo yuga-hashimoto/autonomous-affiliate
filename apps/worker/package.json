@@ -1,0 +1,22 @@
+{
+  "name": "worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:pg-native"
+  },
+  "dependencies": {
+    "@aff/agents": "workspace:*",
+    "@aff/analysis": "workspace:*",
+    "@aff/analytics": "workspace:*",
+    "@aff/content": "workspace:*",
+    "@aff/db": "workspace:*",
+    "@aff/domain": "workspace:*",
+    "@aff/integrations": "workspace:*",
+    "@aff/llm": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "_comment": "offer_id -> official tracking URL. Only APPROVED+ACTIVE offers may be added here. Empty in the repo: live operation registers offers via the ASP integration.",
+  "offers": {}
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@aff/content",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@aff/analysis": "workspace:*",
+    "@aff/domain": "workspace:*"
+  }
+}
