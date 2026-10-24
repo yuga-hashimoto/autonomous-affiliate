@@ -29,7 +29,7 @@ flowchart LR
 - サイト: Astro（静的ビルド）/ Cloudflare Pages。公開はGitコミットとビルドの再現性で管理。
 - Scheduler: GitHub Actions cron + workflow_dispatch。実行遅延があり、厳密な実時間保証はしない。ジョブ内で排他/再試行。
 - 状態保存: PostgreSQL（Supabase/Neon/自前のいずれもadapter経由）。Actionsは永続ディスクではない。
-- MVPはSaaSへのログイン・Playwrightによる実機検証をしない。公式ドキュメント/APIの読取を認可範囲内で実施し、条件付き料金試算を計算する。
+- MVPでは紹介商品の購入・契約・体験・実機レビューをしない。公式ドキュメント/APIの読取を認可範囲内で実施し、条件付き料金試算を計算する。
 - エージェント推論: LLMGateway interface。OpenCode連携はCLI/APIの現行対応を検証して実装。対応しなければ直接Provider SDK adapterへ。
 - 証跡: アクセス制限付きR2/S3互換オブジェクトストレージ。個人情報・認証トークンを削除/マスクしてから保存。
 - 監視: DB events + 構造化ログ + 失敗集計 + オーナーへの通知。通知は承認要求ではない。
@@ -95,4 +95,4 @@ MVPは逐次ワークフローで十分。ジョブが長時間化/多並列化�
 
 ## MVPデータフロー（改訂）
 
-**Opportunity → Research (official sources) → Analysis (deterministic calculator) → Content → QA → Publisher → Growth**。Analysisは公式の料金単位・利用回数・年/月払い・通貨を正規化し、検算可能な関数で試算する。外部SaaSへのログイン・有料契約・ブラウザ操作はデフォルトでは行わない。将来必要性が判明した場合のみ別ADRで追加する。
+**Opportunity (cross-industry market discovery) → Research → Analysis (industry-specific decision rules) → Content → QA → Publisher → Growth**。Analysisは商材ジャンル別の料金、送料、解約金、対象地域、契約条件等を正規化し、計算可能なものを純粋関数で試算する。外部SaaSへのログイン・有料契約・ブラウザ操作はデフォルトでは行わない。将来必要性が判明した場合のみ別ADRで追加する。
