@@ -4,7 +4,8 @@ timezone: Asia/Tokyo
 mode: dry-run
 flags:
   research_enabled: true
-  browser_testing_enabled: false
+  browser_testing_enabled: false # optional future, not required by MVP
+  analysis_enabled: true
   publish_enabled: false
   youtube_enabled: false
   social_enabled: false
@@ -17,7 +18,7 @@ limits:
   task_retry_attempts: 3
   max_job_duration_seconds: 1800
   max_job_cost_jpy: 500
-  max_test_cost_jpy: 50
+  max_test_cost_jpy: 0 # no hands-on test budget in MVP
   monthly_operating_cost_jpy: 30000
   slow_down_threshold_percent: 85
   max_parallel_browser_sessions: 1
@@ -26,7 +27,9 @@ content:
   require_original_value: true
   require_claim_evidence: true
   require_primary_source_for_prices: true
-  require_test_log_for_hands_on_claims: true
+  prohibit_hands_on_claims_in_mvp: true
+  require_price_formula: true
+  require_price_assumptions: true
   prohibit_fake_human_reviews: true
   include_clear_ad_disclosure: true
   affiliate_link_rel: sponsored
@@ -36,10 +39,12 @@ content:
   unknown_means_fail: true
 
 security:
-  allowed_test_domains: []
+  allowed_test_domains: [] # not used in MVP
+  allowed_source_domains: [] # configure explicitly before live operation
   allow_captcha_bypass: false
   allow_auth_bypass: false
   allow_new_account_creation: false
+  allow_vendor_saas_ui_operations: false
   allow_payments: false
   allow_llm_to_modify_policy: false
   public_pii_redaction_required: true

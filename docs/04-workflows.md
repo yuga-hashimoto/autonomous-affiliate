@@ -6,7 +6,7 @@
 DISCOVERED
   -> ELIGIBILITY_CHECKED
   -> RESEARCHED
-  -> TESTED
+  -> ANALYZED
   -> DRAFTED
   -> QA_PENDING
   -> APPROVED_AUTOMATICALLY
@@ -33,7 +33,7 @@ job_key = task_kind + target_entity + source_version_or_snapshot + policy_versio
 ## 実行スケジュール（日本時間での目安）
 
 - 02:00 Opportunity + Research（毎日）
-- 04:00 Testing + Content（キューの優先順位順）
+- 04:00 Analysis + Content（公式情報の比較・料金試算）
 - 07:00 QA + Deploy（合格のみ、最大1新記事/日）
 - 12:00 SNS / 動画（承認済み公式APIが存在する場合のみ）
 - 20:00 Metrics import + Growth（毎日/週次で集計）
@@ -57,6 +57,8 @@ can_publish(item) =
   AND article.ad_disclosure_present
   AND article.affiliate_links_all_sponsored
   AND article.claims_all_evidenced
+  AND article.derived_prices_have_formula_and_assumptions
+  AND article.comparison_units_match
   AND article.has_original_value
   AND article.no_unsupported_experience
   AND article.no_secrets_or_pii
@@ -72,10 +74,14 @@ can_publish(item) =
 
 ## 既存記事更新
 
-定期巡回で公式サイトと掲載内容を照合。価格/料率/仕様の変更発見時は差分生成→再検証→QA→再公開。重大誤りを見つけた場合は即時に当該セクションを除去するかページを非公開化。更新日付は「実際に再検証した内容」に基づく。
+定期巡回で公式サイトと掲載内容を照合。価格/料率/仕様の変更発見時は公式情報の再取得→再計算→QA→再公開。重大誤りを見つけた場合は即時に当該セクションを除去するかページを非公開化。更新日付は「実際に再検証した内容」に基づく。
 
 ## 外部アクション
 
 - 公開・SNS投稿・YouTube投稿は別々のfeature flag、別のアカウント資格情報。
 - 公式APIに非対応、権限不足、プラットフォーム投稿規約未確認ならSKIPPED。
 - CAPTCHA/2FAの迂回や無断スクレイピングは禁止。ユーザーによる正規の初期認証が要る連携はセットアップ完了まで無効。
+
+## 実機操作の扱い
+
+MVPのワークフローにテスト環境の構築、SaaSへのログイン、操作テストを含めない。公式情報で裏付けできない体験記事はREJECTED。計算式または紹介条件が未確認の場合もFAIL CLOSED。

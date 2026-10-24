@@ -17,16 +17,16 @@
 - [ ] B006: Source collector + canonical URL + freshness + evidence checksum
   - DoD: 公式出典を取得できない重要claimはUNKNOWN。
 
-## P1 — 実測→記事
+## P1 — 公式情報→分析→記事
 
-- [ ] B007: test scenario JSON schema + isolated Playwright runner
-  - DoD: allowlist外、CAPTCHA、予算超過、タイムアウトで停止。
-- [ ] B008: evidence storage + PII redaction pipeline
-  - DoD: 画像/ログから秘密値が除去され、追跡可能なartifactが残る。
-- [ ] B009: Content draft engine with claim -> source references
+- [ ] B007: Analysis Agent / 料金計算の純粋関数と比較データ
+  - DoD: 年/月払い、通貨、税、実行単位・回数を条件付きで比較し、公式情報+fixtureで検算できる。
+- [ ] B008: 公式Fact・料金算式・source provenanceの保管
+  - DoD: 公式URL・確認日・計算式・仮定が原稿の各claimと追跡できる。
+- [ ] B009: Content draft engine with claim -> source / analysis references
   - DoD: 捏造された「実体験」「実測数値」が禁止ルールで拒否。
 - [ ] B010: QA engine (deterministic gates + secondary critique)
-  - DoD: 重要claim出典なし、PR表記なし、offer未承認、同一記事の重複、すべてFAIL。
+  - DoD: 重要claim出典・料金計算式・PR表記・案件承認のいずれかが欠けた場合や記事重複はFAIL。
 - [ ] B011: Astro site + article template + disclosures + privacy/about
   - DoD: mobile preview、SEO metadata、広告表示、リンクsponsored、ビルド成功。
 
@@ -47,8 +47,8 @@
 
 ## P3 — optional distribution
 
-- [ ] B018: 動画render pipeline（出典・著作権・広告表示）
-  - DoD: 実測スクリーンショットのPII無し、著作権確認が通る。
+- [ ] B018: 図解動画render pipeline（出典・著作権・広告表示）
+  - DoD: 使用していないサービスの偽操作映像を作らず、素材の権利・広告表示を確認する。
 - [ ] B019: 正式API許可されたSNS / YouTube publisher
   - DoD: API未許可やquota不足時はSKIPPEDとなり外部操作しない。
 - [ ] B020: 自動月次事業レポート
@@ -56,7 +56,7 @@
 
 ## 実装の最短縦スライス
 
-B001→B002→B003→B005→B006→B007→B009→B010→B011→B012 の順で「単一テーマの実測比較記事を安全に自動公開」を先に成立させる。B012を本番有効化する前にB004/B008/規約の必須部分も完了すること。
+B001→B002→B003→B005→B006→B007→B009→B010→B011→B012 の順で「単一テーマの**一次情報と独自計算**に基づく比較記事を安全に自動公開」を先に成立させる。B012を本番有効化する前にB004/B008/規約の必須部分も完了すること。
 
 ## セキュリティ負例（必須E2E）
 
@@ -66,5 +66,11 @@ B001→B002→B003→B005→B006→B007→B009→B010→B011→B012 の順で「
 4. 収益リンクのprogram.statusがpending/rejectedなら非公開。
 5. 予算を1円超過するとLLM呼出をブロック。
 6. 連続公開retryしても同一記事は1件だけ。
-7. ブラウザがallowlist外URLへ飛ぼうとしても拒否。
+7. Source collectorがallowlist外URLへアクセスしようとしても拒否。
 8. 不明な金額やASPデータを0円として確定表示しない。
+
+## 追加タスク
+
+- [ ] B021: docs/13の上位3記事を記事候補データとして登録（キーワード・独自分析・CTA・公式出典を定義）。DoD: ログイン不要の比較記事がdry-runで生成可能。
+- [ ] B022: 自社記事→YouTube/Xの配信adapter（default disabled）。DoD: API未許可ならSKIPPED。note/Qiita/Zennへの自動投稿は行わない。
+- [ ] B023: 実機操作不要のE2Eテスト。DoD: source→analysis→content→QA→publishまでSaaSアカウントを必要とせずに完走。

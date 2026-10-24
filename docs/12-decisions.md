@@ -8,9 +8,9 @@ Consequence: 公開量より信頼性を優先する。QA未確定ならコン�
 
 ## ADR-002: Evidence-first content
 
-Decision: Agentの文章ではなく、一次情報・テスト結果とassertionを主なソースとする。
+Decision: Agentの文章ではなく、公式一次情報・透明な料金式と前提・比較条件を主なソースとする。MVPでは実機検証をしない。
 
-Consequence: 実測不可能なサービスは体験レビューとして扱わない。一次情報の紹介/解説で価値を出せないなら掲載しない。
+Consequence: 実際に使っていないサービスの体験レビューは禁止。一次情報から独自の比較・計算・判断材料を作れないなら掲載しない。
 
 ## ADR-003: Model-agnostic gateway
 
@@ -46,3 +46,11 @@ Consequence: 実案件がゼロの期間は収益リンクを持たない有益�
 6. クッキー同意・プライバシーポリシー・メール配信の要件。
 7. ASP attributionの粒度とレポート取得許可。
 8. オープンソース化する場合のLICENSE選択（現時点では未設定）。
+
+## ADR-007: Hands-on testing removed from MVP
+
+MVPではSaaSの実機操作を必須としない。公式の料金・機能・制約を構造化したAnalysis Agentを採用。使用経験や実測結果を捏造しない。必要になれば後続Phaseで再判断する。
+
+## ADR-008: Own domain and search first
+
+記事の正本と収益リンクは独自ドメイン。検索流入を主軸にYouTube/Xを補助。noteの個人向け非公式投稿経路やQiita/Zennでの販促量産は採用しない。

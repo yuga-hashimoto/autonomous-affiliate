@@ -11,8 +11,8 @@ MVPから監査可能なDBを採用。テーブル名・型は設計上の提案
 | opportunities | id, keyword, intent, audience, priority, source_ids, status | コンテンツ候補 |
 | sources | id, canonical_url, source_type, fetched_at, hash, provenance | 一次情報 |
 | claims | id, text, claim_type, last_verified_at, source_ids, confidence, verification_status | 記事に載せる主張 |
-| test_scenarios | id, service_id, script_ref, env_spec, max_cost_jpy | 実機検証 |
-| test_runs | id, scenario_id, status, started_at, finished_at, result_json, evidence_ids | 実行証跡 |
+| analyses | id, opportunity_id, source_ids, assumptions_json, formula_version, result_json | 独自比較・料金試算 |
+| calculation_runs | id, analysis_id, input_json, formula_version, output_json, checked_at | 試算・検算記録 |
 | evidence | id, type, object_key, checksum, redaction_status, retention_until | 検証資料 |
 | content_items | id, slug, locale, topic, state, current_revision, offer_id | 記事の主体 |
 | content_revisions | id, item_id, content_hash, markdown_path, qa_report_id, published_at, source_ids | 更新履歴 |
@@ -46,7 +46,7 @@ APPROVEDとPAIDは異なる。推定報酬と未承認成果は確定売上KPI�
 
 ## コンテンツの根拠追跡
 
-記事の主張ごとにclaim_id。claims -> sources/evidence -> content_revisionの多対多関連テーブルを実装。料金・キャンペーン・規約など時間依存情報には有効期限と再検証日時。重要なclaimに裏付けがないとQA不合格。
+記事の主張ごとにclaim_id。claims -> sources/analyses -> content_revisionの多対多関連テーブルを実装。料金・キャンペーン・規約など時間依存情報には有効期限と再検証日時。重要なclaimに裏付けがないとQA不合格。
 
 ## Jobイベント例
 
@@ -67,3 +67,7 @@ APPROVEDとPAIDは異なる。推定報酬と未承認成果は確定売上KPI�
 ## 計測上の注意
 
 ASP側にclick/conversionの個別紐付けがない場合、ページ別の収益を確定的に割り当てられない。できる限り各ASPの許容するsub_idを使う。不可ならページ別収益はUNKNOWNとし、推定アトリビューションを別指標にする。GA4, GSC, ASPレポートの数値が完全一致するとは限らない。
+
+## データの種別
+
+公式Fact（source_id/確認日時付き）、計算上の推定（formula/assumptions付き）、評価（前提条件付き）、ASPの未承認成果、承認成果、入金を区別する。料金の試算値を「実際の請求額」として保存しない。
