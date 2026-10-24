@@ -29,6 +29,9 @@ jobs:
         run: pnpm --filter site build
         env:
           SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
+          # Affiliate tracking URLs (JSON: {"offers":{"<offer_id>":"<url>"}}).
+          # Kept as a secret — never committed to the repository.
+          AFFILIATE_TRACKING_URLS_JSON: ${{ secrets.AFFILIATE_TRACKING_URLS_JSON }}
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
