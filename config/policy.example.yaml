@@ -62,7 +62,7 @@ operations:
   stop_on_budget_limit: true
   auto_revoke_on_critical_error: true
 
-# Do not hard-code n8n/Make as launch products.
+# No default niche: user has not requested AI/SaaS affiliate content.
 market_selection:
   enabled: true
   default_selected_offers: []
@@ -73,5 +73,7 @@ market_selection:
   require_country: JP
   require_language: ja
   unknown_metrics_status: UNKNOWN
-  exploration_categories: 3
+  exploration_categories: 3 # experiment winners after cross-vertical screening
+  initial_research_verticals: [mobile, fiber, buyback, education, career, moving, utilities, water_delivery, car_buyback, saas]
+  default_vertical: null
   forbid_fabricated_search_volume_or_cvr: true

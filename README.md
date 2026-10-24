@@ -8,8 +8,8 @@ AIが公式一次情報を調査・構造化し、比較分析・記事生成・
 
 ## 目的
 
-- メイン領域: **AIツール / SaaS比較**。商材は固定せず、**日本の検索需要・競合SERP・購入意図・収益条件**からAIが採択する（暫定候補: n8n / Make / Notta / Fireflies / ElevenLabs / Gamma）。
-- 読者: 日本の個人開発者、副業者、小規模事業者、AI自動化を導入したい人。
+- **ジャンル未指定・未決定。AI系を優先する要件はない。** 通信、宅配買取、資格・教育、転職、生活サービス、ソフトウェアなどを横断して、日本の需要・競合・報酬・成約障壁・無人運営適性から選ぶ。
+- 読者: 日本のサービス申込・契約・買取・講座選びなどを検討する人。具体的な読者像は選定されたジャンルごとに定義。
 - 提供価値: **公式一次情報に基づく独自比較・条件別料金シミュレーション・用途別選定表**。
 - 収益: 各ASPやサービスで**承認済み**の紹介プログラムのみ。成果確定額と推定額を分離する。
 - 主要KPI: 承認売上 / 1,000収益化対象訪問（JPY）、承認EPC、CTA CTR、確定利益。
@@ -62,7 +62,7 @@ flowchart TD
 | [docs/12-decisions.md](docs/12-decisions.md) | 主要設計判断と未確定事項 |
 | [docs/13-editorial-and-channels.md](docs/13-editorial-and-channels.md) | **何の記事をどこへ配信するか：具体的な20記事案とCTA** |
 | [docs/14-affiliate-programs.md](docs/14-affiliate-programs.md) | 商材候補の公式制度・掲載条件・審査ゲート |
-| [docs/15-market-validation.md](docs/15-market-validation.md) | **商材選定アルゴリズム・競合調査・勝者選定ゲート** |
+| [docs/15-market-validation.md](docs/15-market-validation.md) | **ジャンル横断の需要・SEO競合・収益性検証** |
 | [AGENTS.md](AGENTS.md) | このリポジトリを実装するAIコーディングエージェントへの指示 |
 | [config/policy.example.yaml](config/policy.example.yaml) | 実行・公開・費用ポリシー例 |
 | [.env.example](.env.example) | 環境変数一覧（秘密情報は含めない） |
@@ -98,4 +98,4 @@ flowchart TD
 実際に公開する記事20本の候補と、各記事のCTA・配信先は [記事/配信設計](docs/13-editorial-and-channels.md) を参照。
 ## 商材の選定ルール（2026-10-24改訂）
 
-**n8nとMakeが売れると検証できたわけではないため、初期の確定主力にはしない。** 初期候補を市場調査し、`docs/15-market-validation.md` に従ってランク付け。検索ボリュームや実成約率が未取得の場合はUNKNOWNとし、推測値を実績として公表しない。小規模テスト後は検索流入・紹介クリック・承認EPCに応じて商材を入れ替える。
+**AI/SaaSを特別扱いしない。ユーザーはAIツール紹介を希望していない。** 初期候補を市場調査し、`docs/15-market-validation.md` に従ってランク付け。検索ボリュームや実成約率が未取得の場合はUNKNOWNとし、推測値を実績として公表しない。小規模テスト後は検索流入・紹介クリック・承認EPCに応じて商材を入れ替える。

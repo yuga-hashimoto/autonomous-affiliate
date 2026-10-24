@@ -1,53 +1,38 @@
-# 14. Affiliate Programs: Confirmed Public Facts & Gates
+# 14. ASP・広告主案件 — ジャンル非依存
 
-更新: 2026-10-24。以下は公式公開ページで確認できる**制度の存在と一般条件**であり、当リポジトリが提携承認済みとは意味しない。個別の審査・報酬・掲載規約が優先される。
+状態: 候補調査の設計。提携済み案件の登録情報ではない。
 
-## 旧初期紹介候補（選定確定ではない）
+## 基本方針
+- AI・SaaSを優先しない。まずASPの有効案件と広告主の公式紹介条件をジャンル横断で調査。
+- 調査対象: A8.net、バリューコマース、アクセストレード、afbなど。各ASPの実際の掲載案件/条件はログイン・媒体審査後に確認。
+- ASPアカウントと紹介案件の提携承認は別。本人確認や口座登録は正規の手続きを要することがある。
+- 非公式ログイン、CAPTCHA回避、禁止されたデータ取得はしない。
 
-| サービス | 公式の公開条件 | 記事での紹介 | 重要な制限 |
-| --- | --- | --- | --- |
-| n8n Cloud | 対象Cloudプランの紹介から12か月間30% | n8n vs Make、Cloud vs self-host、料金 | 提携申請が必要。**有料広告を利用したaffiliate活動は禁止**。支払いPayPal、閾値等の条件あり |
-| Make | 紹介リンク経由の対象サブスクリプション支払いについて12か月間35% | Makeの無料/有料、料金、n8n比較 | 報酬支払には100米ドル以上・有料紹介者3人以上が必要。Wiseで支払い。追加オペレーション購入は対象外 |
+## 案件タイプ別の想定成果地点（例、実際の条件とは異なる）
+| ジャンル | 成果条件の例 | 主なリスク |
+|---|---|---|
+| 格安SIM/光回線 | 申込・開通・初回課金 | 地域・料金変動・キャンセル |
+| 宅配買取 | 査定依頼・買取成立 | 重複/対象品・返送料 |
+| 教育/資格 | 資料請求・有料申込 | 無効リード・広告表現 |
+| 転職 | 登録・面談・採用 | 対象者・重複登録・紹介規約 |
+| 引っ越し | 見積依頼・成約 | 対応地域・申込品質 |
+| 電力/ガス | 切替/利用開始 | 料金変動・地域条件 |
+| ウォーターサーバー | 契約/初回配送 | 解約金・キャンセル |
+| 車買取 | 査定/売却成立 | 承認/重複・地域 |
+| SaaS | 有料契約・継続 | 対象プラン・無料枠流入 |
 
-公式ページ:
-- n8n: https://n8n.io/affiliates/
-- n8n登録: https://dash.partnerstack.com/application?company=n8n&group=affiliates2025
-- Make: https://help.make.com/affiliate-program
-- Make募集: https://www.make.com/affiliate
+## offer.activeの条件
+1. 広告主・ASPによる掲載許諾を取得済み。
+2. 日本居住者・対象媒体・対象地域・成果地点の条件を満たす。
+3. 公式発行トラッキングURL・報酬額・否認条件を取得済み。
+4. PR表示/rel=sponsored/禁止キーワード/媒体規約に適合。
+5. データ不明・審査未了ならリンクを無効化する。
 
-## 媒体の掲載判断
+## 必須台帳フィールド
+vertical_id, program_id, advertiser_id, offer_id, approval_status, channel_permissions, target_region, conversion_event, reward_amount_or_rate, rejection_conditions, approval_rate_observed, settlement_terms, terms_url, terms_checked_at, affiliate_link, active
 
-- 自社ブログ: 両社の公開情報では紹介手段として想定される。個別提携・実際の掲載媒体の許可を確認。
-- YouTube: n8nは公式に紹介例として掲示。Makeは当該媒体への紹介許可を個別にチェック。
-- X: n8nはSNSを紹介例にしている。Makeは媒体条件を確認。
-- 有料広告: 初期はすべてOFF。特にn8nは公式に禁止。
-- note/Qiita/Zenn: 自動広告投稿やアフィリエイト量産を初期運用に含めない。
+## 以前のAI商材について
+n8n/Make/Notta/Fireflies.ai/ElevenLabs/Gammaを調査した過去があるが、ユーザーがAI系を指定した事実はないため**優先扱いしない**。収益性の調査データが揃った場合に限り、他ジャンルと同条件で評価する。
 
-## offer.active=true にできる条件
-
-1. program審査が正式に承認されている。
-2. 日本在住の運営・日本向け流入・掲載サイト/媒体について許諾がある。
-3. 正式発行された紹介リンク・tracking IDを取得している。
-4. 掲載商品の料金・対象プラン・条件の鮮度が有効。
-5. PR表示とリンク属性（rel=sponsored）が自動挿入される。
-6. 審査状態、支払条件、広告禁止事項など不明点があればリンクの有効化を拒否。
-
-## 収益への注意
-
-両社とも一定の条件下で継続型の報酬を提示するが、1件の紹介で大きな固定額が入るとは限らない。報酬はASP管理画面/公式レポートに基づくPENDING・APPROVED・PAIDを分離。記事の順位は紹介料で操作しない。
-
-## 将来の候補
-
-Zapier等の開発支援・ホスティング・B2B SaaSは公式の紹介制度、地域、報酬支払、ASP審査、YouTube/Xへの掲載可否を検証してからoffer registryに登録。**現時点のアフィリエイト制度の存在・報酬を推定で記載しない**。
-
-## 新規調査の候補（報酬=公開制度・提携承認とは別）
-
-| 候補 | 公開条件（概要） | 公式 | 採択状態 |
-|---|---|---|---|
-| Notta | 新規有料注文の30%、別のお友達紹介制度20%と混同しない | https://www.notta.ai/en/affiliate | MARKET_RESEARCH |
-| Fireflies.ai | 最大30%を12か月継続、90日追跡窓 | https://fireflies.ai/affiliate | MARKET_RESEARCH |
-| ElevenLabs | Starter/Creator/Pro/Scale 22%を12か月、Business 11%、支払遅延あり | https://elevenlabs.io/affiliates-terms | MARKET_RESEARCH |
-| Gamma | アフィリエイト制度を公式確認、報酬率と日本での提携可能性は未確定 | https://help.gamma.app/en/articles/11048092-how-do-i-join-the-gamma-affiliate-program | MARKET_RESEARCH |
-| n8n / Make | 上記公開条件があるが市場需要・CVRは未計測 | 既存リンク参照 | MARKET_RESEARCH |
-
-**どの商材もここでは勝者認定しない。** 次の市場検証を通した後に採択する。`docs/15-market-validation.md`。
+## 安全・法規制
+金融/医療・薬機/法律等の高規制分野は、無人運用で広告表現の適法性を確認できないため初期自動公開対象外。ギャンブル・規約違反・不適切なリード誘導も除外。営業・顧客との個別やり取りも前提にしない。
