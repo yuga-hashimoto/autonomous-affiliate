@@ -8,18 +8,18 @@ AIが公式一次情報を調査・構造化し、比較分析・記事生成・
 
 ## 目的
 
-- メイン領域: **AI業務自動化 / SaaS比較**（初期検証例: n8n、Make）。
+- メイン領域: **AIツール / SaaS比較**。商材は固定せず、**日本の検索需要・競合SERP・購入意図・収益条件**からAIが採択する（暫定候補: n8n / Make / Notta / Fireflies / ElevenLabs / Gamma）。
 - 読者: 日本の個人開発者、副業者、小規模事業者、AI自動化を導入したい人。
 - 提供価値: **公式一次情報に基づく独自比較・条件別料金シミュレーション・用途別選定表**。
 - 収益: 各ASPやサービスで**承認済み**の紹介プログラムのみ。成果確定額と推定額を分離する。
 - 主要KPI: 承認売上 / 1,000収益化対象訪問（JPY）、承認EPC、CTA CTR、確定利益。
-- 開発目標: **90日で自動実行のMVP・計測ループを成立**。売上金額・SEO順位は保証しない。
+- 開発目標: **90日で市場スクリーニングを含む自動実行のMVP・計測ループを成立**。売上金額・SEO順位は保証しない。
 
 ## 自律運営フロー
 
 ~~~mermaid
 flowchart TD
-  A[Opportunity Agent: 市場/案件発見] --> B[Research Agent: 一次情報]
+  A[Opportunity Agent: 需要/競合/報酬を比較して候補採点] --> B[Research Agent: 公式一次情報]
   B --> C[Analysis Agent: 料金試算/用途別比較]
   C --> D[Content Agent: 記事/比較表/素材]
   D --> E{QA Agent: 全ゲート合格?}
@@ -61,7 +61,8 @@ flowchart TD
 | [docs/11-backlog.md](docs/11-backlog.md) | 実装順序と受入条件 |
 | [docs/12-decisions.md](docs/12-decisions.md) | 主要設計判断と未確定事項 |
 | [docs/13-editorial-and-channels.md](docs/13-editorial-and-channels.md) | **何の記事をどこへ配信するか：具体的な20記事案とCTA** |
-| [docs/14-affiliate-programs.md](docs/14-affiliate-programs.md) | n8n/Makeの紹介制度・掲載条件・審査ゲート |
+| [docs/14-affiliate-programs.md](docs/14-affiliate-programs.md) | 商材候補の公式制度・掲載条件・審査ゲート |
+| [docs/15-market-validation.md](docs/15-market-validation.md) | **商材選定アルゴリズム・競合調査・勝者選定ゲート** |
 | [AGENTS.md](AGENTS.md) | このリポジトリを実装するAIコーディングエージェントへの指示 |
 | [config/policy.example.yaml](config/policy.example.yaml) | 実行・公開・費用ポリシー例 |
 | [.env.example](.env.example) | 環境変数一覧（秘密情報は含めない） |
@@ -95,3 +96,6 @@ flowchart TD
 - **初期対象外:** note個人アカウントへの非公式自動投稿、Qiita/Zennへのアフィリエイト量産、無断SNS宣伝。
 
 実際に公開する記事20本の候補と、各記事のCTA・配信先は [記事/配信設計](docs/13-editorial-and-channels.md) を参照。
+## 商材の選定ルール（2026-10-24改訂）
+
+**n8nとMakeが売れると検証できたわけではないため、初期の確定主力にはしない。** 初期候補を市場調査し、`docs/15-market-validation.md` に従ってランク付け。検索ボリュームや実成約率が未取得の場合はUNKNOWNとし、推測値を実績として公表しない。小規模テスト後は検索流入・紹介クリック・承認EPCに応じて商材を入れ替える。

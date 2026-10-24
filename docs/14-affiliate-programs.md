@@ -2,7 +2,7 @@
 
 更新: 2026-10-24。以下は公式公開ページで確認できる**制度の存在と一般条件**であり、当リポジトリが提携承認済みとは意味しない。個別の審査・報酬・掲載規約が優先される。
 
-## 初期紹介候補
+## 旧初期紹介候補（選定確定ではない）
 
 | サービス | 公式の公開条件 | 記事での紹介 | 重要な制限 |
 | --- | --- | --- | --- |
@@ -39,3 +39,15 @@
 ## 将来の候補
 
 Zapier等の開発支援・ホスティング・B2B SaaSは公式の紹介制度、地域、報酬支払、ASP審査、YouTube/Xへの掲載可否を検証してからoffer registryに登録。**現時点のアフィリエイト制度の存在・報酬を推定で記載しない**。
+
+## 新規調査の候補（報酬=公開制度・提携承認とは別）
+
+| 候補 | 公開条件（概要） | 公式 | 採択状態 |
+|---|---|---|---|
+| Notta | 新規有料注文の30%、別のお友達紹介制度20%と混同しない | https://www.notta.ai/en/affiliate | MARKET_RESEARCH |
+| Fireflies.ai | 最大30%を12か月継続、90日追跡窓 | https://fireflies.ai/affiliate | MARKET_RESEARCH |
+| ElevenLabs | Starter/Creator/Pro/Scale 22%を12か月、Business 11%、支払遅延あり | https://elevenlabs.io/affiliates-terms | MARKET_RESEARCH |
+| Gamma | アフィリエイト制度を公式確認、報酬率と日本での提携可能性は未確定 | https://help.gamma.app/en/articles/11048092-how-do-i-join-the-gamma-affiliate-program | MARKET_RESEARCH |
+| n8n / Make | 上記公開条件があるが市場需要・CVRは未計測 | 既存リンク参照 | MARKET_RESEARCH |
+
+**どの商材もここでは勝者認定しない。** 次の市場検証を通した後に採択する。`docs/15-market-validation.md`。

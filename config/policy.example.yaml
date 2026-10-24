@@ -61,3 +61,17 @@ operations:
   stop_on_unknown_terms: true
   stop_on_budget_limit: true
   auto_revoke_on_critical_error: true
+
+# Do not hard-code n8n/Make as launch products.
+market_selection:
+  enabled: true
+  default_selected_offers: []
+  require_approved_program_for_affiliate_cta: true
+  require_keyword_competition_check: true
+  minimum_intent_keywords_per_category: 10
+  organic_serp_top_n: 10
+  require_country: JP
+  require_language: ja
+  unknown_metrics_status: UNKNOWN
+  exploration_categories: 3
+  forbid_fabricated_search_volume_or_cvr: true
