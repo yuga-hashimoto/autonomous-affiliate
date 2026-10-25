@@ -38,11 +38,11 @@
 
 | 方式 | `LLM_PROVIDER` | 登録URL | 必須env | コスト計上 |
 | --- | --- | --- | --- | --- |
-| **OpenAI互換API（推奨）** | `openai-compatible`（既定） | OpenAI <https://platform.openai.com/signup> / OpenRouter <https://openrouter.ai/> / **Z.ai(GLM)** <https://z.ai> | `LLM_API_KEY` `LLM_MODEL` `LLM_BASE_URL` `LLM_INPUT_COST_JPY_PER_1M` `LLM_OUTPUT_COST_JPY_PER_1M` | トークン単価で実費計上 |
+| **OpenAI互換API（推奨）** | `openai-compatible`（既定） | OpenAI <https://platform.openai.com/signup> / OpenRouter <https://openrouter.ai/> / **Z.ai(GLM)** <https://z.ai/model-api> | `LLM_API_KEY` `LLM_MODEL` `LLM_BASE_URL` `LLM_INPUT_COST_JPY_PER_1M` `LLM_OUTPUT_COST_JPY_PER_1M` | トークン単価で実費計上 |
 | ローカルCLI（opencode / Claude Code / Antigravityのサブスク） | `cli` | 各CLIの既存ログイン | `LLM_CLI_COMMAND`（例 `opencode`） `LLM_CLI_ARGS`（例 `["run","-m","zai-coding-plan/glm-5.2","{{PROMPT}}"]`、または `LLM_CLI_STDIN=1`） `LLM_CLI_COST_JPY_PER_CALL`（**必須**。保守的な1呼当り割当額） | 固定割当（サブスクのためトークン単価なし） |
 | （開発時）モック | — | — | — | 0円（live実行不可） |
 
-- **推奨はOpenAI互換API**。opencodeで利用中のGLM（Z.ai）も `LLM_BASE_URL` にZ.aiのOpenAI互換エンドポイントを指定すればそのまま使える。
+- **推奨はOpenAI互換API**。Z.ai公式資料: Base URL `https://api.z.ai/api/paas/v4`、モデル例 `glm-5.3`、API key発行 <https://z.ai/manage-apikey/apikey-list>、Billing/利用枠 <https://z.ai/manage-apikey/billing>。Z.ai Coding Plan契約をAPI利用する場合の専用OpenAI Chat Completions Base URLはモデル別ガイドに従う（GLM-5.3: `https://api.z.ai/api/coding/paas/v4`。<https://docs.z.ai/guides/llm/glm-5.3>）。API利用枠購入/入金は本人操作。
 - CLI方式は「サブスク料だけで回したい」場合の予備経路。1呼出ごとにCLIプロセスを起動するため遅く、出力はJSON抽出＋スキーマ検証で保証する（マーカー付きコードブロックや前後の文章は自動で剥がす）。
 - どちらの方式でも**費用の見積れない呼出しは禁止**（policy docs/07）。CLI方式は1呼当りの割当額を必ず設定する。
 - 支払方法登録・月次上限設定は **必ず本人操作**。
