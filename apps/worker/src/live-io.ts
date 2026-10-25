@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { PublisherIO } from "@aff/agents";
 
@@ -19,6 +19,10 @@ export interface LiveIoOptions {
   ) => Promise<{ stdout: string; stderr: string }>;
   /** Static site build; injectable for tests (defaults to `pnpm --filter site build`). */
   buildSite?: () => Promise<void>;
+  /** Push the generated commit to origin (enable only in a GitHub Action). */
+  pushAfterCommit?: boolean;
+  /** Remote ref for push; defaults to the repository's main branch. */
+  remoteRef?: string;
 }
 
 function sanitizeRelPath(path: string): string {
@@ -44,8 +48,9 @@ export class LivePublisherIO implements PublisherIO {
   async writeArtifact(path: string, content: string): Promise<void> {
     // The publisher passes "<siteContentDir>/<file>"; resolve inside contentDir.
     const base = sanitizeRelPath(this.options.contentDir);
-    const target = join(base, path.replace(/^content\/articles\//, ""));
-    if (!resolve(target).startsWith(base)) {
+    const relative = path.replace(/^content\/articles\//, "");
+    const target = resolve(base, relative);
+    if (target !== base && !target.startsWith(`${base}${sep}`)) {
       throw new Error(`artifact path escapes content dir: ${path}`);
     }
     await mkdir(dirname(target), { recursive: true });
@@ -62,8 +67,13 @@ export class LivePublisherIO implements PublisherIO {
 
   async commitArtifact(path: string, message: string): Promise<string> {
     const rel = path.replace(/^content\/articles\//, "");
+    const base = resolve(this.options.contentDir);
+    const artifactPath = resolve(base, rel);
+    if (!rel || (artifactPath !== base && !artifactPath.startsWith(`${base}${sep}`))) {
+      throw new Error(`invalid article path: ${path}`);
+    }
     const cwd = this.options.repoRoot;
-    await this.run("git", ["add", join("content/articles", rel)], cwd);
+    await this.run("git", ["add", "--", join("content/articles", rel)], cwd);
     const commit = await this.run(
       "git",
       ["-c", "user.name=autonomous-affiliate", "-c", "user.email=aff-bot@users.noreply.local", "commit", "-m", message],
@@ -76,6 +86,11 @@ export class LivePublisherIO implements PublisherIO {
     });
     const sha = await this.run("git", ["rev-parse", "HEAD"], cwd);
     void commit;
-    return sha.stdout.trim();
+    const commitSha = sha.stdout.trim();
+    if (this.options.pushAfterCommit) {
+      const remoteRef = this.options.remoteRef ?? "main";
+      await this.run("git", ["push", "origin", `HEAD:refs/heads/${remoteRef}`], cwd);
+    }
+    return commitSha;
   }
 }

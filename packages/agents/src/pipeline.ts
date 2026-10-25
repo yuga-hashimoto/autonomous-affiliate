@@ -236,7 +236,7 @@ export async function runArticlePipeline(
         id: decision.revisionId,
         itemId: item.id,
         contentHash: decision.artifactHash,
-        markdownPath: `content/${plan.slug}.${plan.locale ?? "ja-JP"}.md`,
+        markdownPath: `content/articles/${plan.slug}.${plan.locale ?? "ja-JP"}.md`,
         qaReportId: decision.id,
         sourceIds: draft.sourceIds,
       });
@@ -277,7 +277,7 @@ export async function runArticlePipeline(
       policy,
       logger: trace,
       io: services.publisherIO,
-      siteContentDir: "content",
+      siteContentDir: "content/articles",
       clock,
     });
     const target: PublishTarget = {

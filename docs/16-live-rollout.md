@@ -74,14 +74,15 @@ Secrets（<https://docs.github.com/en/actions/security-for-github-actions/securi
 | Name | 値 | 出所 |
 | --- | --- | --- |
 | `DATABASE_URL` | `postgresql://...` | Phase 0-3 |
-| `LLM_PROVIDER` | `openai-compatible`（既定）または `cli` | 選択方式 |
-| `LLM_API_KEY` / `LLM_MODEL` / `LLM_BASE_URL` / `LLM_INPUT_COST_JPY_PER_1M` / `LLM_OUTPUT_COST_JPY_PER_1M` | API方式の認証・モデル・単価 | Phase 0-4（API方式のみ） |
-| `LLM_CLI_COMMAND` / `LLM_CLI_ARGS` / `LLM_CLI_STDIN` / `LLM_CLI_COST_JPY_PER_CALL` | CLI方式のコマンドと割当コスト | Phase 0-4（CLI方式のみ） |
+| `LLM_API_KEY` | API key（Z.ai/OpenAI互換） | Phase 0-4（API方式のみ） |
 | `CLOUDFLARE_API_TOKEN` | Phase 0-2のトークン | 同上 |
-| `CLOUDFLARE_ACCOUNT_ID` | ダッシュボードのAccount ID | 同上 |
 | `AFFILIATE_TRACKING_URLS_JSON` | `{"offers":{"<offer_id>":"https://...tracking..."}}` | ASP承認後（Phase 2-4） |
+| `LIVE_POLICY_YAML` | `config/policy.live.yaml` の内容（publish_enabled含む） | Phase 4。コード/履歴に入れずSecretで保管 |
+| `LIVE_PLANS_JSON` | `config/plans.live.json` の内容 | Phase 4。コード/履歴に入れずSecretで保管 |
 
-Variables（平文で良いもの）: `SITE_BASE_URL`（例 `https://<ドメイン>`）, `CF_PAGES_PROJECT`（Pagesプロジェクト名）。
+Variables（平文でよい値）: `SITE_BASE_URL`（例 `https://sougakuhikaku.com`）, `CF_PAGES_PROJECT`（Pagesプロジェクト名）, `CLOUDFLARE_ACCOUNT_ID`, `LLM_PROVIDER`（`openai-compatible`）, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_INPUT_COST_JPY_PER_1M`, `LLM_OUTPUT_COST_JPY_PER_1M`, `LIVE_AUTOMATION_ENABLED`（最後まで`false`のまま）。
+
+CLI方式のローカル手動実行時のみ: `.env`（gitignore済み）へ `LLM_PROVIDER=cli`, `LLM_CLI_COMMAND=opencode`, `LLM_CLI_ARGS=["run","--pure","-m","opencode-go/glm-5.3-flash","{{PROMPT}}"]`, `LLM_CLI_COST_JPY_PER_CALL=20` を設定。GitHub-hosted runnerではローカルCLIログインが使えないため、scheduled automationにはAPI方式を使う。
 
 ## Phase 2: 市場選定・データ投入（AIと協同で可）
 
@@ -108,15 +109,17 @@ pnpm tsx apps/worker/src/index.ts run-pipeline --live \
   --policy config/policy.live.yaml --plans config/plans.live.json
 ~~~
 
-- `publish_enabled=false` でも実行には通るが、**`assertLiveReadiness` が前提（DB/LLM/allowlist/publish flag）を満たさなければ即エラー停止**する。
-- 成功すると: research → analysis → draft → QA → `content/articles/*.md` 書込 → git commit（QA不合格ならcommitされない）。
-- 確認: `pnpm --filter site build` でビルド → `deploy` workflow（Actions → deploy → Run workflow）でサイト反映。
+- `publish_enabled=false` のままなら、実ソース・実LLMで research → analysis → draft → QA を実行し、記事は `.tmp/live-preview/` にだけ書く（Git commit/公開なし）。前提は `mode=live`、DB、allowlist、LLM。
+- 確認: preview原稿・QAレポートを確認し、価格・成果条件・PR表示・出典が正しいか確認する。問題があれば修正して再実行。
+- `publish_enabled=false` はlive previewとして有効なモード。`publish_enabled=true` でのみ `content/articles/*.md` への書込・git commitが有効になる（QA不合格はcommitされない）。
 
 ## Phase 4: 自動公開の有効化
 
-1. `config/policy.live.yaml` の `flags.publish_enabled: true` に変更してコミット。
-2. `.github/workflows/pipeline.yml`（毎日02:00 JST）がQA合格分だけ自動commitする。デプロイは `deploy` workflowを手動実行（またはPages Git連携に切り替え）。
-3. 緊急停止: `publish_enabled` を `false` に戻す + deployを無効化。記事単位の撤去は `worker refresh`（鮮度切れ/無効Fact検知で UPDATE_CANDIDATE/REVOKED 化）。
+1. `LIVE_POLICY_YAML` GitHub Secretに `flags.publish_enabled: true` のポリシーを登録（ポリシー自体はrepoにコミットしない）。
+2. GitHub Secrets `LIVE_PLANS_JSON` を設定し、`DATABASE_URL`、LLM API key/単価、`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`AFFILIATE_TRACKING_URLS_JSON` があることを確認。
+3. GitHub Variable `LIVE_AUTOMATION_ENABLED=true` にする。`.github/workflows/live-pipeline.yml` が毎日02:00 JSTにQA合格記事を `content/articles/` にcommit/pushし、Pagesへデプロイする。
+4. GitHub-hosted runnerにはローカルのOpenCodeログインは引き継がれない。**スケジュール自動運用にはAPIキー方式（OpenAI互換）が必要**。OpenCode/Claude Code/Antigravity CLI方式はローカル手動実行向け（または認証設定済みself-hosted runnerを別途用意する）。
+5. 緊急停止: GitHub Variable `LIVE_AUTOMATION_ENABLED=false` にする（workflow jobが即skip）と同時に `LIVE_POLICY_YAML` の `publish_enabled` もfalseへ。記事単位の撤去は `worker refresh`（鮮度切れ/無効Fact検知でUPDATE_CANDIDATE/REVOKED化）。
 
 ## Phase 5: 計測と改善
 

@@ -1,9 +1,21 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Pool, PoolClient } from "pg";
 
-const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "migrations");
+function resolveMigrationsDir(): string {
+  if (process.env.DB_MIGRATIONS_DIR) return resolve(process.env.DB_MIGRATIONS_DIR);
+  const candidates = [
+    join(dirname(fileURLToPath(import.meta.url)), "../migrations"),
+    // The worker is bundled to apps/worker/dist; its cwd remains repo root.
+    resolve(process.cwd(), "packages/db/src/migrations"),
+  ];
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (!found) {
+    throw new Error(`database migrations directory not found; tried: ${candidates.join(", ")}`);
+  }
+  return found;
+}
 
 export async function runMigrations(pool: Pool): Promise<string[]> {
   const client = await pool.connect();
@@ -19,13 +31,14 @@ export async function runMigrations(pool: Pool): Promise<string[]> {
         (r) => r.name,
       ),
     );
-    const files = readdirSync(MIGRATIONS_DIR)
+    const migrationsDir = resolveMigrationsDir();
+    const files = readdirSync(migrationsDir)
       .filter((f) => f.endsWith(".sql"))
       .sort();
     const appliedNow: string[] = [];
     for (const file of files) {
       if (applied.has(file)) continue;
-      const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf8");
+      const sql = readFileSync(join(migrationsDir, file), "utf8");
       await client.query("BEGIN");
       try {
         await client.query(sql);

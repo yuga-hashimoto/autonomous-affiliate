@@ -145,9 +145,6 @@ function assertLiveReadiness(policy: PolicyConfig, env: NodeJS.ProcessEnv): void
   if (policy.mode !== "live") {
     throw new Error("live run refused: policy mode is not 'live'");
   }
-  if (!policy.flags.publish_enabled) {
-    throw new Error("live run refused: flags.publish_enabled is false");
-  }
   if (policy.security.allowed_source_domains.length === 0) {
     throw new Error("live run refused: security.allowed_source_domains is empty (configure verified domains first)");
   }
@@ -254,10 +251,22 @@ export async function runLivePipeline(
     }
   }
 
-  const io = new LivePublisherIO({
-    repoRoot: ROOT,
-    contentDir: join(ROOT, "content/articles"),
-  });
+  const previewOnly = !policy.flags.publish_enabled;
+  const livePreviewDir = join(ROOT, ".tmp/live-preview");
+  const io = previewOnly
+    ? {
+        async writeArtifact(path: string, content: string) {
+          const target = join(livePreviewDir, path);
+          await mkdir(dirname(target), { recursive: true });
+          await writeFile(target, content, "utf8");
+        },
+      }
+    : new LivePublisherIO({
+        repoRoot: ROOT,
+        contentDir: join(ROOT, "content/articles"),
+        pushAfterCommit: env.LIVE_GIT_PUSH === "true",
+        remoteRef: env.LIVE_GIT_REMOTE_REF ?? "main",
+      });
 
   const spendBefore = await repo.spend.sumMonth(dayKeyInTz(clock()).slice(0, 7));
   const results = await runPlans(plansRaw.plans, {
@@ -267,6 +276,7 @@ export async function runLivePipeline(
     fetcher: new HttpFetcher(),
     extractor,
     publisherIO: io,
+    previewDir: previewOnly ? livePreviewDir : undefined,
     clock,
   });
   const llmCostJpy = (await repo.spend.sumMonth(dayKeyInTz(clock()).slice(0, 7))) - spendBefore;

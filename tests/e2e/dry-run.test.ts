@@ -35,10 +35,10 @@ describe("B021/B023 dry-run E2E (source→analysis→draft→QA→preview, no ac
         expect(r.finalState).toBe("PUBLISHED");
         expect(r.published).toBe(true);
       }
-      const files = await readdir(path.join(PREVIEW_DIR, "content"));
+      const files = await readdir(path.join(PREVIEW_DIR, "content/articles"));
       expect(files).toHaveLength(3);
 
-      const sim = await readFile(path.join(PREVIEW_DIR, "content", files.find((f) => f.startsWith("sim"))!), "utf8");
+      const sim = await readFile(path.join(PREVIEW_DIR, "content/articles", files.find((f) => f.startsWith("sim"))!), "utf8");
       // frontmatter then PR disclosure as the first body line (docs/06)
       expect(sim.startsWith("---\n")).toBe(true);
       const bodyStart = sim.indexOf("---", 4);

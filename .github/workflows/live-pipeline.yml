@@ -1,0 +1,64 @@
+name: live-pipeline
+
+# Dormant until the owner sets LIVE_AUTOMATION_ENABLED=true in repository
+# Variables. Keeping this gate false makes deployment impossible by default.
+on:
+  schedule:
+    - cron: "0 17 * * *" # 02:00 JST
+  workflow_dispatch:
+
+concurrency:
+  group: affiliate-live-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  live:
+    if: ${{ vars.LIVE_AUTOMATION_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Hosted runners cannot inherit local opencode credentials. Use the
+      # priced API provider for unattended runs; CLI mode remains local/manual.
+      LLM_PROVIDER: openai-compatible
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+      LLM_MODEL: ${{ vars.LLM_MODEL }}
+      LLM_INPUT_COST_JPY_PER_1M: ${{ vars.LLM_INPUT_COST_JPY_PER_1M }}
+      LLM_OUTPUT_COST_JPY_PER_1M: ${{ vars.LLM_OUTPUT_COST_JPY_PER_1M }}
+      AFFILIATE_TRACKING_URLS_JSON: ${{ secrets.AFFILIATE_TRACKING_URLS_JSON }}
+      LIVE_GIT_PUSH: "true"
+      LIVE_GIT_REMOTE_REF: main
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Materialize private live policy and plans
+        env:
+          LIVE_POLICY_YAML: ${{ secrets.LIVE_POLICY_YAML }}
+          LIVE_PLANS_JSON: ${{ secrets.LIVE_PLANS_JSON }}
+        run: |
+          test -n "$LIVE_POLICY_YAML" || { echo "LIVE_POLICY_YAML is not configured" >&2; exit 1; }
+          test -n "$LIVE_PLANS_JSON" || { echo "LIVE_PLANS_JSON is not configured" >&2; exit 1; }
+          printf '%s' "$LIVE_POLICY_YAML" > config/policy.live.yaml
+          printf '%s' "$LIVE_PLANS_JSON" > config/plans.live.json
+      - name: Research and QA; publish only when the policy flag is enabled
+        run: pnpm tsx apps/worker/src/index.ts run-pipeline --live --policy config/policy.live.yaml --plans config/plans.live.json
+      - name: Build and deploy the committed site
+        run: |
+          pnpm --filter site build
+          pnpm exec wrangler pages deploy apps/site/dist --project-name="$CF_PAGES_PROJECT"
+        env:
+          SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
+          CF_PAGES_PROJECT: ${{ vars.CF_PAGES_PROJECT }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -70,6 +70,24 @@ describe("LivePublisherIO (git publish path)", () => {
     const sha = await io.commitArtifact("content/articles/article-a.ja-JP.md", "duplicate commit");
     expect(sha).toMatch(/^[0-9a-f]{40}$/);
   });
+
+  it("pushes the commit only when pushAfterCommit is enabled", async () => {
+    const calls: string[][] = [];
+    const io = new LivePublisherIO({
+      repoRoot: TMP,
+      contentDir: CONTENT_DIR,
+      pushAfterCommit: true,
+      run: async (cmd, args) => {
+        calls.push([cmd, ...args]);
+        if (args[0] === "rev-parse") return { stdout: "abc123\n", stderr: "" };
+        return { stdout: "", stderr: "" };
+      },
+    });
+    await io.writeArtifact("content/articles/article-push.md", "# push");
+    const sha = await io.commitArtifact("content/articles/article-push.md", "publish");
+    expect(sha).toBe("abc123");
+    expect(calls.some((c) => c.join(" ").includes("git push origin HEAD:refs/heads/main"))).toBe(true);
+  });
 });
 
 describe("robots.txt checker", () => {

@@ -81,8 +81,12 @@ describe("B011 Astro site (article template, disclosures, sponsored links, build
   it("builds privacy and about pages", async () => {
     const privacy = await readFile(path.join(DIST_DIR, "privacy", "index.html"), "utf8");
     const about = await readFile(path.join(DIST_DIR, "about", "index.html"), "utf8");
+    const methodology = await readFile(path.join(DIST_DIR, "methodology", "index.html"), "utf8");
+    const editorial = await readFile(path.join(DIST_DIR, "editorial-policy", "index.html"), "utf8");
     expect(privacy).toContain("プライバシーポリシー");
     expect(about).toContain("このサイトについて");
+    expect(methodology).toContain("比較・試算の方法");
+    expect(editorial).toContain("編集・広告掲載方針");
   });
 
   it("exposes robots.txt that disallows the affiliate redirect path", async () => {
