@@ -4,7 +4,7 @@ interface Props {
   description?: string;
   path?: string;
 }
-const { title, description = "公式一次情報に基づく比較・料金試算の自動生成メディア（設計段階）", path } = Astro.props;
+  const { title, description = "公式一次情報に基づく料金・条件の比較と総額試算を提供する比較メディアです。", path } = Astro.props;
 const site = Astro.site ?? new URL("https://example.com");
 const canonical = new URL(path ?? Astro.url.pathname, site);
 ---

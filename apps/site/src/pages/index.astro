@@ -7,9 +7,9 @@ const articles = (await getCollection("articles")).sort(
 );
 ---
 
-<BaseLayout title="Autonomous Affiliate Engine（設計段階）">
+<BaseLayout title="総額比較 sougakuhikaku — 公式料金に基づく比較・試算">
   <h1>記事一覧</h1>
-  <p>公式一次情報に基づく比較記事（自動QA合格分のみ掲載）。</p>
+  <p>公式一次情報（料金ページ・利用規約）に基づき、同一条件での総額試算と比較表を提供します。紹介リンクは提携承認済みのプログラムのみに付与され、確認できない情報はUNKNOWNとして明示します。</p>
   {articles.length === 0 && <p>公開済みの記事はまだありません。</p>}
   <ul>
     {
