@@ -12,3 +12,8 @@ test-results/
 .evidence/
 .tmp/
 .DS_Store
+.env.local.TEMPLATE
+.env.live.QUICKSHEET
+config/offers.live.json
+config/plans.live.json
+config/policy.live.yaml

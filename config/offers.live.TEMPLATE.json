@@ -1,0 +1,29 @@
+{
+  "$comment": "Live offer registry TEMPLATE. Fill with real values from the ASP console AFTER program approval, then: pnpm tsx apps/worker/src/index.ts import-offers config/offers.live.json (requires DATABASE_URL). Only status=APPROVED + active=true offers become monetizable CTAs.",
+  "programs": [
+    {
+      "id": "prog-<asp-provider>",
+      "provider": "<a8|moshimo|accesstrade|valuecommerce>",
+      "status": "APPROVED",
+      "payoutCurrency": "JPY",
+      "termsUrl": "https://<asp>/terms",
+      "termsCheckedAt": "<ISO datetime of your ToS review>"
+    }
+  ],
+  "offers": [
+    {
+      "id": "offer-<program-slug>",
+      "programId": "prog-<asp-provider>",
+      "verticalId": "<vertical from docs/01>",
+      "title": "<案件名>",
+      "landingUrl": "https://<advertiser landing>",
+      "rewardModel": "fixed_jpy",
+      "rewardAmountJpy": 0,
+      "conversionEvent": "<成果地点 e.g. application_approved>",
+      "channelPermissions": ["site"],
+      "active": true,
+      "status": "APPROVED",
+      "constraints": {}
+    }
+  ]
+}
