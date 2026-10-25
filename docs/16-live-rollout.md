@@ -34,14 +34,18 @@
 
 コピーした文字列がそのまま `DATABASE_URL`。**パスワード付きURLなので第三者に見せない。**
 
-### 0-4. LLM API（OpenAI互換ならどれでも可）
+### 0-4. LLM（3方式から選択。切替は `LLM_PROVIDER` で行う）
 
-| 選択肢 | 登録 | APIキー | 料金ページ |
-| --- | --- | --- | --- |
-| OpenAI | <https://platform.openai.com/signup> | <https://platform.openai.com/api-keys> | <https://openai.com/api/pricing/> |
-| OpenRouter（多数のモデルを一つのAPIで） | <https://openrouter.ai/> → Sign in | <https://openrouter.ai/settings/keys> | <https://openrouter.ai/models> |
+| 方式 | `LLM_PROVIDER` | 登録URL | 必須env | コスト計上 |
+| --- | --- | --- | --- | --- |
+| **OpenAI互換API（推奨）** | `openai-compatible`（既定） | OpenAI <https://platform.openai.com/signup> / OpenRouter <https://openrouter.ai/> / **Z.ai(GLM)** <https://z.ai> | `LLM_API_KEY` `LLM_MODEL` `LLM_BASE_URL` `LLM_INPUT_COST_JPY_PER_1M` `LLM_OUTPUT_COST_JPY_PER_1M` | トークン単価で実費計上 |
+| ローカルCLI（opencode / Claude Code / Antigravityのサブスク） | `cli` | 各CLIの既存ログイン | `LLM_CLI_COMMAND`（例 `opencode`） `LLM_CLI_ARGS`（例 `["run","-m","zai-coding-plan/glm-5.2","{{PROMPT}}"]`、または `LLM_CLI_STDIN=1`） `LLM_CLI_COST_JPY_PER_CALL`（**必須**。保守的な1呼当り割当額） | 固定割当（サブスクのためトークン単価なし） |
+| （開発時）モック | — | — | — | 0円（live実行不可） |
 
-支払方法登録（クレジット等）と月次上限設定もここで行う（**支払設定は必ず本人操作**）。低コスト運用の目安: 月3万円上限に対し、Fact抽出は1記事あたり数回の呼び出し。
+- **推奨はOpenAI互換API**。opencodeで利用中のGLM（Z.ai）も `LLM_BASE_URL` にZ.aiのOpenAI互換エンドポイントを指定すればそのまま使える。
+- CLI方式は「サブスク料だけで回したい」場合の予備経路。1呼出ごとにCLIプロセスを起動するため遅く、出力はJSON抽出＋スキーマ検証で保証する（マーカー付きコードブロックや前後の文章は自動で剥がす）。
+- どちらの方式でも**費用の見積れない呼出しは禁止**（policy docs/07）。CLI方式は1呼当りの割当額を必ず設定する。
+- 支払方法登録・月次上限設定は **必ず本人操作**。
 
 ### 0-5. ASP 本人登録（審査は「公開済みの自サイトURL」で申し込む）
 
@@ -70,11 +74,9 @@ Secrets（<https://docs.github.com/en/actions/security-for-github-actions/securi
 | Name | 値 | 出所 |
 | --- | --- | --- |
 | `DATABASE_URL` | `postgresql://...` | Phase 0-3 |
-| `LLM_API_KEY` | `sk-...` 等 | Phase 0-4 |
-| `LLM_MODEL` | 例 `gpt-5.5-mini` / OpenRouterのモデルID | 同上 |
-| `LLM_BASE_URL` | OpenAIなら不要 / OpenRouterは `https://openrouter.ai/api/v1` | 同上 |
-| `LLM_INPUT_COST_JPY_PER_1M` | 入力トークン1Mあたりの円建て費用 | 料金ページから換算 |
-| `LLM_OUTPUT_COST_JPY_PER_1M` | 出力トークン1Mあたりの円建て費用 | 同上 |
+| `LLM_PROVIDER` | `openai-compatible`（既定）または `cli` | 選択方式 |
+| `LLM_API_KEY` / `LLM_MODEL` / `LLM_BASE_URL` / `LLM_INPUT_COST_JPY_PER_1M` / `LLM_OUTPUT_COST_JPY_PER_1M` | API方式の認証・モデル・単価 | Phase 0-4（API方式のみ） |
+| `LLM_CLI_COMMAND` / `LLM_CLI_ARGS` / `LLM_CLI_STDIN` / `LLM_CLI_COST_JPY_PER_CALL` | CLI方式のコマンドと割当コスト | Phase 0-4（CLI方式のみ） |
 | `CLOUDFLARE_API_TOKEN` | Phase 0-2のトークン | 同上 |
 | `CLOUDFLARE_ACCOUNT_ID` | ダッシュボードのAccount ID | 同上 |
 | `AFFILIATE_TRACKING_URLS_JSON` | `{"offers":{"<offer_id>":"https://...tracking..."}}` | ASP承認後（Phase 2-4） |

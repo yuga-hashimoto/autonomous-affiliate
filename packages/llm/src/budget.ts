@@ -18,6 +18,21 @@ const defaultSleep = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+/**
+ * CLI agents often wrap JSON in markdown fences or prose. Extract the
+ * outermost JSON object so schema validation can judge the actual payload.
+ */
+export function extractJson(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{")) return trimmed;
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = fence ? fence[1]!.trim() : trimmed;
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  if (start >= 0 && end > start) return candidate.slice(start, end + 1);
+  return candidate;
+}
+
 export class BudgetLedger {
   private committedJpy = 0;
   private reservedJpy = 0;
@@ -140,7 +155,7 @@ export function createGateway(options: GatewayOptions, ledger: BudgetLedger): LL
         for (const provider of providers) {
           try {
             const outcome = await callProvider(provider, prompt, system, limits);
-            const parsed: unknown = JSON.parse(outcome.text);
+            const parsed: unknown = JSON.parse(extractJson(outcome.text));
             const validated = schema.safeParse(parsed);
             if (!validated.success) {
               lastError = new SchemaValidationError(task, validated.error.issues);

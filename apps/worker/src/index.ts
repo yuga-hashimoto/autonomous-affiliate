@@ -14,6 +14,7 @@ import {
 import { createMemoryRepository, createPgRepository, type Repository } from "@aff/db";
 import {
   BudgetLedger,
+  CliLlmProvider,
   MockProvider,
   OpenAiCompatibleProvider,
   createGateway,
@@ -84,7 +85,40 @@ async function loadRepository(
   return createPgRepository(pool);
 }
 
-function buildLlmFromEnv(env: NodeJS.ProcessEnv): OpenAiCompatibleProvider | null {
+/**
+ * Builds the configured LLM provider. Two modes:
+ * - openai-compatible (default): any OpenAI-compatible API (OpenAI, OpenRouter,
+ *   Z.ai/GLM, ...) with mandatory per-token JPY rates.
+ * - cli: shells out to a local coding-agent CLI (opencode run / claude -p /
+ *   agy -p) with a mandatory conservative per-call cost allocation
+ *   (subscriptions have no per-token price).
+ * Returns null when the mode's env is incomplete; live mode refuses to run.
+ */
+function buildLlmFromEnv(env: NodeJS.ProcessEnv): OpenAiCompatibleProvider | CliLlmProvider | null {
+  const mode = env.LLM_PROVIDER ?? "openai-compatible";
+  if (mode === "cli") {
+    const command = env.LLM_CLI_COMMAND;
+    const cost = Number(env.LLM_CLI_COST_JPY_PER_CALL ?? NaN);
+    if (!command || !Number.isFinite(cost) || cost <= 0) return null;
+    let args: string[] | undefined;
+    if (env.LLM_CLI_ARGS) {
+      try {
+        args = JSON.parse(env.LLM_CLI_ARGS) as string[];
+      } catch {
+        throw new Error("LLM_CLI_ARGS must be a JSON array, e.g. [\"run\",\"-m\",\"zai-coding-plan/glm-5.2\",\"{{PROMPT}}\"]");
+      }
+    }
+    return new CliLlmProvider({
+      providerId: `cli:${command}`,
+      command,
+      args,
+      useStdin: env.LLM_CLI_STDIN === "1" || env.LLM_CLI_STDIN === "true",
+      costJpyPerCall: cost,
+    });
+  }
+  if (mode !== "openai-compatible") {
+    throw new Error(`unknown LLM_PROVIDER: ${mode} (use "openai-compatible" or "cli")`);
+  }
   const apiKey = env.LLM_API_KEY;
   const model = env.LLM_MODEL;
   const inputRate = Number(env.LLM_INPUT_COST_JPY_PER_1M ?? NaN);
