@@ -20,7 +20,7 @@ export interface OpenAiCompatibleConfig {
 }
 
 interface ChatCompletionResponse {
-  choices?: { message?: { content?: string } }[];
+  choices?: { message?: { content?: string | null }; finish_reason?: string }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   error?: { message?: string; type?: string };
 }
@@ -98,9 +98,13 @@ export class OpenAiCompatibleProvider implements LLMProvider {
     if (payload.error) {
       throw new ProviderPermanentError(this.config.providerId, payload.error.message ?? "unknown error");
     }
-    const text = payload.choices?.[0]?.message?.content;
+    const choice = payload.choices?.[0];
+    const text = choice?.message?.content;
     if (typeof text !== "string" || text.length === 0) {
-      throw new ProviderPermanentError(this.config.providerId, "empty completion");
+      throw new ProviderPermanentError(
+        this.config.providerId,
+        `empty completion (finish_reason=${choice?.finish_reason ?? "unknown"}, usage=${JSON.stringify(payload.usage ?? {})})`,
+      );
     }
     const inputTokens = payload.usage?.prompt_tokens ?? 0;
     const outputTokens = payload.usage?.completion_tokens ?? 0;
