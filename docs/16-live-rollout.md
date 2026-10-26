@@ -113,6 +113,15 @@ CLI方式のローカル手動実行時のみ: `.env`（gitignore済み）へ `L
 3. **SERP観測（B000B）**: 手動で検索（地域=日本/言語=日本語/モバイルを固定）し、上位10件を記録。形式は `SerpObservation`（`packages/domain/src/types.ts`）。無断スクレイピングはしない。検索ボリュームはKeyword Planner等の実測値のみ、取れなければUNKNOWN。
 4. **プラン作成**: `config/plans.dry-run.json` と同じ形式で `config/plans.live.json`。数値は全て対象サイトの公式ページから転記（確認日を記録）。
 
+## Phase 3の前段: 非公開プレビュー（DB・公開なし）
+
+実ページ・実LLMで、計画がQAを通るかを確認する。DB、git、デプロイには触れず、公開は強制的にオフになる（ポリシーの `publish_enabled` に関係なく）。
+
+- GitHub Actions: `live-preview` workflow（手動実行）。本番と同じLLM経路で動く。結果はジョブのサマリーとartifactに出る。
+- ローカル: `pnpm tsx apps/worker/src/index.ts run-pipeline --live --preview --policy config/policy.live-preview.yaml --plans config/plans.live-preview.json`（LLMは `LLM_PROVIDER=cli` のopencode等。遅い経路では `LLM_EXTRACT_TIMEOUT_MS` を上げる）。
+- 本番のDBでプレビューを実行しない。ジョブはスラッグ＋ポリシーのバージョンで冪等管理され、QAで落ちた計画も「完了」として記録されるため、後の本番実行がスキップされる／状態遷移に失敗する。
+- プレビュー用のスラッグは `preview-` で始める。
+
 ## Phase 3: live初回実行（まだ非公開）
 
 ~~~bash

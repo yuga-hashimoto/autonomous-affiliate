@@ -6,7 +6,7 @@ import {
   findProhibitedPhrases,
   QaEngine,
 } from "@aff/content";
-import { calculateSimTotalCost } from "@aff/analysis";
+import { calculateSimTotalCost, calculateWaterServerCost } from "@aff/analysis";
 import { createFreshnessPolicy, type FreshnessPolicy } from "@aff/integrations";
 import {
   type AffiliateOffer,
@@ -119,6 +119,61 @@ describe("B009 draft engine", () => {
     expect(() =>
       buildDraft({ ...input, purpose: "使ってみた感想を紹介します。" }),
     ).toThrow(DraftRejectedError);
+  });
+
+  describe("conditions outside the total", () => {
+    const waterCalc = (overrides: Record<string, unknown> = {}) =>
+      calculateWaterServerCost({
+        offerId: "offer_w",
+        title: "Water 25L",
+        waterChargeJpy: 4190,
+        shippingFeeJpy: 0,
+        electricityFeeJpy: 669,
+        months: 24,
+        initialFeeJpy: 3300,
+        cancellationFeeJpy: "UNKNOWN",
+        minimumTermMonths: 60,
+        monthlyLiters: 25,
+        ...overrides,
+      });
+
+    it("lists unknown conditions in the 不明点 column instead of reporting なし", () => {
+      const draft = buildTestDraft({ calculations: [waterCalc()] });
+      const row = draft.bodyMarkdown.split("\n").find((line) => line.startsWith("| Water 25L")) ?? "";
+      expect(row).toContain("契約解除料");
+      expect(row).not.toMatch(/\| なし \|$/);
+    });
+
+    it("keeps なし when every condition is known", () => {
+      const draft = buildTestDraft({
+        calculations: [waterCalc({ cancellationFeeJpy: 12980, minimumTermMonths: 24 })],
+      });
+      const row = draft.bodyMarkdown.split("\n").find((line) => line.startsWith("| Water 25L")) ?? "";
+      expect(row).toMatch(/\| なし \|$/);
+    });
+
+    it("renders a conditions section with every condition and its value", () => {
+      const body = buildTestDraft({ calculations: [waterCalc()] }).bodyMarkdown;
+      expect(body).toContain("## 契約条件（総額に含めない項目）");
+      expect(body).toMatch(/- 最低利用期間: 60ヶ月/);
+      expect(body).toMatch(/- 契約解除料: UNKNOWN/);
+    });
+
+    it("puts the term warning right under the comparison table", () => {
+      const body = buildTestDraft({ calculations: [waterCalc()] }).bodyMarkdown;
+      const warningAt = body.indexOf("> 注意");
+      expect(warningAt).toBeGreaterThan(body.indexOf("## 総額比較"));
+      expect(warningAt).toBeLessThan(body.indexOf("## 試算の内訳"));
+      expect(body.slice(warningAt)).toContain("60ヶ月");
+    });
+
+    it("leaves articles without conditions unchanged", () => {
+      const body = buildTestDraft().bodyMarkdown;
+      expect(body).not.toContain("契約条件（総額に含めない項目）");
+      expect(body).not.toContain("> 注意");
+      const row = body.split("\n").find((line) => line.startsWith("| SIM A 20GB")) ?? "";
+      expect(row).toMatch(/\| なし \|$/);
+    });
   });
 
   it("omits affiliate CTAs when no approved offer exists", () => {

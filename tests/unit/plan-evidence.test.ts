@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryRepository } from "@aff/db";
-import { createLogger, parsePolicyText, type Fact } from "@aff/domain";
+import { createLogger, parsePolicyText, type Fact, type SourceRecord } from "@aff/domain";
 import { MapFetcher } from "@aff/integrations";
 import { FixtureFactExtractor, checkPlanEvidence, runArticlePipeline, type ArticlePlan } from "@aff/agents";
 import { readFileSync } from "./helpers.js";
@@ -110,9 +110,85 @@ describe("checkPlanEvidence", () => {
     expect(issues[0]).toContain("discountPeriods.0.monthlyJpy");
   });
 
+  it("requires the minimum term and the electricity basis to be stated by the page", () => {
+    const termFacts = [
+      fact("t1", "サーバーAの最低利用期間は5年", "contract_term"),
+      fact("t2", "サーバーAの電気代目安は温水・冷水各600cc/日、36L/月使用時の算出", "price"),
+    ];
+    const ok = waterPlan({ minimumTermMonths: 60, electricityBasisLiters: 36 });
+    expect(checkPlanEvidence(ok, termFacts)).toEqual([]);
+
+    const wrong = waterPlan({ minimumTermMonths: 36, electricityBasisLiters: 48 });
+    const issues = checkPlanEvidence(wrong, termFacts);
+    expect(issues).toHaveLength(2);
+    expect(issues.some((i) => i.includes("minimumTermMonths"))).toBe(true);
+    expect(issues.some((i) => i.includes("electricityBasisLiters"))).toBe(true);
+  });
+
+  it("accepts a minimum term written in months or in years", () => {
+    expect(checkPlanEvidence(waterPlan({ minimumTermMonths: 24 }), [fact("m1", "サーバーAの最低利用期間は24ヶ月")])).toEqual([]);
+    expect(checkPlanEvidence(waterPlan({ minimumTermMonths: 24 }), [fact("m2", "サーバーAの最低利用期間は2年")])).toEqual([]);
+    expect(checkPlanEvidence(waterPlan({ minimumTermMonths: 30 }), [fact("m3", "サーバーAの最低利用期間は2年")])).toHaveLength(1);
+  });
+
   it("does not treat month counts, liters or UNKNOWN as yen amounts", () => {
     const plan = waterPlan({ waterChargeJpy: "UNKNOWN", months: 12, monthlyLiters: 24 });
     expect(checkPlanEvidence(plan, facts)).toEqual([]);
+  });
+});
+
+describe("evidence from the plan's own official pages", () => {
+  const FEE_URL = "https://example.com/price";
+  const source = (id: string, canonicalUrl: string): SourceRecord => ({
+    id,
+    canonicalUrl,
+    sourceType: "official",
+    fetchedAt: NOW,
+    hash: "h".repeat(64),
+    provenance: "test",
+    contentType: "text/html",
+  });
+  // A fee that applies to the whole service rarely names a specific product.
+  const generalFee = { ...fact("g1", "初回登録事務手数料：3,300円（税込）"), sourceIds: ["src-fee"] };
+  const otherPage = { ...fact("g2", "初回登録事務手数料：9,999円（税込）"), sourceIds: ["src-other"] };
+  const sources = [source("src-fee", FEE_URL), source("src-other", "https://other.example.com/page")];
+
+  function plan(extra: Record<string, unknown> = {}, entries = 1): Pick<ArticlePlan, "calculators" | "sourceUrls"> {
+    const entry = (n: number) => ({
+      calculator: "water" as const,
+      input: { offerId: `offer-${n}`, title: `サーバー${n}`, months: 12, monthlyLiters: 24, initialFeeJpy: 3300 },
+      factEvidenceTerms: [`サーバー${n}`],
+      ...extra,
+    });
+    return { sourceUrls: [FEE_URL], calculators: Array.from({ length: entries }, (_, i) => entry(i + 1)) };
+  }
+
+  it("accepts a fact that does not name the service when it comes from the only source page of a single-service plan", () => {
+    expect(checkPlanEvidence(plan(), [generalFee], sources)).toEqual([]);
+  });
+
+  it("does not use facts from a page the plan does not list", () => {
+    const issues = checkPlanEvidence(plan(), [{ ...generalFee, sourceIds: ["src-other"] }], sources);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain("initialFeeJpy");
+  });
+
+  it("does not guess which service a page belongs to when the plan compares several services", () => {
+    expect(checkPlanEvidence(plan({}, 2), [generalFee], sources)).toHaveLength(2);
+  });
+
+  it("lets each service of a multi-service plan name its own official pages", () => {
+    const named = plan({ evidenceSourceUrls: [FEE_URL] }, 2);
+    expect(checkPlanEvidence(named, [generalFee], sources)).toEqual([]);
+  });
+
+  it("matches pages despite a trailing slash or letter case in the URL", () => {
+    const loose = { ...plan(), sourceUrls: ["https://EXAMPLE.com/price/"] };
+    expect(checkPlanEvidence(loose, [generalFee], sources)).toEqual([]);
+  });
+
+  it("still rejects an amount that no fact of the page states", () => {
+    expect(checkPlanEvidence(plan(), [otherPage, { ...generalFee, text: "休止事務手数料：880円" }], sources)).toHaveLength(1);
   });
 });
 

@@ -33,13 +33,23 @@ export function buildDraft(input: DraftInput): Draft {
   body.push("| プラン | 総額 | 月平均 | 不明点 |");
   body.push("| --- | --- | --- | --- |");
   for (const calc of input.calculations) {
+    const unknownLabels = [
+      ...calc.unknowns,
+      ...(calc.conditions ?? []).filter((condition) => !condition.known).map((condition) => condition.label),
+    ];
     body.push(
-      `| ${calc.title} | ${yen(calc.totalJpy)} | ${yen(calc.monthlyAverageJpy)} | ${calc.unknowns.length > 0 ? calc.unknowns.join(", ") : "なし"} |`,
+      `| ${calc.title} | ${yen(calc.totalJpy)} | ${yen(calc.monthlyAverageJpy)} | ${unknownLabels.length > 0 ? unknownLabels.join(", ") : "なし"} |`,
     );
   }
   body.push("");
   body.push("> 試算式と前提は次のセクションに示します。UNKNOWNの項目を0円とは扱いません。");
   body.push("");
+  for (const calc of input.calculations) {
+    for (const warning of calc.warnings ?? []) {
+      body.push(`> 注意（${calc.title}）: ${warning}`);
+      body.push("");
+    }
+  }
 
   // --- Per-offer calculation with formula + assumptions ---
   body.push("## 試算の内訳（公式料金に基づく計算）");
@@ -70,6 +80,23 @@ export function buildDraft(input: DraftInput): Draft {
           : input.sources.map((s) => s.id),
       claimType: "price",
     });
+  }
+
+  // --- Conditions kept out of the total (cancellation fee, minimum term) ---
+  const withConditions = input.calculations.filter((calc) => (calc.conditions ?? []).length > 0);
+  if (withConditions.length > 0) {
+    body.push("## 契約条件（総額に含めない項目）");
+    body.push("");
+    body.push("解約時の費用など、総額には入れていない条件です。UNKNOWNは公式ページで確認できていない項目で、0円や「なし」とは扱いません。");
+    body.push("");
+    for (const calc of withConditions) {
+      body.push(`### ${calc.title}`);
+      body.push("");
+      for (const condition of calc.conditions ?? []) {
+        body.push(`- ${condition.label}: ${condition.value}`);
+      }
+      body.push("");
+    }
   }
 
   // --- Decision matrix ---

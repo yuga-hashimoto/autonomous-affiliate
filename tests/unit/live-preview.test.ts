@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MapFetcher } from "@aff/integrations";
 import { FixtureFactExtractor } from "@aff/agents";
-import { runLivePipeline } from "../../apps/worker/src/index.js";
+import { extractTimeoutMs, runLivePipeline } from "../../apps/worker/src/index.js";
 import { readFileSync } from "./helpers.js";
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -99,5 +99,19 @@ describe("live pipeline in preview mode", () => {
     // publish_enabled: true in the policy was ignored: nothing reached the real article store
     const articles = await readdir(path.join(ROOT, "content/articles")).catch(() => [] as string[]);
     expect(articles.some((name) => name.startsWith(SLUG))).toBe(false);
+  });
+});
+
+describe("extraction timeout setting", () => {
+  it("defaults to 60 seconds and can be raised for slower model routes", () => {
+    expect(extractTimeoutMs({})).toBe(60_000);
+    expect(extractTimeoutMs({ LLM_EXTRACT_TIMEOUT_MS: "" })).toBe(60_000);
+    expect(extractTimeoutMs({ LLM_EXTRACT_TIMEOUT_MS: "180000" })).toBe(180_000);
+  });
+
+  it("rejects values that are not a sensible number of milliseconds", () => {
+    for (const bad of ["abc", "0", "-5", "999", "1.5", "60s"]) {
+      expect(() => extractTimeoutMs({ LLM_EXTRACT_TIMEOUT_MS: bad })).toThrow(/LLM_EXTRACT_TIMEOUT_MS/);
+    }
   });
 });

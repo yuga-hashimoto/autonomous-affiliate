@@ -24,7 +24,10 @@
             "months": 24,
             "initialFeeJpy": 3300,
             "cancellationFeeJpy": "UNKNOWN",
-            "monthlyLiters": 25
+            "monthlyLiters": 25,
+            "minimumTermMonths": 60,
+            "electricityIsEstimate": true,
+            "electricityBasisLiters": 36
           },
           "factEvidenceTerms": [
             "famfit2",

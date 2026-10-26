@@ -36,7 +36,9 @@
             "initialFeeJpy": 3300,
             "dataGb": 20
           },
-          "factEvidenceTerms": ["SIM A"]
+          "factEvidenceTerms": [
+            "SIM A"
+          ]
         },
         {
           "calculator": "sim",
@@ -53,7 +55,9 @@
             "initialFeeJpy": 0,
             "dataGb": 20
           },
-          "factEvidenceTerms": ["SIM B"]
+          "factEvidenceTerms": [
+            "SIM B"
+          ]
         }
       ],
       "offerIds": [
@@ -110,7 +114,9 @@
             "cancellationFeeJpy": 1000,
             "apartmentType": "mansion"
           },
-          "factEvidenceTerms": ["Fiber A"]
+          "factEvidenceTerms": [
+            "Fiber A"
+          ]
         }
       ],
       "offerIds": [],
@@ -147,7 +153,9 @@
             "months": 12,
             "initialFeeJpy": 0,
             "cancellationFeeJpy": 11000,
-            "monthlyLiters": 24
+            "monthlyLiters": 24,
+            "minimumTermMonths": 12,
+            "electricityIsEstimate": true
           },
           "conditions": {
             "offerId": "offer-water-a",
@@ -158,7 +166,9 @@
             "initialFeeJpy": 0,
             "cancellationFeeJpy": 11000
           },
-          "factEvidenceTerms": ["Water A"]
+          "factEvidenceTerms": [
+            "Water A"
+          ]
         }
       ],
       "offerIds": [],

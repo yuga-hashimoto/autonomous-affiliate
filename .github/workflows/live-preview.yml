@@ -1,0 +1,87 @@
+name: live-preview
+
+# Non-publishing run of the live pipeline: real official pages and the same LLM
+# route as the daily run, with all state in memory. No database, no git push, no
+# deploy, and publishing is forced off (`--preview`). Use it to see whether a
+# plan passes QA and how often. Output: the job summary and an artifact.
+# Manual only; the policy and plans are committed, non-secret preview files.
+
+on:
+  workflow_dispatch:
+    inputs:
+      policy:
+        description: Policy file in the repository (under config/)
+        default: config/policy.live-preview.yaml
+      plans:
+        description: Plans file in the repository (under config/)
+        default: config/plans.live-preview.json
+
+concurrency:
+  group: affiliate-live-preview
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      POLICY: ${{ inputs.policy }}
+      PLANS: ${{ inputs.plans }}
+      LLM_PROVIDER: openai-compatible
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+      LLM_MODEL: ${{ vars.LLM_MODEL }}
+      LLM_REASONING_EFFORT: ${{ vars.LLM_REASONING_EFFORT }}
+      LLM_INPUT_COST_JPY_PER_1M: ${{ vars.LLM_INPUT_COST_JPY_PER_1M }}
+      LLM_OUTPUT_COST_JPY_PER_1M: ${{ vars.LLM_OUTPUT_COST_JPY_PER_1M }}
+      LLM_EXTRACT_TIMEOUT_MS: ${{ vars.LLM_EXTRACT_TIMEOUT_MS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Only repository config files may be used
+        run: |
+          case "$POLICY" in config/*.yaml) ;; *) echo "policy must be config/*.yaml" >&2; exit 1 ;; esac
+          case "$PLANS" in config/*.json) ;; *) echo "plans must be config/*.json" >&2; exit 1 ;; esac
+          test -f "$POLICY" && test -f "$PLANS"
+      - name: Run the preview (real pages, real LLM, nothing is published)
+        run: |
+          pnpm -s tsx apps/worker/src/index.ts run-pipeline --live --preview --policy "$POLICY" --plans "$PLANS" > raw-output.txt
+          sed -n '/^{/,$p' raw-output.txt > result.json
+          jq -e '.results | length > 0' result.json > /dev/null
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "## live-preview"
+            if [ -s result.json ]; then
+              echo
+              echo "| article | state | QA | preview file |"
+              echo "| --- | --- | --- | --- |"
+              jq -r '.results[] | "| \(.slug) | \(.finalState) | \(.qaStatus) | \(.published) |"' result.json
+              echo
+              jq -r '.results[] | select(.qaFailures) | "**\(.slug)**", (.qaFailures[] | "- `\(.id)`: \(.detail)")' result.json
+              echo
+              echo "LLM cost recorded: $(jq -r '.llmCostJpy' result.json) JPY"
+            else
+              echo
+              echo "The run produced no result (see the job log: an LLM or fetch error stops the article)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the preview output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-preview
+          path: |
+            result.json
+            .tmp/live-preview
+          if-no-files-found: warn
+          retention-days: 14

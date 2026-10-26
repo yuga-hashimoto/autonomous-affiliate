@@ -42,6 +42,12 @@ export interface CalculatorEntry {
   /** One or more service-name fragments that must match extracted official price Facts. */
   factEvidenceTerms?: string[];
   /**
+   * Official pages of this service whose extracted facts may back its amounts even
+   * when a fact does not name the service. Defaults to the plan's sourceUrls for a
+   * single-service plan; a multi-service plan must list them per entry.
+   */
+  evidenceSourceUrls?: string[];
+  /**
    * Yen inputs built from page amounts, keyed by the input path (for example
    * "waterChargeJpy"). QA checks each component against the extracted facts and
    * that the components add up to the input value.
@@ -243,6 +249,7 @@ export async function runArticlePipeline(
         planEvidenceIssues: checkPlanEvidence(
           plan,
           allFacts.filter((fact) => freshness.isFactUsable(fact, clock())),
+          await repo.sources.list(),
         ),
         offers: await repo.offers.listOffers(),
         sources: await repo.sources.list(),
