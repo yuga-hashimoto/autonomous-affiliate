@@ -43,6 +43,12 @@ export interface WaterServerOfferInput {
   initialFeeJpy: Known<number>;
   cancellationFeeJpy: Known<number>;
   monthlyLiters: number;
+  /** Minimum contract term stated by the provider; absent is shown as UNKNOWN, never as "none". */
+  minimumTermMonths?: Known<number>;
+  /** The electricity amount is the provider's own estimate, not a metered or fixed fee. */
+  electricityIsEstimate?: boolean;
+  /** Monthly water volume the provider used to compute that estimate, when it says so. */
+  electricityBasisLiters?: number;
 }
 
 export interface BuybackOfferInput {
@@ -66,6 +72,14 @@ export interface BuybackCalculation {
   unknowns: string[];
 }
 
+/** A term a reader needs that is kept out of the total (cancellation fee, minimum term). */
+export interface CalcCondition {
+  label: string;
+  value: string;
+  /** false when the value is UNKNOWN: the official page was not found to state it. */
+  known: boolean;
+}
+
 export interface TotalCostCalculation {
   offerId: string;
   title: string;
@@ -75,5 +89,10 @@ export interface TotalCostCalculation {
   totalJpy: Known<number>;
   monthlyAverageJpy: Known<number>;
   breakdown: { label: string; amountJpy: Known<number> }[];
+  /** Inputs that make the total UNKNOWN. */
   unknowns: string[];
+  /** Terms outside the total; unknown ones are surfaced next to the total. */
+  conditions?: CalcCondition[];
+  /** Cautions about reading the total (for example, period shorter than the minimum term). */
+  warnings?: string[];
 }

@@ -74,6 +74,26 @@ export interface PipelineRunResult {
   llmCostJpy: number;
 }
 
+const DEFAULT_EXTRACT_TIMEOUT_MS = 60_000;
+const MIN_EXTRACT_TIMEOUT_MS = 1_000;
+
+/**
+ * Time allowed per fact-extraction call. A page is read in several windows and
+ * each call writes dozens of facts, so slower model routes (a local CLI agent)
+ * need more than the default; set LLM_EXTRACT_TIMEOUT_MS to raise it.
+ */
+export function extractTimeoutMs(env: NodeJS.ProcessEnv): number {
+  const raw = env.LLM_EXTRACT_TIMEOUT_MS;
+  if (raw === undefined || raw === "") return DEFAULT_EXTRACT_TIMEOUT_MS;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < MIN_EXTRACT_TIMEOUT_MS) {
+    throw new Error(
+      `LLM_EXTRACT_TIMEOUT_MS must be an integer of at least ${MIN_EXTRACT_TIMEOUT_MS} (milliseconds), got "${raw}"`,
+    );
+  }
+  return value;
+}
+
 function resolveInputPath(path: string): string {
   return isAbsolute(path) ? path : join(ROOT, path);
 }
@@ -292,7 +312,7 @@ export async function runLivePipeline(
   const extractor =
     options.extractor ??
     new LlmFactExtractor(gateway, {
-      timeoutMs: 60_000,
+      timeoutMs: extractTimeoutMs(env),
       maxCostJpy: policy.limits.max_job_cost_jpy,
       attempts: policy.limits.task_retry_attempts,
     });

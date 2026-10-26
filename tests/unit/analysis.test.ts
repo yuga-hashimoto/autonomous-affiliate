@@ -83,6 +83,85 @@ describe("fiber / water / buyback calculators", () => {
     expect(calc.assumptions.join("\n")).toContain("11,000 JPY".replace("11,000 JPY", "11000 JPY"));
   });
 
+  describe("water conditions that stay outside the total", () => {
+    const base = {
+      offerId: "offer-water-2",
+      title: "Water 25L",
+      waterChargeJpy: 4190,
+      shippingFeeJpy: 0,
+      electricityFeeJpy: 669,
+      months: 24,
+      initialFeeJpy: 3300,
+      monthlyLiters: 25,
+    };
+    const find = (calc: ReturnType<typeof calculateWaterServerCost>, label: string) =>
+      calc.conditions?.find((c) => c.label === label);
+
+    it("lists an unknown cancellation fee and a known minimum term without touching the total", () => {
+      const calc = calculateWaterServerCost({ ...base, cancellationFeeJpy: "UNKNOWN", minimumTermMonths: 60 });
+      expect(calc.totalJpy).toBe((4190 + 0 + 669) * 24 + 3300);
+      expect(calc.unknowns).toEqual([]);
+      expect(find(calc, "契約解除料")).toMatchObject({ known: false });
+      expect(find(calc, "契約解除料")?.value).toContain("UNKNOWN");
+      expect(find(calc, "最低利用期間")).toEqual({ label: "最低利用期間", value: "60ヶ月", known: true });
+    });
+
+    it("shows a known cancellation fee with its amount", () => {
+      const calc = calculateWaterServerCost({ ...base, cancellationFeeJpy: 12980, minimumTermMonths: 24 });
+      expect(find(calc, "契約解除料")).toEqual({ label: "契約解除料", value: "12,980円", known: true });
+    });
+
+    it("treats a minimum term that was not provided as unknown, not as absent", () => {
+      const calc = calculateWaterServerCost({ ...base, cancellationFeeJpy: 0 });
+      expect(find(calc, "最低利用期間")).toMatchObject({ known: false });
+    });
+
+    it("warns when the comparison period is shorter than the minimum term", () => {
+      const calc = calculateWaterServerCost({ ...base, cancellationFeeJpy: "UNKNOWN", minimumTermMonths: 60 });
+      expect(calc.warnings).toHaveLength(1);
+      expect(calc.warnings?.[0]).toContain("24ヶ月");
+      expect(calc.warnings?.[0]).toContain("60ヶ月");
+      expect(calc.warnings?.[0]).toContain("契約解除料");
+    });
+
+    it("gives no warning when the comparison period covers the minimum term or the term is unknown", () => {
+      expect(calculateWaterServerCost({ ...base, cancellationFeeJpy: 0, minimumTermMonths: 24 }).warnings ?? []).toEqual([]);
+      expect(calculateWaterServerCost({ ...base, cancellationFeeJpy: 0, minimumTermMonths: "UNKNOWN" }).warnings ?? []).toEqual([]);
+    });
+
+    it("says electricity is an official estimate, with its basis and the different assumed usage", () => {
+      const calc = calculateWaterServerCost({
+        ...base,
+        cancellationFeeJpy: 0,
+        minimumTermMonths: 24,
+        electricityIsEstimate: true,
+        electricityBasisLiters: 36,
+      });
+      const note = calc.assumptions.find((a) => a.includes("電気代")) ?? "";
+      expect(note).toContain("目安");
+      expect(note).toContain("36L");
+      expect(note).toContain("25L");
+    });
+
+    it("says the basis of an electricity estimate is unknown when the page gives none", () => {
+      const calc = calculateWaterServerCost({
+        ...base,
+        cancellationFeeJpy: 0,
+        minimumTermMonths: 24,
+        electricityIsEstimate: true,
+      });
+      const note = calc.assumptions.find((a) => a.includes("電気代")) ?? "";
+      expect(note).toContain("目安");
+      expect(note).toContain("算出条件");
+      expect(note).not.toContain("36L");
+    });
+
+    it("adds no electricity note when the amount is not an estimate", () => {
+      const calc = calculateWaterServerCost({ ...base, cancellationFeeJpy: 0, minimumTermMonths: 24 });
+      expect(calc.assumptions.some((a) => a.includes("電気代"))).toBe(false);
+    });
+  });
+
   it("subtracts buyback costs and stays UNKNOWN without an assessed amount", () => {
     const calc = calculateBuybackNet({
       offerId: "offer-buyback-1",
