@@ -76,6 +76,31 @@ describe("LlmFactExtractor on real-world HTML", () => {
     expect(facts[0]).toMatchObject({ claimType: "price", confidence: 0.9 });
   });
 
+  it("keeps a fact whose type the model invented as 'other' instead of failing the whole page", async () => {
+    const { gateway } = fakeGateway((content) =>
+      content.includes("1,620円")
+        ? [
+            { text: "プレミアムウォーター 月額4,082円（税込）", claimType: "promotion" },
+            { text: "アクアクララ 月額1,100円（税込）", claimType: "price" },
+          ]
+        : [],
+    );
+    const facts = await new LlmFactExtractor(gateway, LIMITS).extract(longPage(), "text/html");
+    expect(facts).toEqual([
+      { text: "プレミアムウォーター 月額4,082円（税込）", claimType: "other", confidence: 0.9 },
+      { text: "アクアクララ 月額1,100円（税込）", claimType: "price", confidence: 0.9 },
+    ]);
+  });
+
+  it("drops malformed entries but keeps the valid ones", async () => {
+    const malformed = [{ claimType: "price" }, { text: "", claimType: "price" }, "plain string", null, 7] as never[];
+    const { gateway } = fakeGateway((content) =>
+      content.includes("1,620円") ? [...malformed, { text: "アクアクララ 送料0円", claimType: "price" }] : [],
+    );
+    const facts = await new LlmFactExtractor(gateway, LIMITS).extract(longPage(), "text/html");
+    expect(facts.map((f) => f.text)).toEqual(["アクアクララ 送料0円"]);
+  });
+
   it("returns no facts for an empty page without calling the model", async () => {
     const { gateway, calls } = fakeGateway(() => []);
     expect(await new LlmFactExtractor(gateway, LIMITS).extract("<html><body> </body></html>", "text/html")).toEqual([]);

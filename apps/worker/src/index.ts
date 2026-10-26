@@ -26,9 +26,10 @@ import {
   growthPlan,
   FixtureFactExtractor,
   LlmFactExtractor,
+  type FactExtractor,
   type ArticlePlan,
 } from "@aff/agents";
-import { AspReportImporter, HttpFetcher, MapFetcher, checkRobots } from "@aff/integrations";
+import { AspReportImporter, HttpFetcher, MapFetcher, checkRobots, type Fetcher } from "@aff/integrations";
 import { buildMonthlyReport, renderMonthlyReportMarkdown } from "@aff/analytics";
 import { LivePublisherIO } from "./live-io.js";
 import plansFixture from "../../../config/plans.dry-run.json" with { type: "json" };
@@ -47,6 +48,16 @@ export interface WorkerOptions {
   logger?: ReturnType<typeof createLogger>;
   clock?: () => Date;
   env?: NodeJS.ProcessEnv;
+  /**
+   * Live research and QA against real pages with the real LLM, but with no
+   * database (state in memory), no git and publishing forced off. Used to see
+   * whether a plan would pass QA without any lasting effect.
+   */
+  preview?: boolean;
+  /** Replaces the network fetcher (tests). */
+  fetcher?: Fetcher;
+  /** Replaces the LLM fact extractor (tests). */
+  extractor?: FactExtractor;
 }
 
 export interface PipelineRunResult {
@@ -176,14 +187,18 @@ export async function runLlmSmoke(env: NodeJS.ProcessEnv = process.env): Promise
   };
 }
 
-function assertLiveReadiness(policy: PolicyConfig, env: NodeJS.ProcessEnv): void {
+function assertLiveReadiness(
+  policy: PolicyConfig,
+  env: NodeJS.ProcessEnv,
+  { requireDatabase }: { requireDatabase: boolean },
+): void {
   if (policy.mode !== "live") {
     throw new Error("live run refused: policy mode is not 'live'");
   }
   if (policy.security.allowed_source_domains.length === 0) {
     throw new Error("live run refused: security.allowed_source_domains is empty (configure verified domains first)");
   }
-  if (!env.DATABASE_URL) {
+  if (requireDatabase && !env.DATABASE_URL) {
     throw new Error("live run refused: DATABASE_URL is not configured");
   }
   if (!buildLlmFromEnv(env)) {
@@ -260,19 +275,27 @@ export async function runLivePipeline(
 ): Promise<PipelineRunResult> {
   const clock = options.clock ?? (() => new Date());
   const env = options.env ?? process.env;
-  const policy = parsePolicyText(await readFile(resolveInputPath(options.policyPath), "utf8"));
-  assertLiveReadiness(policy, env);
-  const repo = await loadRepository(options, { requirePg: true });
+  const parsedPolicy = parsePolicyText(await readFile(resolveInputPath(options.policyPath), "utf8"));
+  // Preview can never publish, whatever the policy file says.
+  const policy: PolicyConfig = options.preview
+    ? { ...parsedPolicy, flags: { ...parsedPolicy.flags, publish_enabled: false } }
+    : parsedPolicy;
+  assertLiveReadiness(policy, env, { requireDatabase: options.preview !== true });
+  const repo = options.preview
+    ? (options.repo ?? createMemoryRepository())
+    : await loadRepository(options, { requirePg: true });
   const logger = options.logger ?? createLogger({ level: "info" });
 
   const ledger = await createLedger(repo, policy, clock);
   const provider = buildLlmFromEnv(env)!;
   const gateway = createGateway({ primary: provider }, ledger);
-  const extractor = new LlmFactExtractor(gateway, {
-    timeoutMs: 60_000,
-    maxCostJpy: policy.limits.max_job_cost_jpy,
-    attempts: policy.limits.task_retry_attempts,
-  });
+  const extractor =
+    options.extractor ??
+    new LlmFactExtractor(gateway, {
+      timeoutMs: 60_000,
+      maxCostJpy: policy.limits.max_job_cost_jpy,
+      attempts: policy.limits.task_retry_attempts,
+    });
 
   const plansRaw = JSON.parse(await readFile(resolveInputPath(plansPath), "utf8")) as PlansFile;
   if (!Array.isArray(plansRaw.plans) || plansRaw.plans.length === 0) {
@@ -310,7 +333,7 @@ export async function runLivePipeline(
     repo,
     policy,
     logger,
-    fetcher: new HttpFetcher(),
+    fetcher: options.fetcher ?? new HttpFetcher(),
     extractor,
     publisherIO: io,
     previewDir: previewOnly ? livePreviewDir : undefined,
@@ -528,15 +551,20 @@ if (isMain()) {
       month: { type: "string" },
       plans: { type: "string" },
       live: { type: "boolean", default: false },
+      preview: { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: true,
   });
   const command = positionals[0] ?? "run-pipeline";
   const arg = positionals[1];
+  if (values.preview && !values.live) {
+    throw new Error("--preview only applies to a live run (use it with --live)");
+  }
   const options: WorkerOptions = {
     policyPath: values.policy ?? "config/policy.dry-run.yaml",
     outDir: values.out ?? ".tmp/preview",
+    ...(values.preview ? { preview: true } : {}),
   };
   try {
     options.logger = createLogger({ level: "info", sink: (line) => process.stderr.write(`${line}\n`) });
