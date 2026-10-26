@@ -55,7 +55,7 @@
 - LLM: Z.ai **Personal Coding Plan** API keyを `LLM_API_KEY` secretに登録。GitHub Actions smoke成功（GLM-5.3-Flash、JSON応答、workflow run 40260429078）。Standard API keyは残高不足、無料モデルは過負荷で使わず、Coding Plan endpointへ切替済み。
 - Cloudflare: Pages-only edit tokenをSecret登録済み。Pages project/account/SITE_BASE_URL variables設定済み。
 - 安全: `LIVE_AUTOMATION_ENABLED=false`。`LIVE_POLICY_YAML` / `LIVE_PLANS_JSON` / `AFFILIATE_TRACKING_URLS_JSON` は未設定のため、ライブ自動公開は開始していない。
-- A8.net: `sougakuhikaku.com` サブサイト登録済み（A8側審査待ち）。確認した引越し侍案件は公開後URL提出が必要で、公式自動化経路未確認のため自動運用候補として保留。
+- A8.net: `sougakuhikaku.com` サブサイト登録済み。広告主プログラムへの提携申請・承認は未実施。確認した引越し侍案件は公開後URL提出が必要で、公式自動化経路未確認のため自動運用候補として保留。
 
 ### 0-5. ASP 本人登録（審査は「公開済みの自サイトURL」で申し込む）
 

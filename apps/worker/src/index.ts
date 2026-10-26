@@ -207,6 +207,8 @@ export async function runDryRunPipeline(options: WorkerOptions): Promise<Pipelin
       provider: program.provider,
       status: program.status as "APPROVED" | "PENDING" | "REJECTED" | "TERMINATED",
       payoutCurrency: program.payoutCurrency,
+      termsUrl: program.termsUrl,
+      termsCheckedAt: program.termsCheckedAt,
     });
   }
   for (const offer of offersFixture.offers) {

@@ -26,14 +26,14 @@
 - [x] B009: Content draft engine with claim -> source / analysis references（packages/content/src/draft-engine.ts）
   - DoD: 捏造された「実体験」「実測数値」が禁止ルールで拒否。
 - [x] B010: QA engine (deterministic gates + secondary critique)（packages/content/src/qa-engine.ts）
-  - DoD: 重要claim出典・料金計算式・PR表記・案件承認のいずれかが欠けた場合や記事重複はFAIL。
+  - DoD: 重要claim出典・料金計算式・PR表記・案件承認のいずれかが欠けた場合や記事重複はFAIL。価格主張は実在する構造化price Factに結び付かない限りFAIL。
 - [x] B011: Astro site + article template + disclosures + privacy/about（apps/site）
   - DoD: mobile preview、SEO metadata、広告表示、リンクsponsored、ビルド成功。（tests/e2e/site.test.ts）
 
 ## P2 — 自動公開・計測
 
 - [x] B012: Publisher + Git deploy + rollback + idempotency（packages/agents/src/publisher.ts）
-  - DoD: 1記事/日、QA hash不一致は公開不可、失敗時は前版維持。**live経路はpublish_enabled=falseで停止中（dry-run previewのみ有効）。**
+  - DoD: 1記事/日、QA hash不一致は公開不可、失敗時は前版維持。提携条件未確認/鮮度切れ、手動URL提出等の未自動化条件があるofferも公開拒否。**live経路はpublish_enabled=falseで停止中（dry-run previewのみ有効）。**
 - [x] B013: scheduled workflow / concurrency lock / retry / dead letter（.github/workflows/pipeline.yml + packages/db locks + apps/worker）
   - DoD: Actionsの重複起動で二重公開なし。（publisher idempotency + lock tests）
 - [x] B014: GSC + GA4 read adapters; mock fixtures（packages/integrations/src/analytics-adapters.ts）

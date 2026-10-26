@@ -7,7 +7,7 @@ import type {
   Publication,
   QualityDecision,
 } from "@aff/domain";
-import { dayKeyInTz, newId, newTraceId, sha256Hex } from "@aff/domain";
+import { dayKeyInTz, isFresh, newId, newTraceId, sha256Hex } from "@aff/domain";
 
 export interface PublishArtifact {
   itemId: string;
@@ -53,6 +53,8 @@ export type PublishDenialReason =
   | "daily_limit"
   | "budget_stopped"
   | "offer_not_approved"
+  | "offer_terms_unverified"
+  | "manual_offer_requirement"
   | "lock_unavailable";
 
 /**
@@ -90,6 +92,22 @@ export class PublisherAgent {
         !policy.affiliate.require_program_approved || program?.status === "APPROVED";
       if (!offerUsable || !programUsable) {
         return { ok: false, reason: "offer_not_approved" };
+      }
+      if (policy.affiliate.require_program_approved) {
+        const termsCurrent =
+          Boolean(program?.termsUrl) &&
+          Boolean(program?.termsCheckedAt) &&
+          isFresh(
+            program!.termsCheckedAt!,
+            (this.deps.clock ?? (() => new Date()))(),
+            policy.content.price_source_max_age_days,
+          );
+        if (!termsCurrent) return { ok: false, reason: "offer_terms_unverified" };
+      }
+      const requiresManualSubmission = offer.constraints.requires_manual_post_url_submission === true;
+      const manualSubmissionAutomated = offer.constraints.manual_post_url_submission_automated === true;
+      if (requiresManualSubmission && !manualSubmissionAutomated) {
+        return { ok: false, reason: "manual_offer_requirement" };
       }
     }
     if (target.destination !== "preview" && policy.operations.stop_on_budget_limit) {

@@ -132,7 +132,14 @@ describe("security negative E2E (docs/11 必須E2E)", () => {
 
   it("4. monetized links for pending/rejected programs are blocked", async () => {
     const repo = createMemoryRepository();
-    await repo.offers.upsertProgram({ id: "prog_ok", provider: "asp", status: "APPROVED", payoutCurrency: "JPY" });
+    await repo.offers.upsertProgram({
+      id: "prog_ok",
+      provider: "asp",
+      status: "APPROVED",
+      payoutCurrency: "JPY",
+      termsUrl: "https://asp.example.com/terms",
+      termsCheckedAt: new Date().toISOString(),
+    });
     const publisher = new PublisherAgent({
       repo,
       policy: { ...policy, flags: { ...policy.flags, publish_enabled: true } },
@@ -165,6 +172,78 @@ describe("security negative E2E (docs/11 必須E2E)", () => {
     expect(outcome).toEqual({ published: false, reason: "offer_not_approved" });
   });
 
+  it("4b. approved offers with unverified terms are still blocked", async () => {
+    const repo = createMemoryRepository();
+    await repo.offers.upsertProgram({
+      id: "prog_ok",
+      provider: "asp",
+      status: "APPROVED",
+      payoutCurrency: "JPY",
+    });
+    const publisher = new PublisherAgent({
+      repo,
+      policy: { ...policy, flags: { ...policy.flags, publish_enabled: true } },
+      logger: createLogger({ level: "error", sink: () => undefined }),
+      io: { writeArtifact: async () => undefined },
+      siteContentDir: "content/articles",
+    });
+    const draft = draftOf();
+    const decision = qa().evaluate({ draft, facts: [fact], offers: [approvedOffer], sources: [source] });
+    const artifact = {
+      itemId: "item-1",
+      revisionId: "rev-terms",
+      slug: draft.slug,
+      locale: draft.locale,
+      title: draft.title,
+      description: "d",
+      markdown: draft.bodyMarkdown,
+      contentHash: decision.artifactHash,
+      qa: decision,
+      offerIds: [approvedOffer.id],
+    };
+    const allowed = await publisher.canPublish({ artifact, target: { destination: "git" } }, [approvedOffer]);
+    expect(allowed).toEqual({ ok: false, reason: "offer_terms_unverified" });
+  });
+
+  it("4c. offers requiring manual per-URL reporting are not auto-published", async () => {
+    const repo = createMemoryRepository();
+    await repo.offers.upsertProgram({
+      id: "prog_ok",
+      provider: "asp",
+      status: "APPROVED",
+      payoutCurrency: "JPY",
+      termsUrl: "https://asp.example.com/terms",
+      termsCheckedAt: new Date().toISOString(),
+    });
+    const publisher = new PublisherAgent({
+      repo,
+      policy: { ...policy, flags: { ...policy.flags, publish_enabled: true } },
+      logger: createLogger({ level: "error", sink: () => undefined }),
+      io: { writeArtifact: async () => undefined },
+      siteContentDir: "content/articles",
+    });
+    const draft = draftOf();
+    const decision = qa().evaluate({ draft, facts: [fact], offers: [approvedOffer], sources: [source] });
+    const artifact = {
+      itemId: "item-1",
+      revisionId: "rev-manual-url",
+      slug: draft.slug,
+      locale: draft.locale,
+      title: draft.title,
+      description: "d",
+      markdown: draft.bodyMarkdown,
+      contentHash: decision.artifactHash,
+      qa: decision,
+      offerIds: [approvedOffer.id],
+    };
+    const manualOffer = {
+      ...approvedOffer,
+      constraints: { requires_manual_post_url_submission: true },
+    };
+    const allowed = await publisher.canPublish({ artifact, target: { destination: "git" } }, [manualOffer]);
+    expect(allowed).toEqual({ ok: false, reason: "manual_offer_requirement" });
+  });
+
   it("5. exceeding the budget by 1 JPY blocks every LLM call", async () => {
     const ledger = new BudgetLedger(100, 85, 30);
     const provider = new MockProvider("p", "m", [mockJson({ answer: "ok" })]);
@@ -179,7 +258,14 @@ describe("security negative E2E (docs/11 必須E2E)", () => {
 
   it("6. repeated publish retries create exactly one publication", async () => {
     const repo = createMemoryRepository();
-    await repo.offers.upsertProgram({ id: "prog_ok", provider: "asp", status: "APPROVED", payoutCurrency: "JPY" });
+    await repo.offers.upsertProgram({
+      id: "prog_ok",
+      provider: "asp",
+      status: "APPROVED",
+      payoutCurrency: "JPY",
+      termsUrl: "https://asp.example.com/terms",
+      termsCheckedAt: new Date().toISOString(),
+    });
     const written: string[] = [];
     const publisher = new PublisherAgent({
       repo,
