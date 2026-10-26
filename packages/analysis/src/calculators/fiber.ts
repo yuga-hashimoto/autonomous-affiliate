@@ -4,6 +4,7 @@ import {
   type Known,
   type TotalCostCalculation,
 } from "../types.js";
+import { monthsLabel, yen, yenOrUnknown } from "./format.js";
 
 /**
  * Fiber effective cost: (installation fee + monthly × months) over the
@@ -17,19 +18,22 @@ export function calculateFiberTotalCost(input: FiberOfferInput): TotalCostCalcul
 
   if (input.monthlyJpy === "UNKNOWN") {
     unknowns.push("monthlyJpy");
-    breakdown.push({ label: `monthly fee (${input.months} months)`, amountJpy: "UNKNOWN" });
+    breakdown.push({ label: `月額料金（${monthsLabel(input.months)}）`, amountJpy: "UNKNOWN" });
   } else {
     const monthly = input.monthlyJpy * input.months;
     total += monthly;
-    breakdown.push({ label: `monthly fee (${input.months} months × ${input.monthlyJpy} JPY)`, amountJpy: monthly });
+    breakdown.push({
+      label: `月額料金（${monthsLabel(input.months)} × 月${yen(input.monthlyJpy)}）`,
+      amountJpy: monthly,
+    });
   }
 
   if (input.installationFeeJpy === "UNKNOWN") {
     unknowns.push("installationFeeJpy");
-    breakdown.push({ label: "installation fee", amountJpy: "UNKNOWN" });
+    breakdown.push({ label: "工事費", amountJpy: "UNKNOWN" });
   } else {
     total += input.installationFeeJpy;
-    breakdown.push({ label: "installation fee", amountJpy: input.installationFeeJpy });
+    breakdown.push({ label: "工事費", amountJpy: input.installationFeeJpy });
   }
 
   const installationMonthly: Known<number> =
@@ -46,12 +50,13 @@ export function calculateFiberTotalCost(input: FiberOfferInput): TotalCostCalcul
     formulaVersion: FORMULA_VERSION,
     formula:
       "totalJpy = monthlyJpy * months + installationFeeJpy; installation monthly conversion = installationFeeJpy / installationFeeMonths",
+    comparisonMonths: input.months,
     assumptions: [
-      `dwelling type: ${input.apartmentType === "mansion" ? "apartment" : "detached house"}`,
-      `comparison period is ${input.months} months, no mid-term cancellation assumed`,
-      `contract term: ${input.contractTermMonths === "UNKNOWN" ? "UNKNOWN" : `${input.contractTermMonths} months`}`,
-      `contract cancellation fee: ${input.cancellationFeeJpy === "UNKNOWN" ? "UNKNOWN" : `${input.cancellationFeeJpy} JPY`} (not included in the total because no cancellation occurs)`,
-      `installation fee monthly conversion: ${installationMonthly === "UNKNOWN" ? "UNKNOWN" : `${installationMonthly} JPY/month`}`,
+      `住居タイプ: ${input.apartmentType === "mansion" ? "集合住宅（マンション）" : "戸建て"}`,
+      `比較期間は${monthsLabel(input.months)}で、期間中の解約は想定しない`,
+      `契約期間: ${input.contractTermMonths === "UNKNOWN" ? "UNKNOWN" : monthsLabel(input.contractTermMonths)}`,
+      `契約解除料: ${yenOrUnknown(input.cancellationFeeJpy)}（解約しない前提のため総額には含めない）`,
+      `工事費の月額換算: ${installationMonthly === "UNKNOWN" ? "UNKNOWN" : `${yen(installationMonthly)}/月`}`,
     ],
     totalJpy,
     monthlyAverageJpy,

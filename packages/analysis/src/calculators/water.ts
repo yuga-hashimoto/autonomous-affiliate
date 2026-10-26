@@ -5,6 +5,7 @@ import {
   type TotalCostCalculation,
   type WaterServerOfferInput,
 } from "../types.js";
+import { monthsLabel, yen, yenOrUnknown } from "./format.js";
 
 const UNKNOWN_NOT_CONFIRMED = "UNKNOWN（公式ページで確認できていません）";
 
@@ -52,27 +53,30 @@ export function calculateWaterServerCost(input: WaterServerOfferInput): TotalCos
   let total = 0;
 
   const components: { key: string; label: string; value: Known<number> }[] = [
-    { key: "waterChargeJpy", label: "water charge", value: input.waterChargeJpy },
-    { key: "shippingFeeJpy", label: "shipping fee", value: input.shippingFeeJpy },
-    { key: "electricityFeeJpy", label: "electricity fee", value: input.electricityFeeJpy },
+    { key: "waterChargeJpy", label: "水代", value: input.waterChargeJpy },
+    { key: "shippingFeeJpy", label: "配送料", value: input.shippingFeeJpy },
+    { key: "electricityFeeJpy", label: "電気代", value: input.electricityFeeJpy },
   ];
   for (const c of components) {
     if (c.value === "UNKNOWN") {
       unknowns.push(c.key);
-      breakdown.push({ label: `${c.label} (${input.months} months)`, amountJpy: "UNKNOWN" });
+      breakdown.push({ label: `${c.label}（${monthsLabel(input.months)}）`, amountJpy: "UNKNOWN" });
     } else {
       const amount = c.value * input.months;
       total += amount;
-      breakdown.push({ label: `${c.label} (${input.months} months × ${c.value} JPY)`, amountJpy: amount });
+      breakdown.push({
+        label: `${c.label}（${monthsLabel(input.months)} × 月${yen(c.value)}）`,
+        amountJpy: amount,
+      });
     }
   }
 
   if (input.initialFeeJpy === "UNKNOWN") {
     unknowns.push("initialFeeJpy");
-    breakdown.push({ label: "initial fee", amountJpy: "UNKNOWN" });
+    breakdown.push({ label: "初期費用", amountJpy: "UNKNOWN" });
   } else {
     total += input.initialFeeJpy;
-    breakdown.push({ label: "initial fee", amountJpy: input.initialFeeJpy });
+    breakdown.push({ label: "初期費用", amountJpy: input.initialFeeJpy });
   }
 
   const totalJpy: Known<number> = unknowns.length > 0 ? "UNKNOWN" : total;
@@ -85,11 +89,12 @@ export function calculateWaterServerCost(input: WaterServerOfferInput): TotalCos
     title: input.title,
     formulaVersion: FORMULA_VERSION,
     formula: "totalJpy = (waterChargeJpy + shippingFeeJpy + electricityFeeJpy) * months + initialFeeJpy",
+    comparisonMonths: input.months,
     assumptions: [
-      `comparison period is ${input.months} months`,
-      `usage: ${input.monthlyLiters}L per month for ${input.months} months`,
-      "no plan change, pause, or cancellation assumed",
-      `contract cancellation fee: ${input.cancellationFeeJpy === "UNKNOWN" ? "UNKNOWN" : `${input.cancellationFeeJpy} JPY`} (condition only, not included in the total)`,
+      `比較期間は${monthsLabel(input.months)}`,
+      `使用量: 月${input.monthlyLiters}L（${monthsLabel(input.months)}分）`,
+      "期間中のプラン変更・休止・解約は想定しない",
+      `契約解除料: ${yenOrUnknown(input.cancellationFeeJpy)}（条件の記載のみで総額には含めない）`,
       ...(estimateNote ? [estimateNote] : []),
     ],
     totalJpy,

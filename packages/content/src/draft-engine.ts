@@ -169,15 +169,9 @@ export function buildDraft(input: DraftInput): Draft {
       audience: input.audience,
       generatedAt: now.toISOString(),
       assumptions: input.calculations.flatMap((c) => c.assumptions),
-      comparisonMonths: extractMonths(input.calculations[0]?.assumptions ?? []),
+      comparisonMonths: input.calculations[0]?.comparisonMonths ?? null,
     },
   };
-}
-
-function extractMonths(assumptions: string[]): number | null {
-  const line = assumptions.find((a) => a.includes("comparison period"));
-  const match = line?.match(/(\d+)\s*months/);
-  return match ? Number(match[1]) : null;
 }
 
 function offerCta(offer: AffiliateOffer): string {

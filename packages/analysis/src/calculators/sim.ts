@@ -1,4 +1,5 @@
 import { FORMULA_VERSION, type Known, type SimOfferInput, type TotalCostCalculation } from "../types.js";
+import { monthsLabel, yen } from "./format.js";
 
 function allKnown(...values: Known<unknown>[]): boolean {
   return values.every((v) => v !== "UNKNOWN");
@@ -18,20 +19,20 @@ export function calculateSimTotalCost(input: SimOfferInput): TotalCostCalculatio
   let total = 0;
 
   if (input.initialFeeJpy === "UNKNOWN") {
-    breakdown.push({ label: "initial fee", amountJpy: "UNKNOWN" });
+    breakdown.push({ label: "初期費用", amountJpy: "UNKNOWN" });
   } else {
     total += input.initialFeeJpy;
-    breakdown.push({ label: "initial fee", amountJpy: input.initialFeeJpy });
+    breakdown.push({ label: "初期費用", amountJpy: input.initialFeeJpy });
   }
 
   let monthlyTotal = 0;
   if (input.monthlyJpy === "UNKNOWN") {
-    breakdown.push({ label: `monthly fee (${input.months} months)`, amountJpy: "UNKNOWN" });
+    breakdown.push({ label: `月額料金（${monthsLabel(input.months)}）`, amountJpy: "UNKNOWN" });
   } else {
     monthlyTotal = input.monthlyJpy * input.months;
     total += monthlyTotal;
     breakdown.push({
-      label: `monthly fee (${input.months} months × ${input.monthlyJpy} JPY)`,
+      label: `月額料金（${monthsLabel(input.months)} × 月${yen(input.monthlyJpy)}）`,
       amountJpy: monthlyTotal,
     });
   }
@@ -39,15 +40,16 @@ export function calculateSimTotalCost(input: SimOfferInput): TotalCostCalculatio
   if (input.discountPeriods) {
     for (const period of input.discountPeriods) {
       const months = period.toMonth - period.fromMonth + 1;
+      const range = `${period.fromMonth}〜${period.toMonth}ヶ月目`;
       if (period.monthlyJpy === "UNKNOWN" || input.monthlyJpy === "UNKNOWN") {
         unknowns.push(`discount ${period.fromMonth}-${period.toMonth}`);
-        breakdown.push({ label: `discount (${period.fromMonth}-${period.toMonth} months)`, amountJpy: "UNKNOWN" });
+        breakdown.push({ label: `割引（${range}）`, amountJpy: "UNKNOWN" });
         continue;
       }
       const discount = (input.monthlyJpy - period.monthlyJpy) * months;
       total -= discount;
       breakdown.push({
-        label: `discount (${period.fromMonth}-${period.toMonth} months × ${discount / months} JPY)`,
+        label: `割引（${range} × 月${yen(discount / months)}）`,
         amountJpy: -discount,
       });
     }
@@ -56,11 +58,11 @@ export function calculateSimTotalCost(input: SimOfferInput): TotalCostCalculatio
   if (input.universalServiceFeeJpy !== undefined) {
     if (input.universalServiceFeeJpy === "UNKNOWN") {
       unknowns.push("universalServiceFeeJpy");
-      breakdown.push({ label: "universal service fee", amountJpy: "UNKNOWN" });
+      breakdown.push({ label: "ユニバーサルサービス料", amountJpy: "UNKNOWN" });
     } else {
       const fee = Math.round(input.universalServiceFeeJpy * input.months);
       total += fee;
-      breakdown.push({ label: `universal service fee (${input.months} months)`, amountJpy: fee });
+      breakdown.push({ label: `ユニバーサルサービス料（${monthsLabel(input.months)}）`, amountJpy: fee });
     }
   }
 
@@ -73,10 +75,11 @@ export function calculateSimTotalCost(input: SimOfferInput): TotalCostCalculatio
     formulaVersion: FORMULA_VERSION,
     formula:
       "totalJpy = initialFeeJpy + monthlyJpy * months - Σ(discount JPY × discount months) + universalServiceFeeJpy * months",
+    comparisonMonths: input.months,
     assumptions: [
-      `comparison period is ${input.months} months`,
-      allKnown(input.dataGb) ? `plan data volume: ${String(input.dataGb)}GB/month` : "plan data volume: UNKNOWN",
-      "no mid-contract cancellation or plan change is assumed",
+      `比較期間は${monthsLabel(input.months)}`,
+      allKnown(input.dataGb) ? `プランのデータ容量: 月${String(input.dataGb)}GB` : "プランのデータ容量: UNKNOWN",
+      "期間中の解約・プラン変更は想定しない",
     ],
     totalJpy,
     monthlyAverageJpy,

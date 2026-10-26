@@ -16,16 +16,16 @@ export function calculateBuybackNet(input: BuybackOfferInput): BuybackCalculatio
   let net = 0;
   if (input.assessedJpy === "UNKNOWN") {
     unknowns.push("assessedJpy");
-    breakdown.push({ label: "assessment amount (estimate)", amountJpy: "UNKNOWN" });
+    breakdown.push({ label: "査定額（見込み）", amountJpy: "UNKNOWN" });
   } else {
     net += input.assessedJpy;
-    breakdown.push({ label: "assessment amount (estimate)", amountJpy: input.assessedJpy });
+    breakdown.push({ label: "査定額（見込み）", amountJpy: input.assessedJpy });
   }
 
   const costs: { key: string; label: string; value: Known<number> }[] = [
-    { key: "outboundShippingJpy", label: "outbound shipping", value: input.outboundShippingJpy },
-    { key: "returnShippingJpy", label: "return shipping (on decline)", value: input.returnShippingJpy },
-    { key: "packingKitJpy", label: "packing kit", value: input.packingKitJpy },
+    { key: "outboundShippingJpy", label: "発送時の送料", value: input.outboundShippingJpy },
+    { key: "returnShippingJpy", label: "返送料（買取を断る場合）", value: input.returnShippingJpy },
+    { key: "packingKitJpy", label: "梱包キット", value: input.packingKitJpy },
   ];
   for (const c of costs) {
     if (c.value === "UNKNOWN") {
@@ -47,8 +47,8 @@ export function calculateBuybackNet(input: BuybackOfferInput): BuybackCalculatio
     formulaVersion: FORMULA_VERSION,
     formula: "netJpy = assessedJpy - outboundShippingJpy - returnShippingJpy - packingKitJpy",
     assumptions: [
-      "the assessment amount is only an estimate; the confirmed price is determined by the final valuation",
-      "return shipping applies only when the buyback offer is declined",
+      "査定額は見込みであり、確定価格は最終査定で決まります",
+      "返送料は買取を断った場合にのみ発生します",
     ],
     netJpy,
     breakdown,
