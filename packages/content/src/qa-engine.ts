@@ -64,6 +64,7 @@ export class QaEngine {
     const unevidenced: string[] = [];
     const fabricated: string[] = [];
     const stale: string[] = [];
+    const unlinkedPrices: string[] = [];
     for (const claim of draft.claims) {
       if (claim.sourceIds.length === 0) {
         unevidenced.push(claim.claimId);
@@ -82,6 +83,18 @@ export class QaEngine {
         fabricated.push(`${claim.claimId}(${missingFacts.join(",")})`);
         continue;
       }
+      if (claim.claimType === "price" && backingFacts.length === 0) {
+        // A generated price/total must link to structured official price facts,
+        // not merely to an arbitrary existing URL (fail closed on unproven inputs).
+        unlinkedPrices.push(claim.claimId);
+      }
+      const factsFromOtherSources = backingFacts.filter(
+        (fact) => !fact.sourceIds.some((id) => claim.sourceIds.includes(id)),
+      );
+      if (factsFromOtherSources.length > 0) {
+        fabricated.push(`${claim.claimId}(fact_source_mismatch)`);
+        continue;
+      }
       const usable = backingFacts.filter((f) => this.deps.freshness.isFactUsable(f, now));
       if (backingFacts.length > 0 && usable.length === 0) {
         stale.push(claim.claimId);
@@ -96,6 +109,11 @@ export class QaEngine {
       fabricated.length === 0
         ? check("evidence_ids_exist", "PASS", "主張の参照するfact/sourceは実在します")
         : check("evidence_ids_exist", "FAIL", `捏造された参照: ${fabricated.join(", ")}`),
+    );
+    checks.push(
+      unlinkedPrices.length === 0
+        ? check("price_claims_linked_to_facts", "PASS", "価格主張は公式Factに結び付いています")
+        : check("price_claims_linked_to_facts", "FAIL", `公式Factに結び付かない価格主張: ${unlinkedPrices.join(", ")}`),
     );
     checks.push(
       stale.length === 0

@@ -35,7 +35,8 @@
             "monthlyJpy": 2980,
             "initialFeeJpy": 3300,
             "dataGb": 20
-          }
+          },
+          "factEvidenceTerms": ["SIM A"]
         },
         {
           "calculator": "sim",
@@ -51,7 +52,8 @@
             "monthlyJpy": 2180,
             "initialFeeJpy": 0,
             "dataGb": 20
-          }
+          },
+          "factEvidenceTerms": ["SIM B"]
         }
       ],
       "offerIds": [
@@ -107,7 +109,8 @@
             "contractTermMonths": 24,
             "cancellationFeeJpy": 1000,
             "apartmentType": "mansion"
-          }
+          },
+          "factEvidenceTerms": ["Fiber A"]
         }
       ],
       "offerIds": [],
@@ -154,7 +157,8 @@
             "electricityFeeJpy": 250,
             "initialFeeJpy": 0,
             "cancellationFeeJpy": 11000
-          }
+          },
+          "factEvidenceTerms": ["Water A"]
         }
       ],
       "offerIds": [],

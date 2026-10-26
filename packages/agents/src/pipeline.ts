@@ -37,6 +37,8 @@ export interface CalculatorEntry {
   input: Record<string, unknown>;
   /** Normalized conditions for the decision matrix (from official facts). */
   conditions?: Record<string, string | number>;
+  /** One or more service-name fragments that must match extracted official price Facts. */
+  factEvidenceTerms?: string[];
 }
 
 export interface ArticlePlan {
@@ -371,6 +373,18 @@ async function buildDraftFor(plan: ArticlePlan, repo: Repository, clock: () => D
       : comparedOffers.filter((o) => plan.offerIds.includes(o.id));
   const sources = await repo.sources.list();
   const facts = await repo.facts.listAll();
+  const factIdsByOfferId = Object.fromEntries(
+    plan.calculators.map((entry) => {
+      const offerId = String(entry.input.offerId);
+      const terms = entry.factEvidenceTerms ?? [String(entry.input.title)];
+      const matchingFacts = facts.filter(
+        (fact) =>
+          fact.claimType === "price" &&
+          terms.some((term) => term.length > 0 && fact.text.includes(term)),
+      );
+      return [offerId, matchingFacts.map((fact) => fact.id)];
+    }),
+  );
   const conditionsByOffer = new Map(
     plan.calculators.map((entry) => [String(entry.input.offerId), entry.conditions ?? {}]),
   );
@@ -394,6 +408,7 @@ async function buildDraftFor(plan: ArticlePlan, repo: Repository, clock: () => D
     sources,
     offers: comparedOffers,
     calculations,
+    factIdsByOfferId,
     matrix,
     ctaOffers: planOffers,
     now: clock(),

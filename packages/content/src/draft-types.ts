@@ -53,6 +53,8 @@ export interface DraftInput {
   sources: SourceRecord[];
   offers: AffiliateOffer[];
   calculations: TotalCostCalculation[];
+  /** Explicit fact links per calculation offer_id. */
+  factIdsByOfferId?: Record<string, string[]>;
   matrix?: DecisionMatrix;
   /** Approved+active offers with site permission; CTAs render only for these. */
   ctaOffers: AffiliateOffer[];

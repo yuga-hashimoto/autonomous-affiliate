@@ -170,6 +170,13 @@ describe("B010 QA engine", () => {
     expect(decision.status).toBe("FAIL");
   });
 
+  it("fails a price calculation that has a source URL but no linked structured Fact", () => {
+    const draft = buildTestDraft({ facts: [] });
+    const decision = qaEngine().evaluate({ draft, facts: [], offers: [offer()], sources: [source] });
+    expect(decision.checks.find((c) => c.id === "price_claims_linked_to_facts")?.status).toBe("FAIL");
+    expect(decision.status).toBe("FAIL");
+  });
+
   it("fails duplicate content", () => {
     const draft = buildTestDraft();
     const first = qaEngine().evaluate({ draft, facts: [fact()], offers: [offer()], sources: [source] });

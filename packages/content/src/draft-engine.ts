@@ -56,9 +56,10 @@ export function buildDraft(input: DraftInput): Draft {
       body.push(`- ${row.label}: ${yen(row.amountJpy)}`);
     }
     body.push("");
-    const priceFacts = input.facts.filter(
-      (f) => f.claimType === "price" && f.text.includes(calc.title),
-    );
+    const explicitFactIds = input.factIdsByOfferId?.[calc.offerId];
+    const priceFacts = explicitFactIds
+      ? input.facts.filter((f) => explicitFactIds.includes(f.id))
+      : input.facts.filter((f) => f.claimType === "price" && f.text.includes(calc.title));
     claims.push({
       claimId: `claim_${calc.offerId}_total`,
       text: `${calc.title}の総額は${yen(calc.totalJpy)}（${calc.formulaVersion}）`,
