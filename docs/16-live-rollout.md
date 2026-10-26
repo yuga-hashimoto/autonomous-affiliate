@@ -38,14 +38,24 @@
 
 | 方式 | `LLM_PROVIDER` | 登録URL | 必須env | コスト計上 |
 | --- | --- | --- | --- | --- |
-| **OpenAI互換API（推奨）** | `openai-compatible`（既定） | OpenAI <https://platform.openai.com/signup> / OpenRouter <https://openrouter.ai/> / **Z.ai(GLM)** <https://z.ai/model-api> | `LLM_API_KEY` `LLM_MODEL` `LLM_BASE_URL` `LLM_INPUT_COST_JPY_PER_1M` `LLM_OUTPUT_COST_JPY_PER_1M` | トークン単価で実費計上 |
+| **OpenAI互換API（推奨）** | `openai-compatible`（既定） | OpenAI <https://platform.openai.com/signup> / OpenRouter <https://openrouter.ai/> / **Z.ai(GLM)** <https://z.ai/model-api> | `LLM_API_KEY` `LLM_MODEL` `LLM_BASE_URL` `LLM_INPUT_COST_JPY_PER_1M` `LLM_OUTPUT_COST_JPY_PER_1M` | Standard APIは従量課金、Coding Plan endpointはポイント枠 |
 | ローカルCLI（opencode / Claude Code / Antigravityのサブスク） | `cli` | 各CLIの既存ログイン | `LLM_CLI_COMMAND`（例 `opencode`） `LLM_CLI_ARGS`（例 `["run","-m","zai-coding-plan/glm-5.2","{{PROMPT}}"]`、または `LLM_CLI_STDIN=1`） `LLM_CLI_COST_JPY_PER_CALL`（**必須**。保守的な1呼当り割当額） | 固定割当（サブスクのためトークン単価なし） |
 | （開発時）モック | — | — | — | 0円（live実行不可） |
 
-- **推奨はOpenAI互換API**。Z.ai公式資料: Base URL `https://api.z.ai/api/paas/v4`、モデル例 `glm-5.3`、API key発行 <https://z.ai/manage-apikey/apikey-list>、Billing/利用枠 <https://z.ai/manage-apikey/billing>。Z.ai Coding Plan契約をAPI利用する場合の専用OpenAI Chat Completions Base URLはモデル別ガイドに従う（GLM-5.3: `https://api.z.ai/api/coding/paas/v4`。<https://docs.z.ai/guides/llm/glm-5.3>）。API利用枠購入/入金は本人操作。
+- **推奨はOpenAI互換API**。Z.ai公式資料: Standard API Base URL `https://api.z.ai/api/paas/v4`、API key <https://z.ai/manage-apikey/apikey-list>、Billing/使用枠 <https://z.ai/manage-apikey/billing>。GLM Coding PlanのAPI keyは **Personal Coding Plan** タブから別途作成し、専用Base URL `https://api.z.ai/api/coding/paas/v4` を使う（<https://docs.z.ai/guides/llm/glm-5.3>）。当環境はPersonal Coding Plan key + `glm-5.3-flash`で手動LLM smoke成功（GitHub Actions run 40260429078）。Standard API keyは残高なしで1113になったため使用していない。APIの使用枠購入/入金は本人操作。
+- `LLM_INPUT_COST_JPY_PER_1M=30` / `LLM_OUTPUT_COST_JPY_PER_1M=100` は公式Standard API単価を200円/USDで換算した**保守的な内部計上値**。Coding Planでは外部請求額ではなく、予算台帳用の参考原価。実際の利用上限は契約プランのポイント/Quotaで別途監視。
 - CLI方式は「サブスク料だけで回したい」場合の予備経路。1呼出ごとにCLIプロセスを起動するため遅く、出力はJSON抽出＋スキーマ検証で保証する（マーカー付きコードブロックや前後の文章は自動で剥がす）。
 - どちらの方式でも**費用の見積れない呼出しは禁止**（policy docs/07）。CLI方式は1呼当りの割当額を必ず設定する。
 - 支払方法登録・月次上限設定は **必ず本人操作**。
+
+### 現在のセットアップ状況（2026-10-26）
+
+- サイト: `https://sougakuhikaku.com` 公開中（Cloudflare Pages、5ページ）。GitHub Actionsの `deploy` workflow成功確認済み。
+- DB: Neon project作成済み、`DATABASE_URL` GitHub Secret登録済み、migration `001_init.sql` を適用済み。
+- LLM: Z.ai **Personal Coding Plan** API keyを `LLM_API_KEY` secretに登録。GitHub Actions smoke成功（GLM-5.3-Flash、JSON応答、workflow run 40260429078）。Standard API keyは残高不足、無料モデルは過負荷で使わず、Coding Plan endpointへ切替済み。
+- Cloudflare: Pages-only edit tokenをSecret登録済み。Pages project/account/SITE_BASE_URL variables設定済み。
+- 安全: `LIVE_AUTOMATION_ENABLED=false`。`LIVE_POLICY_YAML` / `LIVE_PLANS_JSON` / `AFFILIATE_TRACKING_URLS_JSON` は未設定のため、ライブ自動公開は開始していない。
+- A8.net: `sougakuhikaku.com` サブサイト登録済み（A8側審査待ち）。確認した引越し侍案件は公開後URL提出が必要で、公式自動化経路未確認のため自動運用候補として保留。
 
 ### 0-5. ASP 本人登録（審査は「公開済みの自サイトURL」で申し込む）
 
@@ -97,6 +107,7 @@ CLI方式のローカル手動実行時のみ: `.env`（gitignore済み）へ `L
    pnpm tsx apps/worker/src/index.ts import-offers config/offers.live.json
    ~~~
    `status: "APPROVED"`, `active: true` にした案件だけが収益化CTAに使われる。
+   プログラム規約に「掲載後URL提出」等の継続的な手動作業がある場合、公式API/自動化経路が確認できるまでそのオファーは自動運用対象にしない（例: A8引越し侍プログラムはURL提出要件の自動化手段が未確認、docs/research参照）。
 3. **SERP観測（B000B）**: 手動で検索（地域=日本/言語=日本語/モバイルを固定）し、上位10件を記録。形式は `SerpObservation`（`packages/domain/src/types.ts`）。無断スクレイピングはしない。検索ボリュームはKeyword Planner等の実測値のみ、取れなければUNKNOWN。
 4. **プラン作成**: `config/plans.dry-run.json` と同じ形式で `config/plans.live.json`。数値は全て対象サイトの公式ページから転記（確認日を記録）。
 
