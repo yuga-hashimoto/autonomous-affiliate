@@ -29,6 +29,8 @@
   - DoD: 重要claim出典・料金計算式・PR表記・案件承認のいずれかが欠けた場合や記事重複はFAIL。価格主張は実在する構造化price Factに結び付かない限りFAIL。
 - [x] B011: Astro site + article template + disclosures + privacy/about（apps/site）
   - DoD: mobile preview、SEO metadata、広告表示、リンクsponsored、ビルド成功。（tests/e2e/site.test.ts）
+- [x] B011a: サイトUI/UX刷新（モバイルファースト、大量記事対応。docs/17-site-ui.md）
+  - DoD: 320px幅で横はみ出しなし、表は横スクロール領域、PR表記とCTAのsponsored維持、一覧のページ送りと検索、記事本文のh1/PR重複なし。（tests/e2e/site.test.ts, tests/unit/site-rehype.test.ts）**実機ブラウザでの確認は未実施。**
 
 ## P2 — 自動公開・計測
 

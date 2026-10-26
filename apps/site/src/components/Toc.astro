@@ -1,0 +1,49 @@
+---
+export interface TocHeading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+
+interface Props {
+  headings: TocHeading[];
+  variant: "inline" | "aside";
+}
+
+const { headings, variant } = Astro.props;
+/** Level-2 headings only: per-offer h3 breakdowns would flood the list on a phone. */
+const items = headings.filter((heading) => heading.depth === 2);
+---
+
+{
+  items.length >= 2 && variant === "inline" && (
+    <details class="toc-inline">
+      <summary>目次</summary>
+      <ol class="toc-list">
+        {items.map((item) => (
+          <li>
+            <a href={`#${item.slug}`} data-toc-link>
+              {item.text}
+            </a>
+          </li>
+        ))}
+      </ol>
+    </details>
+  )
+}
+{
+  items.length >= 2 && variant === "aside" && (
+    <nav class="toc-aside" aria-label="目次">
+      <p class="toc-aside-title">目次</p>
+      <ol class="toc-list">
+        {items.map((item) => (
+          <li>
+            <a href={`#${item.slug}`} data-toc-link>
+              {item.text}
+            </a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  )
+}

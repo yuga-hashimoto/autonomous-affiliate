@@ -1,24 +1,80 @@
 ---
 import { getCollection } from "astro:content";
+import ArticleCard from "../components/ArticleCard.astro";
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { sortByNewest } from "../lib/articles";
 
-const articles = (await getCollection("articles")).sort(
-  (a, b) => Date.parse(b.data.pubDate) - Date.parse(a.data.pubDate),
-);
+const LATEST_COUNT = 6;
+const articles = sortByNewest(await getCollection("articles"));
+const latest = articles.slice(0, LATEST_COUNT);
+
+const pillars = [
+  {
+    title: "公式の一次情報だけを根拠に",
+    body: "料金ページや利用規約など事業者が公開する情報を参照し、記事ごとに出典と確認日を明記します。",
+  },
+  {
+    title: "条件をそろえて総額に換算",
+    body: "比較期間・通貨・課金単位をそろえ、計算式と前提を省略せずに示します。",
+  },
+  {
+    title: "不明な項目は断定しない",
+    body: "確認できない情報は「UNKNOWN」と表示し、0円や確定情報としては扱いません。",
+  },
+];
 ---
 
-<BaseLayout title="総額比較 sougakuhikaku — 公式料金に基づく比較・試算">
-  <h1>記事一覧</h1>
-  <p>公式一次情報（料金ページ・利用規約）に基づき、同一条件での総額試算と比較表を提供します。紹介リンクは提携承認済みのプログラムのみに付与され、確認できない情報はUNKNOWNとして明示します。</p>
-  {articles.length === 0 && <p>公開済みの記事はまだありません。</p>}
-  <ul>
+<BaseLayout title="総額比較｜公式料金に基づく比較・試算">
+  <section class="hero">
+    <div class="container">
+      <p class="eyebrow">公式一次情報にもとづく比較メディア</p>
+      <h1>料金も条件も、同じ物差しで比べる。</h1>
+      <p class="lead">
+        公式の料金ページと規約だけを根拠に、期間・通貨・課金単位をそろえた総額を試算します。確認できない項目は「UNKNOWN」と明示し、断定しません。
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/articles/">記事一覧を見る</a>
+        <a class="btn btn-secondary" href="/methodology/">比較・試算の方法</a>
+      </div>
+      <p class="hero-note">記事にはプロモーション（PR）を含む場合があります。紹介リンクには「PR」と表示します。</p>
+    </div>
+  </section>
+
+  <section class="container section" aria-labelledby="latest-heading">
+    <div class="section-head">
+      <h2 class="section-title" id="latest-heading">新着記事</h2>
+      {articles.length > LATEST_COUNT && <a class="section-link" href="/articles/">すべて見る（{articles.length}件）→</a>}
+    </div>
     {
-      articles.map((article) => (
-        <li>
-          <a href={`/articles/${article.id}/`}>{article.data.title}</a>
-          <span>（確認日: {article.data.pubDate.slice(0, 10)}）</span>
-        </li>
-      ))
+      latest.length > 0 ? (
+        <ul class="card-grid">
+          {latest.map((article) => (
+            <ArticleCard article={article} showMore />
+          ))}
+        </ul>
+      ) : (
+        <div class="empty-state">
+          <p>公開済みの記事はまだありません。</p>
+        </div>
+      )
     }
-  </ul>
+  </section>
+
+  <section class="container section" aria-labelledby="policy-heading">
+    <div class="section-head">
+      <h2 class="section-title" id="policy-heading">このサイトの比較のしかた</h2>
+      <a class="section-link" href="/editorial-policy/">編集方針 →</a>
+    </div>
+    <ol class="pillars">
+      {
+        pillars.map((pillar, index) => (
+          <li class="pillar">
+            <span class="pillar-number">0{index + 1}</span>
+            <h3>{pillar.title}</h3>
+            <p>{pillar.body}</p>
+          </li>
+        ))
+      }
+    </ol>
+  </section>
 </BaseLayout>

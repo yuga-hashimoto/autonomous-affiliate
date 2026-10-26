@@ -1,0 +1,26 @@
+---
+import { getCollection } from "astro:content";
+import ArticleArchive from "../../../components/ArticleArchive.astro";
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { ARTICLES_PER_PAGE, archiveHref, paginate, sortByNewest } from "../../../lib/articles";
+
+/** Pages 2..N; page 1 lives at /articles/ (src/pages/articles/index.astro). */
+export async function getStaticPaths() {
+  const sorted = sortByNewest(await getCollection("articles"));
+  const { totalPages } = paginate(sorted, 1, ARTICLES_PER_PAGE);
+  return Array.from({ length: Math.max(0, totalPages - 1) }, (_, i) => {
+    const number = i + 2;
+    return { params: { page: String(number) }, props: { page: paginate(sorted, number, ARTICLES_PER_PAGE) } };
+  });
+}
+
+const { page } = Astro.props;
+---
+
+<BaseLayout
+  title={`記事一覧（${page.page}ページ目）`}
+  description="公式一次情報に基づく料金・条件の比較と総額試算の記事一覧です。"
+  path={archiveHref(page.page)}
+>
+  <ArticleArchive page={page} />
+</BaseLayout>

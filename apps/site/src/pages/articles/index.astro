@@ -1,0 +1,16 @@
+---
+import { getCollection } from "astro:content";
+import ArticleArchive from "../../components/ArticleArchive.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { ARTICLES_PER_PAGE, paginate, sortByNewest } from "../../lib/articles";
+
+const page = paginate(sortByNewest(await getCollection("articles")), 1, ARTICLES_PER_PAGE);
+---
+
+<BaseLayout
+  title="記事一覧"
+  description="公式一次情報に基づく料金・条件の比較と総額試算の記事一覧です。確認日の新しい順に掲載しています。"
+  path="/articles/"
+>
+  <ArticleArchive page={page} />
+</BaseLayout>
