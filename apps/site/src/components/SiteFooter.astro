@@ -1,0 +1,32 @@
+---
+import { FOOTER_ITEMS } from "../lib/site-nav";
+import { SITE_NAME } from "../lib/articles";
+
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="/">{SITE_NAME}</a>
+        <p>公式の料金・条件を同じ物差しにそろえて比較する情報サイトです。</p>
+      </div>
+      <nav aria-label="フッターメニュー">
+        <ul class="footer-links">
+          {
+            FOOTER_ITEMS.map((item) => (
+              <li>
+                <a href={item.href}>{item.label}</a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
+    </div>
+    <p class="footer-note">
+      本サイトの記事は公式一次情報に基づく説明・試算であり、実機検証を含みません。記事にはプロモーション（PR）を含む場合があり、紹介リンクには「PR」を表示しています。
+    </p>
+    <p class="footer-copy">© {year} {SITE_NAME}</p>
+  </div>
+</footer>

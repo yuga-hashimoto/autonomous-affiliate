@@ -1,0 +1,327 @@
+/*
+ * Typography for long-form content: generated articles and the static pages.
+ * Targets the stable structure the draft engine emits (docs/05 template), and
+ * degrades to sensible defaults for anything else.
+ */
+.prose {
+  font-size: 1rem;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose p {
+  margin: 0 0 1.15rem;
+}
+
+.prose strong {
+  font-weight: 700;
+}
+
+.prose h1 {
+  margin: 0 0 1rem;
+  font-size: clamp(1.5rem, 5.6vw, 2.15rem);
+}
+
+.prose h2 {
+  margin: 2.75rem 0 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: clamp(1.2rem, 4.4vw, 1.45rem);
+}
+
+.prose h2::before {
+  content: "";
+  display: inline-block;
+  width: 0.3rem;
+  height: 1.05em;
+  margin-right: 0.6rem;
+  border-radius: 2px;
+  background: var(--accent);
+  vertical-align: -0.15em;
+}
+
+.prose > h2:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.prose h3 {
+  margin: 2rem 0 0.6rem;
+  font-size: 1.0625rem;
+}
+
+.prose ul,
+.prose ol {
+  margin: 0 0 1.25rem;
+  padding-left: 1.35rem;
+}
+
+.prose li {
+  margin: 0.35rem 0;
+  padding-left: 0.15rem;
+}
+
+.prose li::marker {
+  color: var(--text-muted);
+}
+
+.prose code {
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+
+.prose blockquote {
+  margin: 1.25rem 0;
+  padding: 0.85rem 1rem;
+  border-left: 4px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--accent-soft);
+  font-size: 0.9375rem;
+}
+
+.prose blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.prose hr {
+  margin: 2rem 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* Tag every link that is a paid placement so it is never mistaken for editorial. */
+.prose a[rel~="sponsored"]::after {
+  content: "PR";
+  display: inline-block;
+  margin-left: 0.35em;
+  padding: 0 0.4em;
+  border: 1px solid var(--pr-border);
+  border-radius: 999px;
+  background: var(--pr-bg);
+  color: var(--pr-text);
+  font-size: 0.7em;
+  font-weight: 700;
+  line-height: 1.6;
+  vertical-align: 0.1em;
+}
+
+/* ---------- Comparison tables ---------- */
+.table-scroll {
+  margin: 1.25rem 0 1.5rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  /* Edge shadows appear only on the side that still has content to scroll to. */
+  background:
+    linear-gradient(to right, var(--surface) 30%, transparent) left center / 2.25rem 100% no-repeat local,
+    linear-gradient(to left, var(--surface) 30%, transparent) right center / 2.25rem 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.22), transparent) left center / 0.8rem 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.22), transparent) right center / 0.8rem 100% no-repeat scroll,
+    var(--surface);
+}
+
+.table-scroll:focus-visible {
+  outline-offset: 0;
+}
+
+/* On phones the table uses the full card width, which is often enough to avoid scrolling. */
+@media (max-width: 47.99em) {
+  .paper .table-scroll {
+    margin-inline: calc(var(--paper-pad) * -1);
+    border-inline: 0;
+    border-radius: 0;
+  }
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.prose th,
+.prose td {
+  min-width: 4.5em;
+  padding: 0.75rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose thead th {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.prose tbody tr:last-child td,
+.prose tbody tr:last-child th {
+  border-bottom: 0;
+}
+
+.prose th:first-child,
+.prose td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 6em;
+  background-color: var(--surface);
+  box-shadow: 1px 0 0 var(--border);
+  font-weight: 700;
+}
+
+.prose thead th:first-child {
+  background-color: var(--surface-sunken);
+}
+
+.prose .col-num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.prose td.col-num {
+  font-weight: 600;
+}
+
+.prose td.cell-unknown {
+  background: var(--unknown-bg);
+  color: var(--unknown-text);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Call to action ---------- */
+.prose ul.cta-list {
+  display: grid;
+  gap: 0.85rem;
+  margin: 1.25rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prose .cta-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.prose .cta-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 3.25rem;
+  padding: 0.7rem 1.25rem;
+  border-radius: 999px;
+  background: var(--cta-bg);
+  color: var(--cta-text);
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.prose .cta-link:hover {
+  background: var(--cta-bg-hover);
+  color: var(--cta-text);
+}
+
+.prose a.cta-link::after {
+  content: "↗";
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 1em;
+  vertical-align: baseline;
+}
+
+.prose .cta-item .pr-badge {
+  align-self: flex-start;
+}
+
+.prose .cta-note {
+  margin-top: -0.25rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+@media (min-width: 40em) {
+  .prose .cta-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    column-gap: 1rem;
+  }
+
+  .prose .cta-link {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .prose .cta-item .pr-badge {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: end;
+  }
+
+  .prose .cta-note {
+    grid-column: 2;
+    grid-row: 2;
+    margin: 0;
+    max-width: 14em;
+  }
+}
+
+/* ---------- Sources ---------- */
+.prose ul.source-list {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.prose .source-list li {
+  margin: 0;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.7;
+}
+
+.article-body {
+  margin-top: 1.75rem;
+}
+
+/* ---------- Static pages ---------- */
+.page-prose {
+  max-width: var(--measure);
+  margin: 1.5rem auto 0;
+}

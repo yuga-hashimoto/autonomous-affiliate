@@ -1,0 +1,58 @@
+---
+import { NAV_ITEMS, isCurrent } from "../lib/site-nav";
+import { SITE_NAME } from "../lib/articles";
+
+interface Props {
+  currentPath: string;
+}
+
+const { currentPath } = Astro.props;
+const items = NAV_ITEMS.map((item) => ({ ...item, current: isCurrent(item.href, currentPath) }));
+---
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="/" aria-label={`${SITE_NAME} ホーム`}>
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <rect width="32" height="32" rx="8"></rect>
+        <rect x="8" y="10" width="16" height="3.5" rx="1.75" fill="#fff"></rect>
+        <rect x="8" y="18.5" width="16" height="3.5" rx="1.75" fill="#fff"></rect>
+      </svg>
+      <span>{SITE_NAME}</span>
+    </a>
+
+    <nav class="nav-desktop" aria-label="メインメニュー">
+      <ul>
+        {
+          items.map((item) => (
+            <li>
+              <a class="nav-link" href={item.href} aria-current={item.current ? "page" : undefined}>
+                {item.label}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+
+    <details class="nav-mobile">
+      <summary>
+        <span class="menu-icon" aria-hidden="true"></span>
+        <span>メニュー</span>
+      </summary>
+      <nav aria-label="メインメニュー（スマートフォン）">
+        <ul>
+          {
+            items.map((item) => (
+              <li>
+                <a class="nav-link" href={item.href} aria-current={item.current ? "page" : undefined}>
+                  {item.label}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
+    </details>
+  </div>
+</header>

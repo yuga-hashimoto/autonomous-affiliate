@@ -1,0 +1,164 @@
+---
+import ArticleCard from "./ArticleCard.astro";
+import Pagination from "./Pagination.astro";
+import type { ArticleLike, Page } from "../lib/articles";
+
+interface Props {
+  page: Page<ArticleLike>;
+}
+
+const { page } = Astro.props;
+---
+
+<div class="container">
+  <div class="page-head">
+    <h1>記事一覧</h1>
+    <p>
+      全{page.totalCount}件。公式一次情報に基づく比較・試算を、確認日の新しい順に掲載しています。
+    </p>
+  </div>
+
+  {
+    page.totalCount > 0 && (
+      <form class="search" role="search" data-search hidden>
+        <label class="search-label" for="article-search">
+          記事を探す
+        </label>
+        <input
+          id="article-search"
+          type="search"
+          name="q"
+          placeholder="タイトル・要約のキーワード"
+          autocomplete="off"
+          enterkeyhint="search"
+        />
+        <p class="search-status" role="status" aria-live="polite" data-search-status />
+      </form>
+    )
+  }
+
+  <div data-archive-default>
+    {
+      page.items.length > 0 ? (
+        <ul class="card-list">
+          {page.items.map((article) => (
+            <ArticleCard article={article} />
+          ))}
+        </ul>
+      ) : (
+        <div class="empty-state">
+          <p>公開済みの記事はまだありません。</p>
+        </div>
+      )
+    }
+    <Pagination current={page.page} total={page.totalPages} />
+  </div>
+
+  <ul class="card-list" data-search-results hidden></ul>
+</div>
+
+<script>
+  import { formatDate } from "../lib/articles";
+
+  interface SearchEntry {
+    id: string;
+    title: string;
+    description: string;
+    date: string;
+    pr: boolean;
+  }
+
+  const MAX_RESULTS = 50;
+  const normalize = (value: string): string => value.normalize("NFKC").toLowerCase();
+
+  function renderCard(entry: SearchEntry): HTMLLIElement {
+    const item = document.createElement("li");
+    item.className = "card";
+
+    const meta = document.createElement("p");
+    meta.className = "card-meta";
+    const time = document.createElement("time");
+    time.dateTime = entry.date;
+    time.textContent = `確認日 ${formatDate(entry.date)}`;
+    meta.append(time);
+    if (entry.pr) {
+      const badge = document.createElement("span");
+      badge.className = "pr-badge";
+      badge.textContent = "PR含む";
+      meta.append(badge);
+    }
+
+    const heading = document.createElement("h3");
+    heading.className = "card-title";
+    const link = document.createElement("a");
+    link.className = "card-link";
+    link.href = `/articles/${entry.id}/`;
+    link.textContent = entry.title;
+    heading.append(link);
+
+    const description = document.createElement("p");
+    description.className = "card-desc";
+    description.textContent = entry.description;
+
+    item.append(meta, heading, description);
+    return item;
+  }
+
+  function setup(form: HTMLFormElement): void {
+    const input = form.querySelector<HTMLInputElement>("input");
+    const status = form.querySelector<HTMLElement>("[data-search-status]");
+    const defaults = document.querySelector<HTMLElement>("[data-archive-default]");
+    const results = document.querySelector<HTMLElement>("[data-search-results]");
+    if (!input || !status || !defaults || !results) return;
+
+    form.hidden = false;
+    form.addEventListener("submit", (event) => event.preventDefault());
+
+    let index: Promise<{ entry: SearchEntry; haystack: string }[]> | undefined;
+    const load = () => {
+      index ??= fetch("/search.json")
+        .then((response) => {
+          if (!response.ok) throw new Error(`search index: ${response.status}`);
+          return response.json() as Promise<SearchEntry[]>;
+        })
+        .then((entries) =>
+          entries.map((entry) => ({ entry, haystack: normalize(`${entry.title} ${entry.description}`) })),
+        );
+      return index;
+    };
+
+    const run = async (): Promise<void> => {
+      const terms = normalize(input.value).split(/\s+/).filter(Boolean);
+      if (terms.length === 0) {
+        results.hidden = true;
+        results.replaceChildren();
+        defaults.hidden = false;
+        status.textContent = "";
+        return;
+      }
+      try {
+        const entries = await load();
+        // Ignore a slow response for a query the user has already changed.
+        if (normalize(input.value).split(/\s+/).filter(Boolean).join(" ") !== terms.join(" ")) return;
+        const hits = entries.filter(({ haystack }) => terms.every((term) => haystack.includes(term)));
+        defaults.hidden = true;
+        results.hidden = false;
+        results.replaceChildren(...hits.slice(0, MAX_RESULTS).map(({ entry }) => renderCard(entry)));
+        status.textContent =
+          hits.length === 0
+            ? "一致する記事はありません。別のキーワードをお試しください。"
+            : hits.length > MAX_RESULTS
+              ? `${hits.length}件が一致しました（上位${MAX_RESULTS}件を表示）`
+              : `${hits.length}件が一致しました`;
+      } catch {
+        status.textContent = "検索を読み込めませんでした。時間をおいて再度お試しください。";
+      }
+    };
+
+    input.addEventListener("input", () => void run());
+    input.addEventListener("focus", () => void load().catch(() => undefined), { once: true });
+  }
+
+  const form = document.querySelector<HTMLFormElement>("[data-search]");
+  if (form) setup(form);
+</script>

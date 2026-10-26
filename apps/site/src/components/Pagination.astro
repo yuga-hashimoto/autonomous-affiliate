@@ -1,0 +1,65 @@
+---
+import { archiveHref, pageWindow } from "../lib/articles";
+
+interface Props {
+  current: number;
+  total: number;
+}
+
+const { current, total } = Astro.props;
+const items = pageWindow(current, total);
+---
+
+{
+  total > 1 && (
+    <nav class="pager" aria-label="ページ送り">
+      {current > 1 ? (
+        <a class="pager-btn is-prev" rel="prev" href={archiveHref(current - 1)}>
+          ← 前へ
+        </a>
+      ) : (
+        <span class="pager-btn is-prev is-disabled" aria-hidden="true">
+          ← 前へ
+        </span>
+      )}
+
+      <p class="pager-status">
+        <span class="visually-hidden">現在のページ: </span>
+        {current} / {total}
+      </p>
+
+      <ol class="pager-numbers">
+        {items.map((item) =>
+          item === "…" ? (
+            <li>
+              <span class="pager-gap" aria-hidden="true">
+                …
+              </span>
+            </li>
+          ) : (
+            <li>
+              <a
+                class="pager-number"
+                href={archiveHref(item)}
+                aria-current={item === current ? "page" : undefined}
+                aria-label={`${item}ページ目`}
+              >
+                {item}
+              </a>
+            </li>
+          ),
+        )}
+      </ol>
+
+      {current < total ? (
+        <a class="pager-btn is-next" rel="next" href={archiveHref(current + 1)}>
+          次へ →
+        </a>
+      ) : (
+        <span class="pager-btn is-next is-disabled" aria-hidden="true">
+          次へ →
+        </span>
+      )}
+    </nav>
+  )
+}

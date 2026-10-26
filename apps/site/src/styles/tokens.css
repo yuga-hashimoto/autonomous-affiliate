@@ -1,0 +1,75 @@
+/*
+ * Design tokens. The palette is deliberately genre-neutral (the site's topic
+ * is not fixed yet): one calm blue accent, warm amber reserved for PR/ad
+ * labels so disclosures are always recognisable. All text pairs meet WCAG AA.
+ */
+:root {
+  color-scheme: light dark;
+
+  --font-sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", "BIZ UDPGothic", Meiryo, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Noto Sans Mono CJK JP", monospace;
+
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-sunken: #eef2f7;
+  --text: #17202b;
+  --text-muted: #546275;
+  --border: #d5dce6;
+  --border-strong: #b6c1d1;
+
+  --accent: #1457c8;
+  --accent-hover: #0e46a3;
+  --accent-soft: #e6eefc;
+  --focus: #1457c8;
+
+  --cta-bg: #1457c8;
+  --cta-bg-hover: #0e46a3;
+  --cta-text: #ffffff;
+
+  --pr-bg: #fff2cf;
+  --pr-text: #6b4200;
+  --pr-border: #efce77;
+
+  --unknown-bg: #e9edf3;
+  --unknown-text: #475569;
+
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 1px rgb(15 23 42 / 0.04);
+  --shadow-md: 0 8px 24px rgb(15 23 42 / 0.1);
+
+  --radius: 14px;
+  --radius-sm: 8px;
+  --header-h: 3.5rem;
+  --container: 72rem;
+  --measure: 44rem;
+  --section-gap: clamp(2.5rem, 6vw, 4.5rem);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e131a;
+    --surface: #151b24;
+    --surface-sunken: #1c2430;
+    --text: #e9eef5;
+    --text-muted: #a2aebf;
+    --border: #28323f;
+    --border-strong: #3a4657;
+
+    --accent: #8ab6ff;
+    --accent-hover: #b0cdff;
+    --accent-soft: #172640;
+    --focus: #8ab6ff;
+
+    --cta-bg: #2a64cf;
+    --cta-bg-hover: #3472e0;
+
+    --pr-bg: #3a2d0e;
+    --pr-text: #f5d38a;
+    --pr-border: #6b5316;
+
+    --unknown-bg: #232c39;
+    --unknown-text: #b4bfce;
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 8px 24px rgb(0 0 0 / 0.5);
+  }
+}
