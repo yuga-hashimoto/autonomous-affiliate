@@ -34,6 +34,8 @@ describe("B021/B023 dry-run E2E (source→analysis→draft→QA→preview, no ac
         expect(r.qaStatus).toBe("PASS");
         expect(r.finalState).toBe("PUBLISHED");
         expect(r.published).toBe(true);
+        // diagnostics are only attached to articles that QA blocked
+        expect(r).not.toHaveProperty("qaFailures");
       }
       const files = await readdir(path.join(PREVIEW_DIR, "content/articles"));
       expect(files).toHaveLength(3);

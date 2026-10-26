@@ -57,6 +57,8 @@ export interface PipelineRunResult {
     qaStatus: string;
     published: boolean;
     publishReason?: string;
+    /** Failed QA checks (id + detail); present only for articles QA blocked. */
+    qaFailures?: { id: string; status: string; detail: string }[];
   }[];
   llmCostJpy: number;
 }
@@ -355,6 +357,7 @@ async function runPlans(
       qaStatus: outcome.qaStatus,
       published: outcome.published,
       publishReason: outcome.publishReason,
+      ...(outcome.qaFailures ? { qaFailures: outcome.qaFailures } : {}),
     });
   }
   return results;

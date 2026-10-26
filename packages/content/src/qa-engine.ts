@@ -41,6 +41,12 @@ export class QaEngine {
     facts: Fact[];
     offers: AffiliateOffer[];
     sources?: SourceRecord[];
+    /**
+     * Yen amounts of the article plan that no extracted official fact backs
+     * (see agents/plan-evidence). When provided, any entry fails the article;
+     * when omitted the gate is not evaluated (callers without a plan).
+     */
+    planEvidenceIssues?: string[];
     itemId?: string;
     revisionId?: string;
     now?: Date;
@@ -120,6 +126,19 @@ export class QaEngine {
         ? check("claims_fresh", "PASS", "全主張が鮮度基準内です")
         : check("claims_fresh", "FAIL", `鮮度切れの主張: ${stale.join(", ")}`),
     );
+
+    // 2b. Amounts typed into the plan must be backed by what the official pages say.
+    if (input.planEvidenceIssues !== undefined) {
+      checks.push(
+        input.planEvidenceIssues.length === 0
+          ? check("plan_numbers_match_facts", "PASS", "計画の金額はすべて公式Factで確認できます")
+          : check(
+              "plan_numbers_match_facts",
+              "FAIL",
+              `公式Factで確認できない計画の金額: ${input.planEvidenceIssues.join(" / ")}`,
+            ),
+      );
+    }
 
     // 3. Prices carry formula + assumptions.
     const hasFormula = draft.bodyMarkdown.includes("計算式:") && draft.bodyMarkdown.includes("前提:");
