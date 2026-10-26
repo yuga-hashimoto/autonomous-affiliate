@@ -50,8 +50,9 @@ export class RateLimitedError extends Error {
   constructor(
     public readonly providerId: string,
     public readonly retryAfterMs: number | null,
+    detail?: string,
   ) {
-    super(`llm provider ${providerId} rate limited (HTTP 429)`);
+    super(`llm provider ${providerId} rate limited (HTTP 429)${detail ? `: ${detail}` : ""}`);
     this.name = "RateLimitedError";
   }
 }

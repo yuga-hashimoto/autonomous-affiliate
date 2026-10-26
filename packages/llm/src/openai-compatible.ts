@@ -78,8 +78,15 @@ export class OpenAiCompatibleProvider implements LLMProvider {
     }
     if (response.status === 429) {
       const retryAfterHeader = response.headers.get("retry-after");
-      const retryAfterMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : null;
-      throw new RateLimitedError(this.config.providerId, Number.isNaN(retryAfterMs) ? null : retryAfterMs);
+      const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+      const retryAfterDateMs = retryAfterHeader ? Date.parse(retryAfterHeader) - Date.now() : NaN;
+      const retryAfterMs = Number.isFinite(retryAfterSeconds)
+        ? retryAfterSeconds * 1000
+        : Number.isFinite(retryAfterDateMs)
+          ? Math.max(0, retryAfterDateMs)
+          : null;
+      const detail = (await response.text()).slice(0, 400).replace(/[\r\n]+/g, " ").trim();
+      throw new RateLimitedError(this.config.providerId, retryAfterMs, detail || undefined);
     }
     if (response.status === 401 || response.status === 403) {
       throw new ProviderAuthError(this.config.providerId, `auth failed (HTTP ${response.status})`);
