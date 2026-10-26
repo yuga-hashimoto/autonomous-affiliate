@@ -65,11 +65,12 @@ export class OpenAiCompatibleProvider implements LLMProvider {
         body: JSON.stringify({
           model: this.config.model,
           messages: [
-            ...(request.system ? [{ role: "system", content: request.system }] : []),
-            { role: "user", content: request.prompt },
-          ],
-          response_format: { type: "json_object" },
-        }),
+          ...(request.system ? [{ role: "system", content: request.system }] : []),
+          { role: "user", content: request.prompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: request.limits.maxOutputTokens ?? 2048,
+      }),
       });
     } catch (error) {
       if (signal.aborted) throw new LLMTimeoutError(this.config.providerId);

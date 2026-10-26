@@ -1,0 +1,31 @@
+name: llm-smoke
+
+# Manual, low-token connectivity check only. Does not research, write content,
+# or publish. Expected bill is a tiny JSON response; provider output is capped.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify Z.ai/OpenAI-compatible credentials and pricing
+        run: pnpm tsx apps/worker/src/index.ts llm-smoke
+        env:
+          LLM_PROVIDER: openai-compatible
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_INPUT_COST_JPY_PER_1M: ${{ vars.LLM_INPUT_COST_JPY_PER_1M }}
+          LLM_OUTPUT_COST_JPY_PER_1M: ${{ vars.LLM_OUTPUT_COST_JPY_PER_1M }}

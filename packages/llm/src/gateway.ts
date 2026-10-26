@@ -13,6 +13,8 @@ export interface LLMRequestLimits {
   timeoutMs: number;
   maxCostJpy: number;
   attempts: number;
+  /** Hard output-token ceiling sent to API providers. Defaults to 2048. */
+  maxOutputTokens?: number;
 }
 
 export interface StructuredResult<T> {

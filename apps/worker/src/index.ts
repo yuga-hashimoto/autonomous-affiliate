@@ -141,6 +141,33 @@ function buildLlmFromEnv(env: NodeJS.ProcessEnv): OpenAiCompatibleProvider | Cli
   });
 }
 
+export async function runLlmSmoke(env: NodeJS.ProcessEnv = process.env): Promise<{
+  providerId: string;
+  modelId: string;
+  costJpy: number;
+  output: { ok: true };
+}> {
+  const provider = buildLlmFromEnv(env);
+  if (!provider) {
+    throw new Error("LLM provider configuration is incomplete; check LLM_* variables/secrets");
+  }
+  const ledger = new BudgetLedger(100, 85);
+  const gateway = createGateway({ primary: provider }, ledger);
+  const result = await gateway.generateStructured({
+    task: "smoke-test",
+    system: "Return only the requested JSON object. No extra text.",
+    input: { request: "Return { ok: true } as JSON." },
+    schema: z.object({ ok: z.literal(true) }),
+    limits: { timeoutMs: 45_000, maxCostJpy: 100, attempts: 1, maxOutputTokens: 128 },
+  });
+  return {
+    providerId: result.usage.providerId,
+    modelId: result.usage.modelId,
+    costJpy: result.usage.costJpy,
+    output: result.output,
+  };
+}
+
 function assertLiveReadiness(policy: PolicyConfig, env: NodeJS.ProcessEnv): void {
   if (policy.mode !== "live") {
     throw new Error("live run refused: policy mode is not 'live'");
@@ -519,6 +546,8 @@ if (isMain()) {
     } else if (command === "check-robots") {
       if (!arg) throw new Error("usage: check-robots <page-url>");
       process.stdout.write(`${JSON.stringify(await runCheckRobots(arg), null, 2)}\n`);
+    } else if (command === "llm-smoke") {
+      process.stdout.write(`${JSON.stringify(await runLlmSmoke(options.env ?? process.env), null, 2)}\n`);
     } else if (command === "refresh") {
       process.stdout.write(`${JSON.stringify(await runRefresh(options), null, 2)}\n`);
     } else if (command === "growth") {
