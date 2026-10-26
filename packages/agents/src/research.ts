@@ -112,23 +112,35 @@ export class LlmFactExtractor implements FactExtractor {
 }
 
 
-const LLM_FACT_SCHEMA = z.object({
-  facts: z.array(
-    z.object({
-      text: z.string().min(1),
-      claimType: z.enum([
-        "price",
-        "contract_term",
-        "feature",
-        "coverage_area",
-        "cancellation",
-        "reward",
-        "terms",
-        "other",
-      ]),
-    }),
-  ),
-});
+const CLAIM_TYPES = [
+  "price",
+  "contract_term",
+  "feature",
+  "coverage_area",
+  "cancellation",
+  "reward",
+  "terms",
+  "other",
+] as const;
+
+const LLM_FACT_ITEM = z.object({ text: z.string().trim().min(1), claimType: z.string().optional() });
+
+/**
+ * A page yields dozens of facts; one malformed or oddly-typed entry must not
+ * discard the rest. Entries without text are dropped, an unknown type becomes
+ * "other" (only "price" facts can back a price claim, so this can only lose
+ * evidence, never invent it), and a response that is not {facts: [...]} still fails.
+ */
+const LLM_FACT_SCHEMA = z.object({ facts: z.array(z.unknown()) }).transform(({ facts }): LlmFactOutput => ({
+  facts: facts.flatMap((entry) => {
+    const parsed = LLM_FACT_ITEM.safeParse(entry);
+    if (!parsed.success) return [];
+    const claimType = (CLAIM_TYPES as readonly string[]).includes(parsed.data.claimType ?? "")
+      ? (parsed.data.claimType as Fact["claimType"])
+      : "other";
+    return [{ text: parsed.data.text, claimType }];
+  }),
+}));
 
 export interface ResearchedFact extends Fact {
   sourceId: string;

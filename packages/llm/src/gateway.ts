@@ -87,12 +87,22 @@ export class BudgetExceededError extends Error {
   }
 }
 
+const ISSUES_IN_MESSAGE = 3;
+const TASK_LABEL_CHARS = 80;
+
 export class SchemaValidationError extends Error {
   constructor(
     task: string,
     public readonly issues: z.ZodIssue[],
   ) {
-    super(`llm output failed schema validation for task ${task}`);
+    // The task is the whole prompt; name it by its first line and say which fields failed.
+    const label = (task.split("\n")[0] ?? "").slice(0, TASK_LABEL_CHARS);
+    const shown = issues
+      .slice(0, ISSUES_IN_MESSAGE)
+      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+      .join("; ");
+    const more = issues.length > ISSUES_IN_MESSAGE ? ` (+${issues.length - ISSUES_IN_MESSAGE} more)` : "";
+    super(`llm output failed schema validation for task "${label}": ${shown}${more}`);
     this.name = "SchemaValidationError";
   }
 }
@@ -114,7 +124,8 @@ export interface LLMGateway {
     task: string;
     system?: string;
     input: Record<string, unknown>;
-    schema: z.ZodType<T>;
+    /** Input is unknown so a schema may normalise loosely-typed model output (transform, catch). */
+    schema: z.ZodType<T, z.ZodTypeDef, unknown>;
     limits: LLMRequestLimits;
   }): Promise<StructuredResult<T>>;
 }

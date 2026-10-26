@@ -123,4 +123,26 @@ describe("B005 LLM gateway + budget ledger", () => {
     ).rejects.toBeInstanceOf(SchemaValidationError);
     expect(ledger.spentJpy).toBe(0);
   });
+
+  it("names the failing field in the error and does not echo the whole prompt", async () => {
+    const longTask = `Extract facts\n${"very long instructions ".repeat(100)}`;
+    const primary = new MockProvider("p", "m", [mockJson({ answer: 42 })]);
+    const gateway = createGateway({ primary }, new BudgetLedger(30000, 85));
+    const error = await gateway
+      .generateStructured({ task: longTask, input: {}, schema, limits: limits({ attempts: 1 }) })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SchemaValidationError);
+    const message = (error as Error).message;
+    expect(message).toContain("Extract facts");
+    expect(message).toContain("answer");
+    expect(message.length).toBeLessThan(300);
+  });
+
+  it("accepts a schema that normalises loosely-typed model output", async () => {
+    const lenient = z.object({ n: z.string() }).transform((value) => ({ n: Number(value.n) }));
+    const primary = new MockProvider("p", "m", [mockJson({ n: "5" })]);
+    const gateway = createGateway({ primary }, new BudgetLedger(30000, 85));
+    const result = await gateway.generateStructured({ task: "t", input: {}, schema: lenient, limits: limits() });
+    expect(result.output.n).toBe(5);
+  });
 });

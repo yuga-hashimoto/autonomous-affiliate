@@ -139,7 +139,7 @@ export function createGateway(options: GatewayOptions, ledger: BudgetLedger): LL
       task: string;
       system?: string;
       input: Record<string, unknown>;
-      schema: z.ZodType<T>;
+      schema: z.ZodType<T, z.ZodTypeDef, unknown>;
       limits: LLMRequestLimits;
     }): Promise<StructuredResult<T>> {
       const { task, system, input, schema, limits } = request;
