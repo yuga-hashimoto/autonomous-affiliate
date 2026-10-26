@@ -1,75 +1,97 @@
 /*
- * Design tokens. The palette is deliberately genre-neutral (the site's topic
- * is not fixed yet): one calm blue accent, warm amber reserved for PR/ad
- * labels so disclosures are always recognisable. All text pairs meet WCAG AA.
+ * Design tokens. Modelled on long-running Japanese comparison media: a white
+ * page, flat panels, ruled tables and one deep-green brand colour. The
+ * burnt-orange button is reserved for the outbound CTA and amber for PR
+ * labels, so a disclosure or a paid link is always recognisable. Radii stay
+ * at 2-4px and there are no glows or large shadows; hierarchy comes from
+ * rules and tinted bands. All text pairs meet WCAG AA.
  */
 :root {
   color-scheme: light dark;
 
-  --font-sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", "BIZ UDPGothic", Meiryo, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", "BIZ UDPGothic", Meiryo, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Noto Sans Mono CJK JP", monospace;
 
-  --bg: #f4f6f9;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --surface-sunken: #eef2f7;
-  --text: #17202b;
-  --text-muted: #546275;
-  --border: #d5dce6;
-  --border-strong: #b6c1d1;
+  --surface-sunken: #f3f5f3;
+  --zebra: #f8faf8;
+  --text: #222222;
+  --text-muted: #5c6360;
+  --border: #d9ddda;
+  --border-strong: #aab2ad;
 
-  --accent: #1457c8;
-  --accent-hover: #0e46a3;
-  --accent-soft: #e6eefc;
-  --focus: #1457c8;
+  /* brand: --brand is the text/line colour, --brand-solid a fill that carries white text */
+  --brand: #17604b;
+  --brand-solid: #17604b;
+  --on-brand: #ffffff;
+  --brand-tint: #e8f1ed;
 
-  --cta-bg: #1457c8;
-  --cta-bg-hover: #0e46a3;
+  --link: #1a5fb4;
+  --link-hover: #124585;
+  --focus: #1a5fb4;
+
+  --cta-bg: #c2570a;
+  --cta-bg-hover: #a64a08;
+  --cta-edge: #7f3905;
   --cta-text: #ffffff;
 
-  --pr-bg: #fff2cf;
+  --pr-bg: #fff4d6;
   --pr-text: #6b4200;
-  --pr-border: #efce77;
+  --pr-border: #dfbd62;
 
-  --unknown-bg: #e9edf3;
-  --unknown-text: #475569;
+  --mark: rgb(255 213 79 / 0.55);
 
-  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 1px rgb(15 23 42 / 0.04);
-  --shadow-md: 0 8px 24px rgb(15 23 42 / 0.1);
+  --unknown-bg: #ececec;
+  --unknown-text: #4f5552;
 
-  --radius: 14px;
-  --radius-sm: 8px;
+  --footer-bg: #29302d;
+  --footer-text: #d5dbd8;
+  --footer-muted: #a9b2ae;
+
+  --shadow-header: 0 1px 4px rgb(0 0 0 / 0.12);
+
+  --radius: 4px;
+  --radius-sm: 2px;
   --header-h: 3.5rem;
-  --container: 72rem;
-  --measure: 44rem;
-  --section-gap: clamp(2.5rem, 6vw, 4.5rem);
+  --container: 68.75rem;
+  --side: 18.75rem;
+  --section-gap: 2.5rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0e131a;
-    --surface: #151b24;
-    --surface-sunken: #1c2430;
-    --text: #e9eef5;
-    --text-muted: #a2aebf;
-    --border: #28323f;
-    --border-strong: #3a4657;
+    --bg: #16191a;
+    --surface: #16191a;
+    --surface-sunken: #1e2322;
+    --zebra: #1a1f1e;
+    --text: #e3e7e5;
+    --text-muted: #a2aba7;
+    --border: #333b39;
+    --border-strong: #4b5552;
 
-    --accent: #8ab6ff;
-    --accent-hover: #b0cdff;
-    --accent-soft: #172640;
-    --focus: #8ab6ff;
+    --brand: #67c6a3;
+    --brand-solid: #1d6b55;
+    --on-brand: #ffffff;
+    --brand-tint: #1d2b26;
 
-    --cta-bg: #2a64cf;
-    --cta-bg-hover: #3472e0;
+    --link: #8db8f5;
+    --link-hover: #b6d2fa;
+    --focus: #8db8f5;
 
     --pr-bg: #3a2d0e;
     --pr-text: #f5d38a;
     --pr-border: #6b5316;
 
-    --unknown-bg: #232c39;
-    --unknown-text: #b4bfce;
+    --mark: rgb(255 213 79 / 0.3);
 
-    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
-    --shadow-md: 0 8px 24px rgb(0 0 0 / 0.5);
+    --unknown-bg: #262c2b;
+    --unknown-text: #b4bdb9;
+
+    --footer-bg: #0f1213;
+    --footer-text: #c9d0cd;
+    --footer-muted: #8f9995;
+
+    --shadow-header: 0 1px 4px rgb(0 0 0 / 0.5);
   }
 }

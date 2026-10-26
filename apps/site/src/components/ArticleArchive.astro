@@ -1,6 +1,8 @@
 ---
 import ArticleCard from "./ArticleCard.astro";
+import Breadcrumb from "./Breadcrumb.astro";
 import Pagination from "./Pagination.astro";
+import SideInfo from "./SideInfo.astro";
 import type { ArticleLike, Page } from "../lib/articles";
 
 interface Props {
@@ -11,50 +13,57 @@ const { page } = Astro.props;
 ---
 
 <div class="container">
-  <div class="page-head">
-    <h1>記事一覧</h1>
-    <p>
-      全{page.totalCount}件。公式一次情報に基づく比較・試算を、確認日の新しい順に掲載しています。
-    </p>
+  <Breadcrumb items={[{ label: "ホーム", href: "/" }, { label: "記事一覧" }]} />
+  <div class="page-cols">
+    <div class="page-main">
+      <div class="page-head">
+        <h1>記事一覧</h1>
+        <p>全{page.totalCount}件。公式一次情報に基づく比較・試算を、確認日の新しい順に掲載しています。</p>
+      </div>
+
+      {
+        page.totalCount > 0 && (
+          <form class="search" role="search" data-search hidden>
+            <label class="search-label" for="article-search">
+              記事を探す
+            </label>
+            <input
+              id="article-search"
+              type="search"
+              name="q"
+              placeholder="タイトル・要約のキーワード"
+              autocomplete="off"
+              enterkeyhint="search"
+            />
+            <p class="search-status" role="status" aria-live="polite" data-search-status />
+          </form>
+        )
+      }
+
+      <div data-archive-default>
+        {
+          page.items.length > 0 ? (
+            <ul class="card-list">
+              {page.items.map((article) => (
+                <ArticleCard article={article} />
+              ))}
+            </ul>
+          ) : (
+            <div class="empty-state">
+              <p>公開済みの記事はまだありません。</p>
+            </div>
+          )
+        }
+        <Pagination current={page.page} total={page.totalPages} />
+      </div>
+
+      <ul class="card-list" data-search-results hidden></ul>
+    </div>
+
+    <div class="page-side">
+      <SideInfo currentPath="/articles/" />
+    </div>
   </div>
-
-  {
-    page.totalCount > 0 && (
-      <form class="search" role="search" data-search hidden>
-        <label class="search-label" for="article-search">
-          記事を探す
-        </label>
-        <input
-          id="article-search"
-          type="search"
-          name="q"
-          placeholder="タイトル・要約のキーワード"
-          autocomplete="off"
-          enterkeyhint="search"
-        />
-        <p class="search-status" role="status" aria-live="polite" data-search-status />
-      </form>
-    )
-  }
-
-  <div data-archive-default>
-    {
-      page.items.length > 0 ? (
-        <ul class="card-list">
-          {page.items.map((article) => (
-            <ArticleCard article={article} />
-          ))}
-        </ul>
-      ) : (
-        <div class="empty-state">
-          <p>公開済みの記事はまだありません。</p>
-        </div>
-      )
-    }
-    <Pagination current={page.page} total={page.totalPages} />
-  </div>
-
-  <ul class="card-list" data-search-results hidden></ul>
 </div>
 
 <script>

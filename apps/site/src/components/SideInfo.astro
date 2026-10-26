@@ -1,0 +1,36 @@
+---
+import { NAV_ITEMS, isCurrent } from "../lib/site-nav";
+
+interface Props {
+  currentPath: string;
+}
+
+const { currentPath } = Astro.props;
+/** The archive has its own header entry; the side box lists the "about the site" pages. */
+const items = NAV_ITEMS.filter((item) => item.href !== "/articles/").map((item) => ({
+  ...item,
+  current: isCurrent(item.href, currentPath),
+}));
+---
+
+<nav class="side-box" aria-labelledby="side-info-title">
+  <h2 id="side-info-title">サイト情報</h2>
+  <ul class="side-links">
+    {
+      items.map((item) => (
+        <li>
+          <a href={item.href} aria-current={item.current ? "page" : undefined}>
+            {item.label}
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</nav>
+
+<aside class="side-box" aria-labelledby="side-ad-title">
+  <h2 id="side-ad-title">広告について</h2>
+  <p class="side-text">
+    記事にはプロモーション（PR）を含む場合があります。紹介リンクには「PR」を表示しています。
+  </p>
+</aside>

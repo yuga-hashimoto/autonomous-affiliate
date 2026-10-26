@@ -1,17 +1,17 @@
 ---
 import { FOOTER_ITEMS } from "../lib/site-nav";
-import { SITE_NAME } from "../lib/articles";
+import { SITE_NAME, SITE_TAGLINE } from "../lib/articles";
 
 const year = new Date().getFullYear();
 ---
 
 <footer class="site-footer">
   <div class="container">
-    <div class="footer-grid">
-      <div class="footer-brand">
-        <a class="brand" href="/">{SITE_NAME}</a>
-        <p>公式の料金・条件を同じ物差しにそろえて比較する情報サイトです。</p>
-      </div>
+    <div class="footer-top">
+      <a class="brand" href="/" aria-label={`${SITE_NAME} ホーム`}>
+        <span class="brand-name">{SITE_NAME}</span>
+        <span class="brand-tag">{SITE_TAGLINE}</span>
+      </a>
       <nav aria-label="フッターメニュー">
         <ul class="footer-links">
           {

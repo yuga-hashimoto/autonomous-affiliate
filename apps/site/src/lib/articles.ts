@@ -5,6 +5,7 @@
  */
 
 export const SITE_NAME = "総額比較";
+export const SITE_TAGLINE = "公式の料金を同じ条件で比べるサイト";
 /** Archive page size: small enough for a phone, large enough to keep page counts low. */
 export const ARTICLES_PER_PAGE = 12;
 const RELATED_DEFAULT_LIMIT = 3;
