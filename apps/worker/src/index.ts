@@ -152,13 +152,13 @@ export async function runLlmSmoke(env: NodeJS.ProcessEnv = process.env): Promise
     throw new Error("LLM provider configuration is incomplete; check LLM_* variables/secrets");
   }
   const ledger = new BudgetLedger(100, 85);
-  const gateway = createGateway({ primary: provider }, ledger);
+  const gateway = createGateway({ primary: provider, backoffBaseMs: 1_500 }, ledger);
   const result = await gateway.generateStructured({
     task: "smoke-test",
     system: "Return only the requested JSON object. No extra text.",
     input: { request: "Return { ok: true } as JSON." },
     schema: z.object({ ok: z.literal(true) }),
-    limits: { timeoutMs: 45_000, maxCostJpy: 100, attempts: 1, maxOutputTokens: 128 },
+    limits: { timeoutMs: 45_000, maxCostJpy: 100, attempts: 3, maxOutputTokens: 128 },
   });
   return {
     providerId: result.usage.providerId,
