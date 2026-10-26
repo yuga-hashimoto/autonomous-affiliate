@@ -1,4 +1,4 @@
-/* Reset + page-level defaults. Mobile first: 16px base, 17px from tablet up. */
+/* Reset + page-level defaults. Mobile first, 16px base on every viewport. */
 *,
 *::before,
 *::after {
@@ -12,13 +12,7 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  scroll-padding-top: calc(var(--header-h) + 1rem);
-}
-
-@media (min-width: 48em) {
-  html {
-    font-size: 106.25%;
-  }
+  scroll-padding-top: calc(var(--header-h) + 1.5rem);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -45,7 +39,7 @@ body {
   color: var(--text);
   font-family: var(--font-sans);
   font-size: 1rem;
-  line-height: 1.85;
+  line-height: 1.8;
   -webkit-font-smoothing: antialiased;
   font-kerning: normal;
 }
@@ -58,10 +52,8 @@ h1,
 h2,
 h3,
 h4 {
-  line-height: 1.4;
-  text-wrap: balance;
+  line-height: 1.45;
   word-break: auto-phrase;
-  font-feature-settings: "palt";
 }
 
 p {
@@ -74,19 +66,17 @@ svg {
 }
 
 a {
-  color: var(--accent);
-  text-underline-offset: 0.2em;
-  text-decoration-thickness: 0.08em;
+  color: var(--link);
+  text-underline-offset: 0.18em;
 }
 
 a:hover {
-  color: var(--accent-hover);
+  color: var(--link-hover);
 }
 
 :focus-visible {
-  outline: 3px solid var(--focus);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
-  border-radius: 4px;
 }
 
 .skip-link {
@@ -97,8 +87,7 @@ a:hover {
   padding: 0.75rem 1rem;
   background: var(--surface);
   color: var(--text);
-  border: 2px solid var(--accent);
-  border-radius: var(--radius-sm);
+  border: 2px solid var(--brand);
   font-weight: 700;
 }
 
@@ -116,8 +105,8 @@ a:hover {
 
 @media (min-width: 48em) {
   .container {
-    padding-left: max(1.5rem, env(safe-area-inset-left));
-    padding-right: max(1.5rem, env(safe-area-inset-right));
+    padding-left: max(1.25rem, env(safe-area-inset-left));
+    padding-right: max(1.25rem, env(safe-area-inset-right));
   }
 }
 

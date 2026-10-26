@@ -14,64 +14,61 @@
 }
 
 .prose p {
-  margin: 0 0 1.15rem;
+  margin: 0 0 1.2rem;
 }
 
+/* Marker-pen emphasis, as used across Japanese comparison blogs. */
 .prose strong {
+  background: linear-gradient(transparent 62%, var(--mark) 62%);
   font-weight: 700;
 }
 
 .prose h1 {
   margin: 0 0 1rem;
-  font-size: clamp(1.5rem, 5.6vw, 2.15rem);
+  font-size: clamp(1.375rem, 5.4vw, 1.875rem);
 }
 
+/* h2: tinted band with a heavy rule on the left. */
 .prose h2 {
-  margin: 2.75rem 0 1rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border);
-  font-size: clamp(1.2rem, 4.4vw, 1.45rem);
-}
-
-.prose h2::before {
-  content: "";
-  display: inline-block;
-  width: 0.3rem;
-  height: 1.05em;
-  margin-right: 0.6rem;
-  border-radius: 2px;
-  background: var(--accent);
-  vertical-align: -0.15em;
-}
-
-.prose > h2:first-child {
-  padding-top: 0;
-  border-top: 0;
+  margin: 3rem 0 1.25rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--brand-tint);
+  border-left: 6px solid var(--brand-solid);
+  font-size: clamp(1.125rem, 4.2vw, 1.3125rem);
+  font-weight: 800;
 }
 
 .prose h3 {
-  margin: 2rem 0 0.6rem;
+  margin: 2.25rem 0 0.9rem;
+  padding: 0 0 0.35rem;
+  border-bottom: 2px solid var(--border-strong);
   font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.prose h4 {
+  margin: 1.75rem 0 0.6rem;
+  font-size: 1rem;
 }
 
 .prose ul,
 .prose ol {
-  margin: 0 0 1.25rem;
-  padding-left: 1.35rem;
+  margin: 0 0 1.3rem;
+  padding-left: 1.4rem;
 }
 
 .prose li {
-  margin: 0.35rem 0;
-  padding-left: 0.15rem;
+  margin: 0.3rem 0;
+  padding-left: 0.1rem;
 }
 
 .prose li::marker {
-  color: var(--text-muted);
+  color: var(--brand);
 }
 
 .prose code {
-  padding: 0.15em 0.4em;
-  border-radius: 6px;
+  padding: 0.1em 0.35em;
+  border-radius: var(--radius-sm);
   background: var(--surface-sunken);
   font-family: var(--font-mono);
   font-size: 0.85em;
@@ -79,11 +76,11 @@
 }
 
 .prose blockquote {
-  margin: 1.25rem 0;
-  padding: 0.85rem 1rem;
-  border-left: 4px solid var(--accent);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: var(--accent-soft);
+  margin: 1.4rem 0;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border-strong);
+  background: var(--surface-sunken);
   font-size: 0.9375rem;
 }
 
@@ -102,9 +99,9 @@
   content: "PR";
   display: inline-block;
   margin-left: 0.35em;
-  padding: 0 0.4em;
+  padding: 0 0.35em;
   border: 1px solid var(--pr-border);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--pr-bg);
   color: var(--pr-text);
   font-size: 0.7em;
@@ -113,20 +110,18 @@
   vertical-align: 0.1em;
 }
 
-/* ---------- Comparison tables ---------- */
+/* ---------- Comparison tables (ruled grid) ---------- */
 .table-scroll {
   margin: 1.25rem 0 1.5rem;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
   /* Edge shadows appear only on the side that still has content to scroll to. */
   background:
-    linear-gradient(to right, var(--surface) 30%, transparent) left center / 2.25rem 100% no-repeat local,
-    linear-gradient(to left, var(--surface) 30%, transparent) right center / 2.25rem 100% no-repeat local,
-    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.22), transparent) left center / 0.8rem 100% no-repeat scroll,
-    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.22), transparent) right center / 0.8rem 100% no-repeat scroll,
+    linear-gradient(to right, var(--surface) 30%, transparent) left center / 2rem 100% no-repeat local,
+    linear-gradient(to left, var(--surface) 30%, transparent) right center / 2rem 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.2), transparent) left center / 0.7rem 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.2), transparent) right center / 0.7rem 100% no-repeat scroll,
     var(--surface);
 }
 
@@ -134,43 +129,44 @@
   outline-offset: 0;
 }
 
-/* On phones the table uses the full card width, which is often enough to avoid scrolling. */
-@media (max-width: 47.99em) {
-  .paper .table-scroll {
-    margin-inline: calc(var(--paper-pad) * -1);
-    border-inline: 0;
-    border-radius: 0;
-  }
-}
-
 .prose table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 0.9375rem;
-  line-height: 1.6;
+  border-top: 1px solid var(--border-strong);
+  border-left: 1px solid var(--border-strong);
+  font-size: 0.875rem;
+  line-height: 1.65;
 }
 
 .prose th,
 .prose td {
   min-width: 4.5em;
-  padding: 0.75rem 0.65rem;
-  border-bottom: 1px solid var(--border);
+  padding: 0.55rem 0.65rem;
+  border-right: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
   text-align: left;
   vertical-align: top;
 }
 
 .prose thead th {
-  background: var(--surface-sunken);
-  color: var(--text-muted);
+  background: var(--brand-tint);
+  color: var(--text);
   font-size: 0.8125rem;
   font-weight: 700;
   white-space: nowrap;
 }
 
-.prose tbody tr:last-child td,
-.prose tbody tr:last-child th {
-  border-bottom: 0;
+.prose tbody tr {
+  background: var(--surface);
+}
+
+.prose tbody tr:nth-child(even) {
+  background: var(--zebra);
+}
+
+.prose tbody td {
+  background: inherit;
 }
 
 .prose th:first-child,
@@ -179,13 +175,17 @@
   left: 0;
   z-index: 1;
   min-width: 6em;
-  background-color: var(--surface);
-  box-shadow: 1px 0 0 var(--border);
+  background-color: inherit;
   font-weight: 700;
 }
 
 .prose thead th:first-child {
-  background-color: var(--surface-sunken);
+  background-color: var(--brand-tint);
+}
+
+.prose tbody th {
+  background: inherit;
+  font-weight: 700;
 }
 
 .prose .col-num {
@@ -201,7 +201,7 @@
 .prose td.cell-unknown {
   background: var(--unknown-bg);
   color: var(--unknown-text);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -209,36 +209,51 @@
 /* ---------- Call to action ---------- */
 .prose ul.cta-list {
   display: grid;
-  gap: 0.85rem;
-  margin: 1.25rem 0;
+  gap: 0.9rem;
+  margin: 1.4rem 0;
   padding: 0;
   list-style: none;
 }
 
 .prose .cta-item {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.6rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "badge note"
+    "link link";
+  align-items: center;
+  gap: 0.6rem 0.6rem;
   margin: 0;
-  padding: 1rem;
-  border: 1px solid var(--border);
+  padding: 0.85rem 0.9rem 1rem;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface-sunken);
 }
 
+.prose .cta-item .pr-badge {
+  grid-area: badge;
+}
+
+.prose .cta-note {
+  grid-area: note;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
 .prose .cta-link {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  min-height: 3.25rem;
-  padding: 0.7rem 1.25rem;
-  border-radius: 999px;
+  grid-area: link;
+  position: relative;
+  justify-self: center;
+  width: min(100%, 26rem);
+  padding: 0.85rem 2.4rem 0.8rem 1.2rem;
+  border-bottom: 4px solid var(--cta-edge);
+  border-radius: var(--radius);
   background: var(--cta-bg);
   color: var(--cta-text);
-  font-weight: 700;
-  line-height: 1.4;
+  font-size: 1.0625rem;
+  font-weight: 800;
+  line-height: 1.45;
   text-align: center;
   text-decoration: none;
   overflow-wrap: anywhere;
@@ -249,79 +264,45 @@
   color: var(--cta-text);
 }
 
+.prose .cta-link:active {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
+  padding-bottom: 0.9rem;
+}
+
 .prose a.cta-link::after {
-  content: "↗";
+  content: "›";
+  position: absolute;
+  right: 1rem;
+  top: 50%;
   margin: 0;
   padding: 0;
   border: 0;
   background: none;
   color: inherit;
-  font-size: 1em;
-  vertical-align: baseline;
-}
-
-.prose .cta-item .pr-badge {
-  align-self: flex-start;
-}
-
-.prose .cta-note {
-  margin-top: -0.25rem;
-  color: var(--text-muted);
-  font-size: 0.8125rem;
-  line-height: 1.6;
-}
-
-@media (min-width: 40em) {
-  .prose .cta-item {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: center;
-    column-gap: 1rem;
-  }
-
-  .prose .cta-link {
-    grid-column: 1;
-    grid-row: 1 / span 2;
-  }
-
-  .prose .cta-item .pr-badge {
-    grid-column: 2;
-    grid-row: 1;
-    align-self: end;
-  }
-
-  .prose .cta-note {
-    grid-column: 2;
-    grid-row: 2;
-    margin: 0;
-    max-width: 14em;
-  }
+  font-size: 1.5em;
+  line-height: 1;
+  transform: translateY(-55%);
 }
 
 /* ---------- Sources ---------- */
 .prose ul.source-list {
-  display: grid;
-  gap: 0.5rem;
-  padding: 0;
-  list-style: none;
+  margin: 0 0 1.3rem;
+  padding-left: 1.2rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.8;
 }
 
 .prose .source-list li {
-  margin: 0;
-  padding: 0.7rem 0.85rem;
-  border-radius: var(--radius-sm);
-  background: var(--surface-sunken);
-  color: var(--text-muted);
-  font-size: 0.8125rem;
-  line-height: 1.7;
+  margin: 0.25rem 0;
 }
 
 .article-body {
-  margin-top: 1.75rem;
+  margin-top: 1.5rem;
 }
 
 /* ---------- Static pages ---------- */
 .page-prose {
-  max-width: var(--measure);
-  margin: 1.5rem auto 0;
+  max-width: 46rem;
 }

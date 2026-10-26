@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from "astro:content";
 import ArticleCard from "../../components/ArticleCard.astro";
+import Breadcrumb from "../../components/Breadcrumb.astro";
 import Toc from "../../components/Toc.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { SITE_NAME, formatDate, isoDate, readingMinutes, relatedArticles } from "../../lib/articles";
@@ -49,15 +50,9 @@ const jsonLd = {
 
 <BaseLayout title={title} description={description} path={path} ogType="article" jsonLd={jsonLd}>
   <div class="container">
-    <nav class="breadcrumb" aria-label="パンくずリスト">
-      <ol>
-        <li><a href="/">ホーム</a></li>
-        <li><a href="/articles/">記事一覧</a></li>
-        <li aria-current="page">{title}</li>
-      </ol>
-    </nav>
+    <Breadcrumb items={[{ label: "ホーム", href: "/" }, { label: "記事一覧", href: "/articles/" }, { label: title }]} />
 
-    <div class="article-layout">
+    <div class="page-cols">
       <article class="paper">
         <header class="article-header">
           <h1>{title}</h1>
@@ -98,9 +93,9 @@ const jsonLd = {
           <h2 class="section-title" id="related-heading">
             あわせて読みたい記事
           </h2>
-          <ul class="card-grid">
+          <ul class="card-list">
             {related.map((item) => (
-              <ArticleCard article={item} showMore />
+              <ArticleCard article={item} />
             ))}
           </ul>
         </section>

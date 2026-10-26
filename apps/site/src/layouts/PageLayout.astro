@@ -1,4 +1,6 @@
 ---
+import Breadcrumb from "../components/Breadcrumb.astro";
+import SideInfo from "../components/SideInfo.astro";
 import BaseLayout from "./BaseLayout.astro";
 
 interface Props {
@@ -11,9 +13,19 @@ const { title, description } = Astro.props;
 
 <BaseLayout title={title} description={description}>
   <div class="container">
-    <article class="paper prose page-prose">
-      <h1>{title}</h1>
-      <slot />
-    </article>
+    <Breadcrumb items={[{ label: "ホーム", href: "/" }, { label: title }]} />
+    <div class="page-cols">
+      <article class="page-main">
+        <div class="page-head">
+          <h1>{title}</h1>
+        </div>
+        <div class="prose page-prose">
+          <slot />
+        </div>
+      </article>
+      <div class="page-side">
+        <SideInfo currentPath={Astro.url.pathname} />
+      </div>
+    </div>
   </div>
 </BaseLayout>

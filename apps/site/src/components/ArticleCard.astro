@@ -3,11 +3,9 @@ import { formatDate, isoDate, type ArticleLike } from "../lib/articles";
 
 interface Props {
   article: ArticleLike;
-  /** Home cards add a "read" affordance; archive rows stay compact. */
-  showMore?: boolean;
 }
 
-const { article, showMore = false } = Astro.props;
+const { article } = Astro.props;
 const { title, description, pubDate, offerIds } = article.data;
 ---
 
@@ -20,5 +18,4 @@ const { title, description, pubDate, offerIds } = article.data;
     <a class="card-link" href={`/articles/${article.id}/`}>{title}</a>
   </h3>
   <p class="card-desc">{description}</p>
-  {showMore && <span class="card-more" aria-hidden="true">記事を読む →</span>}
 </li>
