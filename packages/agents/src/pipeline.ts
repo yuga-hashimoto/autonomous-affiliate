@@ -7,6 +7,7 @@ import {
   type ContentState,
   type Logger,
   type PolicyConfig,
+  type QaCheck,
   type QualityDecision,
 } from "@aff/domain";
 import type { Repository } from "@aff/db";
@@ -27,6 +28,7 @@ import {
   type Fetcher,
 } from "@aff/integrations";
 import { PublisherAgent, type PublishArtifact, type PublishTarget, type PublisherIO } from "./publisher.js";
+import { checkPlanEvidence, type DerivedAmount } from "./plan-evidence.js";
 import { toFact, type FactExtractor } from "./research.js";
 
 export type VerticalCalculatorKey = "sim" | "fiber" | "water";
@@ -39,6 +41,12 @@ export interface CalculatorEntry {
   conditions?: Record<string, string | number>;
   /** One or more service-name fragments that must match extracted official price Facts. */
   factEvidenceTerms?: string[];
+  /**
+   * Yen inputs built from page amounts, keyed by the input path (for example
+   * "waterChargeJpy"). QA checks each component against the extracted facts and
+   * that the components add up to the input value.
+   */
+  derivedAmounts?: Record<string, DerivedAmount[]>;
 }
 
 export interface ArticlePlan {
@@ -78,6 +86,8 @@ export interface PipelineResult {
   qaStatus: QualityDecision["status"];
   published: boolean;
   publishReason?: string;
+  /** Checks that did not pass, present only when QA blocked the article. */
+  qaFailures?: QaCheck[];
   reasons: string[];
 }
 
@@ -221,13 +231,19 @@ export async function runArticlePipeline(
     let repairAttempts = 0;
     while (true) {
       const draft = await buildDraftFor(plan, repo, clock);
+      const freshness = createFreshnessPolicy(policy);
       const qa = new QaEngine(policy, {
-        freshness: createFreshnessPolicy(policy),
+        freshness,
         existingContentHashes: await existingHashes(repo, plan.slug),
       });
+      const allFacts = await repo.facts.listAll();
       decision = qa.evaluate({
         draft,
-        facts: await repo.facts.listAll(),
+        facts: allFacts,
+        planEvidenceIssues: checkPlanEvidence(
+          plan,
+          allFacts.filter((fact) => freshness.isFactUsable(fact, clock())),
+        ),
         offers: await repo.offers.listOffers(),
         sources: await repo.sources.list(),
         itemId: item.id,
@@ -267,6 +283,7 @@ export async function runArticlePipeline(
         qaStatus: decision.status,
         published: false,
         publishReason: `qa_${decision.status}`,
+        qaFailures: decision.checks.filter((check) => check.status !== "PASS"),
         reasons,
       };
     }
