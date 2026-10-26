@@ -16,6 +16,8 @@ export interface OpenAiCompatibleConfig {
   /** Mandatory pricing (JPY per 1M tokens) — unpriceable calls are forbidden. */
   inputCostJpyPer1m: number;
   outputCostJpyPer1m: number;
+  /** Supported by Z.ai GLM-5.3/5.2; use low for extraction/smoke calls. */
+  reasoningEffort?: "low" | "high" | "max";
   fetchImpl?: typeof globalThis.fetch;
 }
 
@@ -68,9 +70,12 @@ export class OpenAiCompatibleProvider implements LLMProvider {
           ...(request.system ? [{ role: "system", content: request.system }] : []),
           { role: "user", content: request.prompt },
         ],
-        response_format: { type: "json_object" },
-        max_tokens: request.limits.maxOutputTokens ?? 2048,
-      }),
+          response_format: { type: "json_object" },
+          max_tokens: request.limits.maxOutputTokens ?? 2048,
+          ...(this.config.reasoningEffort
+            ? { thinking: { type: "enabled" }, reasoning_effort: this.config.reasoningEffort }
+            : {}),
+        }),
       });
     } catch (error) {
       if (signal.aborted) throw new LLMTimeoutError(this.config.providerId);

@@ -131,13 +131,19 @@ function buildLlmFromEnv(env: NodeJS.ProcessEnv): OpenAiCompatibleProvider | Cli
       "LLM cost rates must be positive numbers (JPY per 1M tokens); unpriceable calls are forbidden",
     );
   }
+  const baseUrl = env.LLM_BASE_URL ?? "https://api.openai.com/v1";
   return new OpenAiCompatibleProvider({
     providerId: "openai-compatible",
-    baseUrl: env.LLM_BASE_URL ?? "https://api.openai.com/v1",
+    baseUrl,
     apiKey,
     model,
     inputCostJpyPer1m: inputRate,
     outputCostJpyPer1m: outputRate,
+    reasoningEffort: baseUrl.includes("api.z.ai")
+      ? env.LLM_REASONING_EFFORT === "high" || env.LLM_REASONING_EFFORT === "max"
+        ? env.LLM_REASONING_EFFORT
+        : "low"
+      : undefined,
   });
 }
 
@@ -158,7 +164,7 @@ export async function runLlmSmoke(env: NodeJS.ProcessEnv = process.env): Promise
     system: "Return only the requested JSON object. No extra text.",
     input: { request: "Return { ok: true } as JSON." },
     schema: z.object({ ok: z.literal(true) }),
-    limits: { timeoutMs: 45_000, maxCostJpy: 100, attempts: 3, maxOutputTokens: 128 },
+    limits: { timeoutMs: 45_000, maxCostJpy: 100, attempts: 3, maxOutputTokens: 512 },
   });
   return {
     providerId: result.usage.providerId,
