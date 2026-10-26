@@ -48,4 +48,9 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy apps/site/dist --project-name=${{ vars.CF_PAGES_PROJECT || 'autonomous-affiliate' }}
+          # --branch is explicit on purpose: the checkout above is a detached
+          # HEAD, which wrangler reports as branch "HEAD", and Cloudflare Pages
+          # then publishes a *preview* (head.<project>.pages.dev) instead of
+          # production. Runs started by CI (head_branch: main) or by dispatch on
+          # main are production; dispatch on another branch stays a preview.
+          command: pages deploy apps/site/dist --project-name=${{ vars.CF_PAGES_PROJECT || 'autonomous-affiliate' }} --branch=${{ github.event.workflow_run.head_branch || github.ref_name }}
