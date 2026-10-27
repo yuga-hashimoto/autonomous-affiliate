@@ -91,7 +91,7 @@ export interface TotalCostCalculation {
   totalJpy: Known<number>;
   monthlyAverageJpy: Known<number>;
   breakdown: { label: string; amountJpy: Known<number> }[];
-  /** Inputs that make the total UNKNOWN. */
+  /** Inputs that make the total UNKNOWN, as input keys; show them to readers through `unknownLabel`. */
   unknowns: string[];
   /** Terms outside the total; unknown ones are surfaced next to the total. */
   conditions?: CalcCondition[];

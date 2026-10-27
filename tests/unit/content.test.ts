@@ -271,6 +271,17 @@ describe("B009 draft engine", () => {
       expect(row).not.toMatch(/\| なし \|$/);
     });
 
+    it("names unknown inputs in Japanese in the 不明点 column, never by their input keys", () => {
+      const draft = buildTestDraft({
+        calculations: [waterCalc({ electricityFeeJpy: "UNKNOWN", initialFeeJpy: "UNKNOWN" })],
+      });
+      const row = draft.bodyMarkdown.split("\n").find((line) => line.startsWith("| Water 25L")) ?? "";
+      expect(row).toContain("電気代");
+      expect(row).toContain("初期費用");
+      expect(row).toContain("契約解除料");
+      expect(row).not.toMatch(/electricityFeeJpy|initialFeeJpy/);
+    });
+
     it("keeps なし when every condition is known", () => {
       const draft = buildTestDraft({
         calculations: [waterCalc({ cancellationFeeJpy: 12980, minimumTermMonths: 24 })],
