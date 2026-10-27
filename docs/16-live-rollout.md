@@ -55,8 +55,11 @@
 - LLM: Z.ai **Personal Coding Plan** API keyを `LLM_API_KEY` secretに登録。GitHub Actions smoke成功（GLM-5.3-Flash、JSON応答、workflow run 40260429078）。Standard API keyは残高不足、無料モデルは過負荷で使わず、Coding Plan endpointへ切替済み。
 - Cloudflare: Pages-only edit tokenをSecret登録済み。Pages project/account/SITE_BASE_URL variables設定済み。
 - 配信: `deploy` workflowは、mainのCIが成功すると（そのコミットを）自動でCloudflare Pagesへ配信する。手動実行（workflow_dispatch）も可。`live-pipeline` はGITHUB_TOKENでpushするためCIが起動せず、自分でデプロイする（二重配信なし）。
-- 日次ジョブ: `pipeline`（ドライラン、プレビュー成果物のみ・公開なし）は毎日02:17 JSTに実行（GitHubは毎時0分の定期実行を遅延/欠落させるため0分を避けた。変更前の `0 17` では実行記録が1件もなかった）。この変更後の初回定期実行は未確認。
-- 安全: `LIVE_AUTOMATION_ENABLED=false`。`LIVE_POLICY_YAML` / `LIVE_PLANS_JSON` / `AFFILIATE_TRACKING_URLS_JSON` は未設定のため、ライブ自動公開は開始していない。
+- 日次ジョブ: `pipeline`（ドライラン、プレビュー成果物のみ・公開なし）と `live-pipeline`（実公開）は、どちらも毎日02:17 JSTに実行する（GitHubは毎時0分の定期実行を遅延/欠落させるため0分を避けた。`live-pipeline` の旧 `0 17` は4時間以上遅れて起動した）。02:17の定期実行そのものは未確認。
+- ライブ公開（2026-10-27 開始）: 許可ドメインは `premium-water.net` のみ（robots確認済み、利用規約は本人が確認）。`LIVE_AUTOMATION_ENABLED=true`、`LIVE_POLICY_YAML`（`publish_enabled: true`）と `LIVE_PLANS_JSON`（計画1件）を登録済み。`live-pipeline` を手動実行し、`premium-water-famfit2-24month` の1本を公開した（run 40451118865、コミット `549f35f`）。`AFFILIATE_TRACKING_URLS_JSON` は未設定のため収益リンクはない（A8提携は未承認）。
+- 公開の上限と残り: 計画は1件だけなので、翌日以降の実行は同じ記事を冪等にスキップし、記事は増えない。増やすには計画の量産が要る（genre-comparison 9-5の6）。比較表は1社のみ。契約解除料は公式ページで未確認（記事にUNKNOWNと明記）。
+- 初回のプレビューで見つけた不具合: 実LLM（API経由）の事実抽出が出力上限の既定2,048トークンで途中切れになり `Unterminated string in JSON` で失敗した。抽出器は16,384トークンを要求し、プロバイダは `finish_reason=length` を「truncated」として報告する（#6）。
+- 緊急停止: `gh variable set LIVE_AUTOMATION_ENABLED --body false`（ジョブは即スキップ）。あわせて `LIVE_POLICY_YAML` の `publish_enabled` も `false` に戻す。
 - A8.net: `sougakuhikaku.com` サブサイト登録済み。広告主プログラムへの提携申請・承認は未実施。確認した引越し侍案件は公開後URL提出が必要で、公式自動化経路未確認のため自動運用候補として保留。
 
 ### 0-5. ASP 本人登録（審査は「公開済みの自サイトURL」で申し込む）
