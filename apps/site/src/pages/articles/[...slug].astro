@@ -4,7 +4,15 @@ import ArticleCard from "../../components/ArticleCard.astro";
 import Breadcrumb from "../../components/Breadcrumb.astro";
 import Toc from "../../components/Toc.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { SITE_NAME, formatDate, isoDate, readingMinutes, relatedArticles } from "../../lib/articles";
+import {
+  HERO_IMAGE_DISCLOSURE,
+  SITE_NAME,
+  formatDate,
+  heroImageOf,
+  isoDate,
+  readingMinutes,
+  relatedArticles,
+} from "../../lib/articles";
 
 export async function getStaticPaths() {
   const articles = await getCollection("articles");
@@ -18,6 +26,7 @@ const { article } = Astro.props;
 const { Content, headings } = await render(article);
 const { title, description, pubDate, disclosure } = article.data;
 
+const hero = heroImageOf(article.data);
 const related = relatedArticles(article, await getCollection("articles"));
 const minutes = readingMinutes(article.body ?? "");
 const path = `/articles/${article.id}/`;
@@ -35,6 +44,7 @@ const jsonLd = {
       inLanguage: "ja",
       mainEntityOfPage: new URL(path, site).href,
       publisher: { "@type": "Organization", name: SITE_NAME },
+      ...(hero ? { image: new URL(hero.src, site).href } : {}),
     },
     {
       "@type": "BreadcrumbList",
@@ -48,7 +58,7 @@ const jsonLd = {
 };
 ---
 
-<BaseLayout title={title} description={description} path={path} ogType="article" jsonLd={jsonLd}>
+<BaseLayout title={title} description={description} path={path} ogType="article" jsonLd={jsonLd} ogImage={hero?.src}>
   <div class="container">
     <Breadcrumb items={[{ label: "ホーム", href: "/" }, { label: "記事一覧", href: "/articles/" }, { label: title }]} />
 
@@ -69,6 +79,22 @@ const jsonLd = {
             )
           }
         </header>
+
+        {
+          hero && (
+            <figure class="hero-image">
+              <img
+                src={hero.src}
+                alt={hero.alt}
+                width={hero.width}
+                height={hero.height}
+                fetchpriority="high"
+                decoding="async"
+              />
+              <figcaption>{HERO_IMAGE_DISCLOSURE}</figcaption>
+            </figure>
+          )
+        }
 
         <Toc headings={headings} variant="inline" />
 

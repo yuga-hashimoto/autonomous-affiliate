@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { PublisherIO } from "@aff/agents";
 
@@ -77,6 +77,26 @@ export class LivePublisherIO implements PublisherIO {
     await rm(this.resolveArtifact(path), { force: true });
   }
 
+  /** Binary files may only go under the site's public images folder. */
+  private resolveImage(path: string): string {
+    const base = resolve(this.options.repoRoot, "apps/site/public/images");
+    const target = resolve(this.options.repoRoot, path);
+    if (!target.startsWith(`${base}${sep}`)) {
+      throw new Error(`image path escapes the public images folder: ${path}`);
+    }
+    return target;
+  }
+
+  async writeBinary(path: string, bytes: Uint8Array): Promise<void> {
+    const target = this.resolveImage(path);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, bytes);
+  }
+
+  async removeBinary(path: string): Promise<void> {
+    await rm(this.resolveImage(path), { force: true });
+  }
+
   async buildSite(): Promise<void> {
     if (this.options.buildSite) {
       await this.options.buildSite();
@@ -85,7 +105,7 @@ export class LivePublisherIO implements PublisherIO {
     await this.run("pnpm", ["--filter", "site", "build"], this.options.repoRoot);
   }
 
-  async commitArtifact(path: string, message: string): Promise<string> {
+  async commitArtifact(path: string, message: string, extraPaths: string[] = []): Promise<string> {
     const rel = path.replace(/^content\/articles\//, "");
     const base = resolve(this.options.contentDir);
     const artifactPath = resolve(base, rel);
@@ -93,7 +113,8 @@ export class LivePublisherIO implements PublisherIO {
       throw new Error(`invalid article path: ${path}`);
     }
     const cwd = this.options.repoRoot;
-    await this.run("git", ["add", "--", join("content/articles", rel)], cwd);
+    const extras = extraPaths.map((extra) => relative(this.options.repoRoot, this.resolveImage(extra)));
+    await this.run("git", ["add", "--", join("content/articles", rel), ...extras], cwd);
     const commit = await this.run(
       "git",
       ["-c", "user.name=autonomous-affiliate", "-c", "user.email=aff-bot@users.noreply.local", "commit", "-m", message],

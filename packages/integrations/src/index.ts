@@ -1,4 +1,5 @@
 export * from "./fetcher.js";
+export * from "./openrouter-image.js";
 export * from "./html-text.js";
 export * from "./allowlist.js";
 export * from "./canonical.js";

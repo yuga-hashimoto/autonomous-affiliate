@@ -1,0 +1,42 @@
+name: image-smoke
+
+# Manual check of the hero-image path: one real OpenRouter call (about 0.02 USD)
+# that writes a single WebP for a person to look at. It does not research, write
+# an article, commit or publish; the image is only kept as a run artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      vertical:
+        description: Vertical to draw (for example water_delivery, mobile, fiber)
+        default: water_delivery
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate one hero image
+        run: pnpm tsx apps/worker/src/index.ts image-smoke "$VERTICAL" --out .tmp/image-smoke
+        env:
+          VERTICAL: ${{ inputs.vertical }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          IMAGE_MODEL: ${{ vars.IMAGE_MODEL }}
+          IMAGE_ESTIMATED_COST_USD: ${{ vars.IMAGE_ESTIMATED_COST_USD }}
+          IMAGE_USD_JPY: ${{ vars.IMAGE_USD_JPY }}
+          IMAGE_MAX_COST_JPY: ${{ vars.IMAGE_MAX_COST_JPY }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hero-image-smoke
+          path: .tmp/image-smoke/hero.webp
+          if-no-files-found: error
+          retention-days: 7

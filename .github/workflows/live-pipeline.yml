@@ -41,6 +41,12 @@ jobs:
       LLM_INPUT_COST_JPY_PER_1M: ${{ vars.LLM_INPUT_COST_JPY_PER_1M }}
       LLM_OUTPUT_COST_JPY_PER_1M: ${{ vars.LLM_OUTPUT_COST_JPY_PER_1M }}
       AFFILIATE_TRACKING_URLS_JSON: ${{ secrets.AFFILIATE_TRACKING_URLS_JSON }}
+      # Hero images (OpenRouter). Without the key, articles are published text-only.
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      IMAGE_MODEL: ${{ vars.IMAGE_MODEL }}
+      IMAGE_ESTIMATED_COST_USD: ${{ vars.IMAGE_ESTIMATED_COST_USD }}
+      IMAGE_USD_JPY: ${{ vars.IMAGE_USD_JPY }}
+      IMAGE_MAX_COST_JPY: ${{ vars.IMAGE_MAX_COST_JPY }}
       LIVE_GIT_PUSH: "true"
       LIVE_GIT_REMOTE_REF: main
     steps:

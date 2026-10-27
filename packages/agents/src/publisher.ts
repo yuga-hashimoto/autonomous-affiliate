@@ -8,6 +8,7 @@ import type {
   QualityDecision,
 } from "@aff/domain";
 import { dayKeyInTz, isFresh, isLiveState, newId, newTraceId, sha256Hex } from "@aff/domain";
+import type { HeroImage, HeroImageFile } from "./hero-image.js";
 
 export interface PublishArtifact {
   itemId: string;
@@ -20,6 +21,10 @@ export interface PublishArtifact {
   contentHash: string;
   qa: QualityDecision;
   offerIds: string[];
+  /** Decorative image linked from the frontmatter; the text, not the image, is what QA approves. */
+  hero?: HeroImage;
+  /** The image file to write and commit with the article; absent when the existing one is reused. */
+  heroFile?: HeroImageFile;
 }
 
 export interface PublishTarget {
@@ -38,10 +43,31 @@ export interface PublisherIO {
   readArtifact?(path: string): Promise<string | undefined>;
   /** Deletes an artifact; used to undo the write of a first publication that failed. */
   removeArtifact?(path: string): Promise<void>;
+  /** Writes a binary file (a hero image) at a repository-relative path. */
+  writeBinary?(path: string, bytes: Uint8Array): Promise<void>;
+  /** Deletes a binary file written by `writeBinary`; used to undo a publish that failed. */
+  removeBinary?(path: string): Promise<void>;
   /** Static site build used to verify the artifact; throw to trigger rollback. */
   buildSite?(): Promise<void>;
-  /** Commits the artifact in the site repository (live destinations). */
-  commitArtifact?(path: string, message: string): Promise<string>;
+  /** Commits the artifact in the site repository (live destinations), plus any extra files. */
+  commitArtifact?(path: string, message: string, extraPaths?: string[]): Promise<string>;
+}
+
+const HERO_SRC = /^\/images\/articles\/[a-z0-9]+(?:-[a-z0-9]+)*\/hero\.webp$/;
+
+/** Frontmatter lines for the hero image; the site schema accepts only this exact shape. */
+function heroFrontmatter(hero: HeroImage | undefined): string[] {
+  if (!hero) return [];
+  const sized = Number.isInteger(hero.width) && hero.width > 0 && Number.isInteger(hero.height) && hero.height > 0;
+  if (!HERO_SRC.test(hero.src) || !sized || hero.alt.trim().length === 0) {
+    throw new Error(`invalid hero image: ${JSON.stringify(hero)}`);
+  }
+  return [
+    `heroImage: ${JSON.stringify(hero.src)}`,
+    `heroImageAlt: ${JSON.stringify(hero.alt)}`,
+    `heroImageWidth: ${hero.width}`,
+    `heroImageHeight: ${hero.height}`,
+  ];
 }
 
 /**
@@ -186,6 +212,7 @@ export class PublisherAgent {
       let commitSha: string | undefined;
       let previous: string | undefined;
       let written = false;
+      let heroWritten = false;
       try {
         if (target.destination !== "preview") {
           previous = await this.deps.io.readArtifact?.(path);
@@ -198,6 +225,7 @@ export class PublisherAgent {
           `pubDate: ${JSON.stringify(artifact.qa.decidedAt)}`,
           `disclosure: ${JSON.stringify(artifact.qa.checks.some((c) => c.id === "ad_disclosure_present") ? artifact.markdown.split("\n")[0] ?? "" : "")}`,
           `offerIds: [${artifact.offerIds.map((id) => JSON.stringify(id)).join(", ")}]`,
+          ...heroFrontmatter(artifact.hero),
           "---",
           "",
           artifact.markdown,
@@ -205,11 +233,18 @@ export class PublisherAgent {
         ].join("\n");
         await this.deps.io.writeArtifact(path, file);
         written = true;
+        if (artifact.heroFile) {
+          // The frontmatter links the image, so it must exist before the build and the commit.
+          if (!this.deps.io.writeBinary) throw new Error("this publisher cannot write the hero image file");
+          await this.deps.io.writeBinary(artifact.heroFile.path, artifact.heroFile.bytes);
+          heroWritten = true;
+        }
         if (target.destination !== "preview") {
           await this.deps.io.buildSite?.();
           commitSha = await this.deps.io.commitArtifact?.(
             path,
             `${kind === "update" ? "update" : "publish"}: ${artifact.slug} (${artifact.revisionId})`,
+            artifact.heroFile ? [artifact.heroFile.path] : [],
           );
         }
       } catch (error) {
@@ -219,6 +254,7 @@ export class PublisherAgent {
           slug: artifact.slug,
           error,
         });
+        if (heroWritten && artifact.heroFile) await this.removeHero(artifact.heroFile.path);
         if (written) await this.restore(path, previous);
         await this.recordPublication(artifact, item, target.destination, "FAILED", undefined);
         return { published: false, reason: "publish_failed" };
@@ -229,6 +265,14 @@ export class PublisherAgent {
       return { published: true, publication };
     } finally {
       await this.deps.repo.locks.release("publisher", holder);
+    }
+  }
+
+  private async removeHero(path: string): Promise<void> {
+    try {
+      await this.deps.io.removeBinary?.(path);
+    } catch (error) {
+      this.deps.logger.error("rollback failed; the hero image needs a manual check", { path, error });
     }
   }
 

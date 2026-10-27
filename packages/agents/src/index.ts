@@ -1,5 +1,6 @@
 export * from "./research.js";
 export * from "./publisher.js";
+export * from "./hero-image.js";
 export * from "./pipeline.js";
 export * from "./plan-evidence.js";
 export * from "./opportunity.js";

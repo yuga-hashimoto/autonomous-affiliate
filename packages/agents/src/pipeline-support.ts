@@ -5,6 +5,7 @@ import {
   type ContentItem,
   type ContentState,
   type Fact,
+  type Logger,
   type PolicyConfig,
   type SourceRecord,
 } from "@aff/domain";
@@ -25,7 +26,8 @@ import {
   type CollectedSource,
   type Fetcher,
 } from "@aff/integrations";
-import type { ArticlePlan } from "./pipeline.js";
+import type { ArticlePlan, PipelineServices } from "./pipeline.js";
+import type { PublishArtifact, PublishTarget, PublisherAgent } from "./publisher.js";
 import { toFact, type FactExtractor } from "./research.js";
 
 /**
@@ -35,6 +37,40 @@ import { toFact, type FactExtractor } from "./research.js";
 export interface PlanEvidence {
   sources: SourceRecord[];
   facts: Fact[];
+}
+
+/**
+ * Adds the article's hero image to what is about to be published, or leaves the
+ * artifact as it is. The image is decoration (QA checks the text), so a failure
+ * is logged and the article goes out without one. Only an article the publisher
+ * would accept gets one, so nothing is spent on an image that would not ship.
+ */
+export async function withHeroImage(
+  artifact: PublishArtifact,
+  input: {
+    plan: ArticlePlan;
+    services: PipelineServices;
+    publisher: PublisherAgent;
+    target: PublishTarget;
+    offers: AffiliateOffer[];
+    logger: Logger;
+  },
+): Promise<PublishArtifact> {
+  const { plan, services, publisher, target, offers, logger } = input;
+  if (!services.heroImages || target.destination === "preview") return artifact;
+  const gate = await publisher.canPublish({ artifact, target }, offers);
+  if (!gate.ok) return artifact;
+  try {
+    const result = await services.heroImages.prepare({ slug: plan.slug, verticalId: plan.verticalId });
+    if (!result) return artifact;
+    return { ...artifact, hero: result.image, ...(result.file ? { heroFile: result.file } : {}) };
+  } catch (error) {
+    logger.warn("hero image skipped; the article is published without one", {
+      slug: plan.slug,
+      error: String(error),
+    });
+    return artifact;
+  }
 }
 
 export async function transition(

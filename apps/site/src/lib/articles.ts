@@ -8,6 +8,9 @@ export const SITE_NAME = "総額比較";
 export const SITE_TAGLINE = "公式の料金を同じ条件で比べるサイト";
 /** Archive page size: small enough for a phone, large enough to keep page counts low. */
 export const ARTICLES_PER_PAGE = 12;
+/** Shown under every hero image; must equal HERO_IMAGE_DISCLOSURE in @aff/content (a test checks). */
+export const HERO_IMAGE_DISCLOSURE = "イメージ画像（AI生成）。実際の商品・サービスとは異なります。";
+const HERO_SRC = /^\/images\/articles\/[a-z0-9]+(?:-[a-z0-9]+)*\/hero\.webp$/;
 const RELATED_DEFAULT_LIMIT = 3;
 const CHARS_PER_MINUTE = 500;
 
@@ -19,6 +22,36 @@ export interface ArticleLike {
     pubDate: string;
     offerIds: string[];
   };
+}
+
+export interface HeroImageData {
+  heroImage?: string | undefined;
+  heroImageAlt?: string | undefined;
+  heroImageWidth?: number | undefined;
+  heroImageHeight?: number | undefined;
+}
+
+export interface HeroImageView {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+}
+
+const isSize = (value: number | undefined): value is number =>
+  value !== undefined && Number.isInteger(value) && value > 0;
+
+/**
+ * The hero image of an article, or undefined. Only a file the pipeline put under
+ * /images/articles/<slug>/hero.webp is linked, so frontmatter can never point the
+ * page at another host or path.
+ */
+export function heroImageOf(data: HeroImageData): HeroImageView | undefined {
+  const { heroImage: src, heroImageAlt: alt, heroImageWidth: width, heroImageHeight: height } = data;
+  if (src === undefined || !HERO_SRC.test(src)) return undefined;
+  if (alt === undefined || alt.trim().length === 0) return undefined;
+  if (!isSize(width) || !isSize(height)) return undefined;
+  return { src, alt, width, height };
 }
 
 export interface Page<T> {

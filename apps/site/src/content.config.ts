@@ -21,6 +21,11 @@ const articles = defineCollection({
     /** offer_id references; empty when the article is not monetized. */
     offerIds: z.array(z.string()).default([]),
     slug: z.string().optional(),
+    /** Decorative AI-generated image written by the pipeline; see heroImageOf. */
+    heroImage: z.string().optional(),
+    heroImageAlt: z.string().optional(),
+    heroImageWidth: z.number().int().positive().optional(),
+    heroImageHeight: z.number().int().positive().optional(),
   }),
 });
 
