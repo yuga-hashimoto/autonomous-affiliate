@@ -62,6 +62,13 @@ Rules:
 - Make every fact self-contained: name the service, plan or product it applies to, and for prices give the amount, its unit, the tax-inclusive or tax-exclusive label and the billing period or quantity exactly as written (example: "アクアクララ レギュラー12L 2年割プラン: 1本 1,620円（税込・宅配料込み）").
 - One claim per fact. Do not compute, calculate, convert or combine numbers; copy them as written.`;
 
+/**
+ * One page window yields dozens of facts (about 60 in a real price page), and a
+ * reasoning model spends part of the limit on thinking. The provider default of
+ * 2,048 tokens cuts the JSON off mid-string.
+ */
+const FACT_EXTRACTION_MAX_OUTPUT_TOKENS = 16_384;
+
 export interface LlmFactOutput {
   facts: { text: string; claimType: Fact["claimType"] }[];
 }
@@ -85,7 +92,7 @@ function collapseSpaces(text: string): string {
 export class LlmFactExtractor implements FactExtractor {
   constructor(
     private readonly gateway: LLMGateway,
-    private readonly limits: { timeoutMs: number; maxCostJpy: number; attempts: number },
+    private readonly limits: { timeoutMs: number; maxCostJpy: number; attempts: number; maxOutputTokens?: number },
     private readonly windows: LlmExtractorWindowOptions = {},
   ) {}
 
@@ -98,7 +105,7 @@ export class LlmFactExtractor implements FactExtractor {
         task: FACT_EXTRACTION_TASK,
         input: { content },
         schema: LLM_FACT_SCHEMA,
-        limits: this.limits,
+        limits: { maxOutputTokens: FACT_EXTRACTION_MAX_OUTPUT_TOKENS, ...this.limits },
       });
       for (const fact of result.output.facts) {
         const normalized = collapseSpaces(fact.text);
