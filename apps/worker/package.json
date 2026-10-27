@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:pg-native --external:sharp"
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:pg-native --external:sharp --external:playwright"
   },
   "dependencies": {
     "@aff/agents": "workspace:*",
@@ -15,6 +15,7 @@
     "@aff/domain": "workspace:*",
     "@aff/integrations": "workspace:*",
     "@aff/llm": "workspace:*",
+    "playwright": "^1.64.1",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

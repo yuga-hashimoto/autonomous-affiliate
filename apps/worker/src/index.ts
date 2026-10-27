@@ -32,6 +32,7 @@ import {
 } from "@aff/agents";
 import { AspReportImporter, HttpFetcher, MapFetcher, checkRobots, type Fetcher } from "@aff/integrations";
 import { buildMonthlyReport, renderMonthlyReportMarkdown } from "@aff/analytics";
+import { runA8LoginSmoke } from "./a8-login.js";
 import { createHeroImageService, runImageSmoke } from "./hero-image.js";
 import { LivePublisherIO } from "./live-io.js";
 import plansFixture from "../../../config/plans.dry-run.json" with { type: "json" };
@@ -692,6 +693,10 @@ if (isMain()) {
         outDir: join(ROOT, options.outDir),
       });
       process.stdout.write(`${JSON.stringify(smoke, null, 2)}\n`);
+    } else if (command === "a8-login-smoke") {
+      const smoke = await runA8LoginSmoke(options.env ?? process.env);
+      process.stdout.write(`${JSON.stringify(smoke, null, 2)}\n`);
+      if (smoke.outcome !== "logged_in") process.exit(1);
     } else if (command === "refresh") {
       process.stdout.write(`${JSON.stringify(await runRefresh(options), null, 2)}\n`);
     } else if (command === "growth") {
