@@ -12,7 +12,7 @@ import type { Page } from "playwright";
  * because the repository and its Actions logs are public.
  */
 
-const CONSOLE_ORIGIN = "https://media-console.a8.net";
+export const CONSOLE_ORIGIN = "https://media-console.a8.net";
 export const A8_LOGIN_URL = `${CONSOLE_ORIGIN}/common/re-authentication`;
 const HOME_URL = `${CONSOLE_ORIGIN}/home`;
 const PARTNERED_LIST_PATH = "/program/list/partnered";
@@ -231,8 +231,21 @@ async function attemptLogin(page: Page, credentials: A8Credentials): Promise<A8S
   return resultOf("logged_in", home, credentials, { loginPageStatus, sessionUsable: await sessionOpensMemberPage(page) });
 }
 
-/** One login attempt from this machine; the caller decides what a non-"logged_in" outcome means. */
-export async function runA8LoginSmoke(env: NodeJS.ProcessEnv): Promise<A8SmokeResult> {
+export interface A8SessionResult<T> {
+  login: A8SmokeResult;
+  /** Present only when the login succeeded and `work` finished. */
+  value?: T;
+}
+
+/**
+ * Logs in once, runs `work` on the logged-in page and always closes the browser.
+ * A login that fails (verification, rejection, anything unknown) is returned as
+ * data and `work` is not run. Errors from `work` are redacted before they leave.
+ */
+export async function withA8Session<T>(
+  env: NodeJS.ProcessEnv,
+  work: (page: Page) => Promise<T>,
+): Promise<A8SessionResult<T>> {
   const credentials = credentialsFromEnv(env);
   const secrets = [credentials.loginId, credentials.password];
   const { chromium } = await import("playwright");
@@ -241,11 +254,18 @@ export async function runA8LoginSmoke(env: NodeJS.ProcessEnv): Promise<A8SmokeRe
     const context = await browser.newContext({ locale: "ja-JP", timezoneId: "Asia/Tokyo" });
     const page = await context.newPage();
     page.setDefaultTimeout(NAVIGATION_TIMEOUT_MS);
-    return await attemptLogin(page, credentials);
+    const login = await attemptLogin(page, credentials);
+    if (login.outcome !== "logged_in") return { login };
+    return { login, value: await work(page) };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(redactSecrets(message, secrets).split("\n")[0] ?? "A8 login check failed");
+    throw new Error(redactSecrets(message, secrets).split("\n")[0] ?? "A8 console work failed");
   } finally {
     await browser.close();
   }
+}
+
+/** One login attempt from this machine; the caller decides what a non-"logged_in" outcome means. */
+export async function runA8LoginSmoke(env: NodeJS.ProcessEnv): Promise<A8SmokeResult> {
+  return (await withA8Session(env, async () => undefined)).login;
 }
