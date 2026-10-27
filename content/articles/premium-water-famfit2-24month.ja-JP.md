@@ -1,7 +1,7 @@
 ---
 title: "プレミアムウォーター famfit2の24ヶ月総額（公式料金ベースの試算）"
 description: "公式の料金ページに載る月額・送料・手数料・電気代の目安から、月12.5L×2本を24ヶ月使った場合の総額を試算します。"
-pubDate: "2026-10-27T04:44:25.133Z"
+pubDate: "2026-10-27T05:44:44.009Z"
 disclosure: "本記事にはプロモーション（PR）を含みます。"
 offerIds: []
 ---
@@ -17,6 +17,10 @@ offerIds: []
 
 ## 総額比較（同一条件・同一通貨）
 
+```chart
+{"type":"key-figures","items":[{"label":"24ヶ月の総額","value":"119,916円"},{"label":"月平均","value":"4,997円"},{"label":"最低利用期間","value":"60ヶ月"}]}
+```
+
 | プラン | 総額 | 月平均 | 不明点 |
 | --- | --- | --- | --- |
 | プレミアムウォーター famfit2（もっとPREMIUMプラン） | 119,916円 | 4,997円 | 契約解除料 |
@@ -28,6 +32,10 @@ offerIds: []
 ## 試算の内訳（公式料金に基づく計算）
 
 ### プレミアムウォーター famfit2（もっとPREMIUMプラン）
+
+```chart
+{"type":"bars","title":"24ヶ月の費用の内訳","rows":[{"label":"水代","detail":"24ヶ月 × 月4,190円","value":100560},{"label":"配送料","detail":"24ヶ月 × 月0円","value":0},{"label":"電気代","detail":"24ヶ月 × 月669円","value":16056},{"label":"初期費用","value":3300}]}
+```
 
 - 計算式: `totalJpy = (waterChargeJpy + shippingFeeJpy + electricityFeeJpy) * months + initialFeeJpy`
 - 式バージョン: analysis-formulas-v1
@@ -47,6 +55,10 @@ offerIds: []
 
 ### プレミアムウォーター famfit2（もっとPREMIUMプラン）
 
+```chart
+{"type":"term-timeline","title":"比較期間と最低利用期間","comparisonMonths":24,"minimumTermMonths":60}
+```
+
 - 契約解除料: UNKNOWN（公式ページで確認できていません）
 - 最低利用期間: 60ヶ月
 
@@ -62,6 +74,6 @@ offerIds: []
 
 ## 出典
 
-- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-27T04:41:52.321Z（sha256: 32712aee5a11…）
-- [公式](https://premium-water.net/price) — 確認日時: 2026-10-27T04:43:59.196Z（sha256: 9519a59f926e…）
+- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-27T05:42:39.152Z（sha256: 565bc7ad5037…）
+- [公式](https://premium-water.net/price) — 確認日時: 2026-10-27T05:42:40.261Z（sha256: 6e6846afae72…）
 
