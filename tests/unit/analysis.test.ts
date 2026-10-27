@@ -9,6 +9,7 @@ import {
   competitionGaps,
   FORMULA_VERSION,
   scoreOpportunity,
+  unknownLabel,
   verifySimTotalCost,
 } from "@aff/analysis";
 import type { SerpObservation } from "@aff/domain";
@@ -378,6 +379,81 @@ describe("structured comparison period", () => {
       monthlyLiters: 24,
     });
     expect([sim.comparisonMonths, fiber.comparisonMonths, water.comparisonMonths]).toEqual([24, 36, 12]);
+  });
+});
+
+describe("unknownLabel (the 不明点 column must not show input keys)", () => {
+  it.each([
+    ["monthlyJpy", "月額料金"],
+    ["initialFeeJpy", "初期費用"],
+    ["dataGb", "データ容量"],
+    ["universalServiceFeeJpy", "ユニバーサルサービス料"],
+    ["installationFeeJpy", "工事費"],
+    ["waterChargeJpy", "水代"],
+    ["shippingFeeJpy", "配送料"],
+    ["electricityFeeJpy", "電気代"],
+    ["assessedJpy", "査定額"],
+    ["outboundShippingJpy", "発送時の送料"],
+    ["returnShippingJpy", "返送料"],
+    ["packingKitJpy", "梱包キット"],
+    ["discount 1-6", "割引（1〜6ヶ月目）"],
+  ])("labels %s as %s", (key, label) => {
+    expect(unknownLabel(key)).toBe(label);
+  });
+
+  it("does not leak an identifier it has no label for", () => {
+    expect(unknownLabel("someNewFeeJpy")).toBe("その他の未確認項目");
+  });
+
+  it("has a Japanese label for every key any calculator can report as unknown", () => {
+    const U = "UNKNOWN" as const;
+    const keys = [
+      ...calculateSimTotalCost({
+        offerId: "s",
+        title: "s",
+        monthlyJpy: U,
+        dataGb: U,
+        initialFeeJpy: U,
+        months: 24,
+        discountPeriods: [{ fromMonth: 1, toMonth: 6, monthlyJpy: U }],
+        universalServiceFeeJpy: U,
+      }).unknowns,
+      ...calculateFiberTotalCost({
+        offerId: "f",
+        title: "f",
+        monthlyJpy: U,
+        months: 24,
+        installationFeeJpy: U,
+        installationFeeMonths: 24,
+        contractTermMonths: U,
+        cancellationFeeJpy: U,
+        apartmentType: "mansion",
+      }).unknowns,
+      ...calculateWaterServerCost({
+        offerId: "w",
+        title: "w",
+        waterChargeJpy: U,
+        shippingFeeJpy: U,
+        electricityFeeJpy: U,
+        months: 24,
+        initialFeeJpy: U,
+        cancellationFeeJpy: U,
+        monthlyLiters: 25,
+      }).unknowns,
+      ...calculateBuybackNet({
+        offerId: "b",
+        title: "b",
+        assessedJpy: U,
+        outboundShippingJpy: U,
+        returnShippingJpy: U,
+        packingKitJpy: U,
+      }).unknowns,
+    ];
+    expect(keys.length).toBeGreaterThanOrEqual(13);
+    for (const key of keys) {
+      expect(unknownLabel(key), key).toMatch(/[぀-ヿ一-鿿]/);
+      expect(unknownLabel(key), key).not.toBe("その他の未確認項目");
+    }
   });
 });
 

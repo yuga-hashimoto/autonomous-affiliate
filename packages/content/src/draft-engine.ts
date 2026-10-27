@@ -1,3 +1,4 @@
+import { unknownLabel } from "@aff/analysis";
 import type { AffiliateOffer } from "@aff/domain";
 import { AD_DISCLOSURE, findProhibitedPhrases, DraftRejectedError } from "./draft-types.js";
 import type { Draft, DraftInput } from "./draft-types.js";
@@ -72,7 +73,7 @@ export function buildDraft(input: DraftInput): Draft {
   body.push("| --- | --- | --- | --- |");
   for (const calc of input.calculations) {
     const unknownLabels = [
-      ...calc.unknowns,
+      ...calc.unknowns.map((key) => unknownLabel(key)),
       ...(calc.conditions ?? []).filter((condition) => !condition.known).map((condition) => condition.label),
     ];
     body.push(
