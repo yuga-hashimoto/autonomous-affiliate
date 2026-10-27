@@ -3,6 +3,7 @@ import { readFile, readdir, rm } from "node:fs/promises";
 import { promisify } from "node:util";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { findNonJapaneseBreakdownLines } from "../helpers/breakdown-leaks.js";
 
 const execFileAsync = promisify(execFile);
 const ROOT = path.resolve(__dirname, "../..");
@@ -58,6 +59,12 @@ describe("B021/B023 dry-run E2E (source→analysis→draft→QA→preview, no ac
       // approved offer CTA is an internal /go/ link; unapproved offer has none
       expect(sim).toContain("/go/offer-sim-a");
       expect(sim).not.toContain("/go/offer-sim-b");
+
+      // reader-facing 試算の内訳 is Japanese in every published article
+      for (const file of files) {
+        const article = await readFile(path.join(PREVIEW_DIR, "content/articles", file), "utf8");
+        expect(findNonJapaneseBreakdownLines(article), file).toEqual([]);
+      }
     },
   );
 

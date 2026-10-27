@@ -80,7 +80,7 @@ describe("fiber / water / buyback calculators", () => {
       monthlyLiters: 24,
     });
     expect(calc.totalJpy).toBe((4100 + 260 + 250) * 12);
-    expect(calc.assumptions.join("\n")).toContain("11,000 JPY".replace("11,000 JPY", "11000 JPY"));
+    expect(calc.assumptions.join("\n")).toContain("11,000円");
   });
 
   describe("water conditions that stay outside the total", () => {
@@ -182,6 +182,196 @@ describe("fiber / water / buyback calculators", () => {
     });
     expect(unknown.netJpy).toBe("UNKNOWN");
     expect(unknown.breakdown[0]!.amountJpy).toBe("UNKNOWN");
+  });
+});
+
+describe("reader-facing labels and assumptions are Japanese", () => {
+  it("SIM: labels use 円/ヶ月 and the discount reads as a month range", () => {
+    const calc = calculateSimTotalCost({
+      offerId: "offer-sim-a",
+      title: "SIM A 20GB",
+      monthlyJpy: 2980,
+      dataGb: 20,
+      initialFeeJpy: 3300,
+      months: 24,
+      discountPeriods: [{ fromMonth: 1, toMonth: 6, monthlyJpy: 1080 }],
+      universalServiceFeeJpy: 2,
+    });
+    expect(calc.breakdown).toEqual([
+      { label: "初期費用", amountJpy: 3300 },
+      { label: "月額料金（24ヶ月 × 月2,980円）", amountJpy: 71520 },
+      { label: "割引（1〜6ヶ月目 × 月1,900円）", amountJpy: -11400 },
+      { label: "ユニバーサルサービス料（24ヶ月）", amountJpy: 48 },
+    ]);
+    expect(calc.assumptions).toEqual([
+      "比較期間は24ヶ月",
+      "プランのデータ容量: 月20GB",
+      "期間中の解約・プラン変更は想定しない",
+    ]);
+  });
+
+  it("SIM: UNKNOWN rows keep Japanese labels", () => {
+    const calc = calculateSimTotalCost({
+      offerId: "offer-sim-b",
+      title: "SIM B",
+      monthlyJpy: "UNKNOWN",
+      dataGb: "UNKNOWN",
+      initialFeeJpy: "UNKNOWN",
+      months: 12,
+      discountPeriods: [{ fromMonth: 1, toMonth: 3, monthlyJpy: 980 }],
+      universalServiceFeeJpy: "UNKNOWN",
+    });
+    expect(calc.breakdown.map((row) => row.label)).toEqual([
+      "初期費用",
+      "月額料金（12ヶ月）",
+      "割引（1〜3ヶ月目）",
+      "ユニバーサルサービス料",
+    ]);
+    expect(calc.assumptions).toContain("プランのデータ容量: UNKNOWN");
+  });
+
+  it("fiber: labels, assumptions and monthly conversion use 円/ヶ月", () => {
+    const calc = calculateFiberTotalCost({
+      offerId: "offer-fiber-1",
+      title: "Fiber 1G mansion",
+      monthlyJpy: 5390,
+      months: 24,
+      installationFeeJpy: 44000,
+      installationFeeMonths: 24,
+      contractTermMonths: 24,
+      cancellationFeeJpy: 1000,
+      apartmentType: "mansion",
+    });
+    expect(calc.breakdown).toEqual([
+      { label: "月額料金（24ヶ月 × 月5,390円）", amountJpy: 129360 },
+      { label: "工事費", amountJpy: 44000 },
+    ]);
+    expect(calc.assumptions).toEqual([
+      "住居タイプ: 集合住宅（マンション）",
+      "比較期間は24ヶ月で、期間中の解約は想定しない",
+      "契約期間: 24ヶ月",
+      "契約解除料: 1,000円（解約しない前提のため総額には含めない）",
+      "工事費の月額換算: 1,833円/月",
+    ]);
+  });
+
+  it("fiber: UNKNOWN conditions and detached houses stay Japanese", () => {
+    const calc = calculateFiberTotalCost({
+      offerId: "offer-fiber-2",
+      title: "Fiber house",
+      monthlyJpy: "UNKNOWN",
+      months: 24,
+      installationFeeJpy: "UNKNOWN",
+      installationFeeMonths: 24,
+      contractTermMonths: "UNKNOWN",
+      cancellationFeeJpy: "UNKNOWN",
+      apartmentType: "kodate",
+    });
+    expect(calc.breakdown.map((row) => row.label)).toEqual(["月額料金（24ヶ月）", "工事費"]);
+    expect(calc.assumptions).toEqual([
+      "住居タイプ: 戸建て",
+      "比較期間は24ヶ月で、期間中の解約は想定しない",
+      "契約期間: UNKNOWN",
+      "契約解除料: UNKNOWN（解約しない前提のため総額には含めない）",
+      "工事費の月額換算: UNKNOWN",
+    ]);
+  });
+
+  it("water server: labels and assumptions use 円/ヶ月/L", () => {
+    const calc = calculateWaterServerCost({
+      offerId: "offer-water-1",
+      title: "Water 24L",
+      waterChargeJpy: 4100,
+      shippingFeeJpy: 260,
+      electricityFeeJpy: 250,
+      months: 12,
+      initialFeeJpy: 0,
+      cancellationFeeJpy: 11000,
+      monthlyLiters: 24,
+    });
+    expect(calc.breakdown).toEqual([
+      { label: "水代（12ヶ月 × 月4,100円）", amountJpy: 49200 },
+      { label: "配送料（12ヶ月 × 月260円）", amountJpy: 3120 },
+      { label: "電気代（12ヶ月 × 月250円）", amountJpy: 3000 },
+      { label: "初期費用", amountJpy: 0 },
+    ]);
+    expect(calc.assumptions).toEqual([
+      "比較期間は12ヶ月",
+      "使用量: 月24L（12ヶ月分）",
+      "期間中のプラン変更・休止・解約は想定しない",
+      "契約解除料: 11,000円（条件の記載のみで総額には含めない）",
+    ]);
+  });
+
+  it("water server: UNKNOWN rows keep Japanese labels", () => {
+    const calc = calculateWaterServerCost({
+      offerId: "offer-water-2",
+      title: "Water unknown",
+      waterChargeJpy: "UNKNOWN",
+      shippingFeeJpy: "UNKNOWN",
+      electricityFeeJpy: "UNKNOWN",
+      months: 12,
+      initialFeeJpy: "UNKNOWN",
+      cancellationFeeJpy: "UNKNOWN",
+      monthlyLiters: 24,
+    });
+    expect(calc.breakdown.map((row) => row.label)).toEqual([
+      "水代（12ヶ月）",
+      "配送料（12ヶ月）",
+      "電気代（12ヶ月）",
+      "初期費用",
+    ]);
+    expect(calc.assumptions).toContain("契約解除料: UNKNOWN（条件の記載のみで総額には含めない）");
+  });
+
+  it("buyback: labels and assumptions are Japanese", () => {
+    const calc = calculateBuybackNet({
+      offerId: "offer-buyback-1",
+      title: "Game buyback",
+      assessedJpy: 10000,
+      outboundShippingJpy: 0,
+      returnShippingJpy: 700,
+      packingKitJpy: "UNKNOWN",
+    });
+    expect(calc.breakdown).toEqual([
+      { label: "査定額（見込み）", amountJpy: 10000 },
+      { label: "発送時の送料", amountJpy: 0 },
+      { label: "返送料（買取を断る場合）", amountJpy: -700 },
+      { label: "梱包キット", amountJpy: "UNKNOWN" },
+    ]);
+    expect(calc.assumptions).toEqual([
+      "査定額は見込みであり、確定価格は最終査定で決まります",
+      "返送料は買取を断った場合にのみ発生します",
+    ]);
+  });
+});
+
+describe("structured comparison period", () => {
+  it("sim, fiber and water expose the comparison period in months", () => {
+    const sim = calculateSimTotalCost({ offerId: "a", title: "A", monthlyJpy: 2980, dataGb: 20, initialFeeJpy: 0, months: 24 });
+    const fiber = calculateFiberTotalCost({
+      offerId: "f",
+      title: "F",
+      monthlyJpy: 5000,
+      months: 36,
+      installationFeeJpy: 0,
+      installationFeeMonths: 36,
+      contractTermMonths: 36,
+      cancellationFeeJpy: 0,
+      apartmentType: "kodate",
+    });
+    const water = calculateWaterServerCost({
+      offerId: "w",
+      title: "W",
+      waterChargeJpy: 4000,
+      shippingFeeJpy: 0,
+      electricityFeeJpy: 0,
+      months: 12,
+      initialFeeJpy: 0,
+      cancellationFeeJpy: 0,
+      monthlyLiters: 24,
+    });
+    expect([sim.comparisonMonths, fiber.comparisonMonths, water.comparisonMonths]).toEqual([24, 36, 12]);
   });
 });
 

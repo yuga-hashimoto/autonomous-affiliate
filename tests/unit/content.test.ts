@@ -6,7 +6,7 @@ import {
   findProhibitedPhrases,
   QaEngine,
 } from "@aff/content";
-import { calculateSimTotalCost, calculateWaterServerCost } from "@aff/analysis";
+import { calculateFiberTotalCost, calculateSimTotalCost, calculateWaterServerCost } from "@aff/analysis";
 import { createFreshnessPolicy, type FreshnessPolicy } from "@aff/integrations";
 import {
   type AffiliateOffer,
@@ -16,6 +16,7 @@ import {
   parsePolicyText,
 } from "@aff/domain";
 import { readFileSync } from "node:fs";
+import { extractBreakdownSection, findNonJapaneseBreakdownLines } from "../helpers/breakdown-leaks.js";
 
 const policy: PolicyConfig = parsePolicyText(
   readFileSync(new URL("../../config/policy.example.yaml", import.meta.url), "utf8"),
@@ -100,6 +101,132 @@ describe("B009 draft engine", () => {
     expect(draft.bodyMarkdown).toContain("[公式](https://provider.example.com/price)");
     expect(draft.claims[0]!.sourceIds).toContain("src_1");
     expect(draft.disclosure).toBe(AD_DISCLOSURE);
+  });
+
+  it("renders the 試算の内訳 section with Japanese labels and assumptions", () => {
+    const draft = buildTestDraft();
+    const section = extractBreakdownSection(draft.bodyMarkdown);
+    expect(section).toContain("- 前提: 比較期間は24ヶ月");
+    expect(section).toContain("- 初期費用: 3,300円");
+    expect(section).toContain("- 月額料金（24ヶ月 × 月2,980円）: 71,520円");
+    expect(findNonJapaneseBreakdownLines(draft.bodyMarkdown)).toEqual([]);
+  });
+
+  it("leaks no English label from any calculator, UNKNOWN rows included", () => {
+    const calculations = [
+      calculateSimTotalCost({
+        offerId: "sim_full",
+        title: "SIM full",
+        monthlyJpy: 2980,
+        dataGb: 20,
+        initialFeeJpy: 3300,
+        months: 24,
+        discountPeriods: [{ fromMonth: 1, toMonth: 6, monthlyJpy: 1080 }],
+        universalServiceFeeJpy: 2,
+      }),
+      calculateSimTotalCost({
+        offerId: "sim_unknown",
+        title: "SIM unknown",
+        monthlyJpy: "UNKNOWN",
+        dataGb: "UNKNOWN",
+        initialFeeJpy: "UNKNOWN",
+        months: 24,
+        discountPeriods: [{ fromMonth: 1, toMonth: 3, monthlyJpy: 980 }],
+        universalServiceFeeJpy: "UNKNOWN",
+      }),
+      calculateFiberTotalCost({
+        offerId: "fiber_full",
+        title: "Fiber full",
+        monthlyJpy: 5390,
+        months: 24,
+        installationFeeJpy: 44000,
+        installationFeeMonths: 24,
+        contractTermMonths: 24,
+        cancellationFeeJpy: 1000,
+        apartmentType: "mansion",
+      }),
+      calculateFiberTotalCost({
+        offerId: "fiber_unknown",
+        title: "Fiber unknown",
+        monthlyJpy: "UNKNOWN",
+        months: 24,
+        installationFeeJpy: "UNKNOWN",
+        installationFeeMonths: 24,
+        contractTermMonths: "UNKNOWN",
+        cancellationFeeJpy: "UNKNOWN",
+        apartmentType: "kodate",
+      }),
+      calculateWaterServerCost({
+        offerId: "water_full",
+        title: "Water full",
+        waterChargeJpy: 4100,
+        shippingFeeJpy: 260,
+        electricityFeeJpy: 250,
+        months: 12,
+        initialFeeJpy: 0,
+        cancellationFeeJpy: 11000,
+        monthlyLiters: 24,
+      }),
+      calculateWaterServerCost({
+        offerId: "water_unknown",
+        title: "Water unknown",
+        waterChargeJpy: "UNKNOWN",
+        shippingFeeJpy: "UNKNOWN",
+        electricityFeeJpy: "UNKNOWN",
+        months: 12,
+        initialFeeJpy: "UNKNOWN",
+        cancellationFeeJpy: "UNKNOWN",
+        monthlyLiters: 24,
+      }),
+    ];
+    const draft = buildTestDraft({ calculations });
+    expect(extractBreakdownSection(draft.bodyMarkdown)).toContain("ユニバーサルサービス料");
+    expect(findNonJapaneseBreakdownLines(draft.bodyMarkdown)).toEqual([]);
+  });
+
+  it("the leak check really flags English labels and assumptions", () => {
+    const english = [
+      "## 試算の内訳（公式料金に基づく計算）",
+      "",
+      "### SIM A",
+      "",
+      "- 計算式: `totalJpy = initialFeeJpy + monthlyJpy * months`",
+      "- 式バージョン: analysis-formulas-v1",
+      "- 前提: comparison period is 24 months",
+      "- initial fee: 3,300円",
+      "- monthly fee (24 months × 2980 JPY): 71,520円",
+      "- 月額料金（24ヶ月）: 71,520円",
+      "",
+      "## 条件別の比較表",
+    ].join("\n");
+    expect(findNonJapaneseBreakdownLines(english)).toEqual([
+      "- 前提: comparison period is 24 months",
+      "- initial fee: 3,300円",
+      "- monthly fee (24 months × 2980 JPY): 71,520円",
+    ]);
+  });
+
+  it("reads comparisonMonths from the calculation, not from assumption prose", () => {
+    const calculation = {
+      ...calculateSimTotalCost({
+        offerId: "offer_a",
+        title: "SIM A 20GB",
+        monthlyJpy: 2980,
+        dataGb: 20,
+        initialFeeJpy: 3300,
+        months: 12,
+      }),
+      assumptions: ["期間は一年間とする"],
+    };
+    const draft = buildTestDraft({ calculations: [calculation] });
+    expect(draft.metadata.comparisonMonths).toBe(12);
+    const decision = qaEngine().evaluate({ draft, facts: [fact()], offers: [offer()], sources: [source] });
+    expect(decision.checks.find((c) => c.id === "comparison_units_match")?.status).toBe("PASS");
+  });
+
+  it("has no comparison period without calculations (fail-closed QA input)", () => {
+    const draft = buildTestDraft({ calculations: [] });
+    expect(draft.metadata.comparisonMonths).toBeNull();
   });
 
   it("rejects fabricated hands-on experience before any QA runs", () => {

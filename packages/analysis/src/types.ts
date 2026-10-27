@@ -85,6 +85,8 @@ export interface TotalCostCalculation {
   title: string;
   formulaVersion: string;
   formula: string;
+  /** Comparison window in months; read by QA instead of parsing `assumptions` prose. */
+  comparisonMonths: number;
   assumptions: string[];
   totalJpy: Known<number>;
   monthlyAverageJpy: Known<number>;
