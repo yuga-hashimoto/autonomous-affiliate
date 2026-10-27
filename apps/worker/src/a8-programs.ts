@@ -159,16 +159,24 @@ export interface ProbeNode {
   id?: string;
   name?: string;
   type?: string;
+  /** A link's target, or a form's action. */
   href?: string;
+  /** A form's method. */
+  method?: string;
   /** The element's own text, not its children's. */
   text: string;
   children: ProbeNode[];
 }
 
-/** Tags whose text is interface wording (column headings, buttons, form labels), never page data. */
 /** Tags whose short text is shown outside a program row: menu items and buttons, not values. */
 const SHORT_TEXT_TAGS = new Set(["a", "li", "button"]);
-const LABEL_TAGS = new Set(["th", "button", "label", "legend", "option", "caption", "summary", "h1", "h2", "h3", "h4", "h5"]);
+/** Tags whose text is interface wording (column headings, buttons, form labels, terms), never page data. */
+const LABEL_TAGS = new Set(["th", "dt", "button", "label", "option"]);
+/** Headings are labels too, but a long one could be a program name, so they get a shorter limit. */
+const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "caption", "summary", "legend"]);
+const PROBE_HEADING_MAX = 20;
+/** A select with this in its name lists the account's own sites; those names are account details. */
+const SITE_SELECT = /site/i;
 /** The only words printed from masked text, so a status vocabulary can be learned. */
 const STATUS_WORDS = [
   "提携申請中",
@@ -202,16 +210,27 @@ function statusWordsIn(text: string): string {
   return found.length > 0 ? ` ≈[${found.join(",")}]` : "";
 }
 
-function describeNode(node: ProbeNode, masked: boolean): string {
+interface DescribeContext {
+  /** Inside a select of the account's sites: option text is not printed. */
+  maskOptions: boolean;
+}
+
+function describeNode(node: ProbeNode, masked: boolean, context: DescribeContext): string {
   const parts: string[] = [node.tag];
   if (node.id) parts.push(`#${node.id}`);
   if (node.cls.length > 0) parts.push(`.${node.cls.slice(0, 3).join(".")}`);
-  const attributes = [node.name ? `name=${node.name}` : "", node.type ? `type=${node.type}` : ""].filter(Boolean);
+  const attributes = [
+    node.name ? `name=${node.name}` : "",
+    node.type ? `type=${node.type}` : "",
+    node.method ? `method=${node.method.toLowerCase()}` : "",
+  ].filter(Boolean);
   if (attributes.length > 0) parts.push(` [${attributes.join(" ")}]`);
   if (node.href !== undefined) parts.push(` -> ${hrefShape(node.href)}`);
   const text = node.text.trim();
   if (text) {
-    const isLabel = LABEL_TAGS.has(node.tag) && text.length <= PROBE_LABEL_MAX;
+    const isLabel =
+      (LABEL_TAGS.has(node.tag) && text.length <= PROBE_LABEL_MAX && !(node.tag === "option" && context.maskOptions)) ||
+      (HEADING_TAGS.has(node.tag) && text.length <= PROBE_HEADING_MAX);
     const isShortOutsideRows = !masked && SHORT_TEXT_TAGS.has(node.tag) && text.length <= PROBE_SHORT_TEXT_MAX;
     // Long digit strings (ids, numbers) are never printed, even in a label.
     parts.push(isLabel || isShortOutsideRows ? ` "${text.replace(/\d{5,}/g, "#")}"` : ` T${text.length}${statusWordsIn(text)}`);
@@ -219,27 +238,41 @@ function describeNode(node: ProbeNode, masked: boolean): string {
   return parts.join("");
 }
 
+export interface RenderProbeOptions {
+  /** Terms that must not appear in the output, such as the program name searched for. */
+  redact?: readonly string[];
+}
+
+function redactTerms(line: string, terms: readonly string[]): string {
+  return terms
+    .filter((term) => term.length >= 2)
+    .reduce((current, term) => current.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "[term]"), line);
+}
+
 /**
  * Renders a page's element tree as indented lines for a public log. Text is shown
  * only for interface labels and for short text outside a program row (a row being
  * any element that contains exactly one program's links); everything else is a length.
+ * The options of a select that lists the account's sites are never shown.
  */
-export function renderProbe(root: ProbeNode): string[] {
+export function renderProbe(root: ProbeNode, options: RenderProbeOptions = {}): string[] {
   const memo = new Map<ProbeNode, Set<string>>();
   idsIn(root, memo);
+  const terms = options.redact ?? [];
   const lines: string[] = [];
   let truncated = false;
 
-  const visit = (node: ProbeNode, depth: number, insideRow: boolean): void => {
+  const visit = (node: ProbeNode, depth: number, insideRow: boolean, maskOptions: boolean): void => {
     if (lines.length >= PROBE_MAX_LINES) {
       truncated = true;
       return;
     }
     const masked = insideRow || node.tag === "td" || memo.get(node)?.size === 1;
-    lines.push(`${"  ".repeat(Math.min(depth, 12))}${describeNode(node, masked)}`);
-    for (const child of node.children) visit(child, depth + 1, masked);
+    const siteSelect = maskOptions || (node.tag === "select" && SITE_SELECT.test(node.name ?? ""));
+    lines.push(`${"  ".repeat(Math.min(depth, 12))}${redactTerms(describeNode(node, masked, { maskOptions: siteSelect }), terms)}`);
+    for (const child of node.children) visit(child, depth + 1, masked, siteSelect);
   };
-  visit(root, 0, false);
+  visit(root, 0, false, false);
   if (truncated) lines.push("…(truncated)");
   return lines;
 }
@@ -289,7 +322,8 @@ export const DUMP_TREE = `(() => {
       id: element.id || undefined,
       name: element.getAttribute("name") || undefined,
       type: element.getAttribute("type") || undefined,
-      href: element.tagName === "A" ? element.getAttribute("href") || "" : undefined,
+      href: element.tagName === "A" ? element.getAttribute("href") || "" : element.tagName === "FORM" ? element.getAttribute("action") || "" : undefined,
+      method: element.tagName === "FORM" ? element.getAttribute("method") || "get" : undefined,
       text: own,
       children,
     };

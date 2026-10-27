@@ -32,6 +32,7 @@ import {
 } from "@aff/agents";
 import { AspReportImporter, HttpFetcher, MapFetcher, checkRobots, type Fetcher } from "@aff/integrations";
 import { buildMonthlyReport, renderMonthlyReportMarkdown } from "@aff/analytics";
+import { runA8Inspect } from "./a8-inspect.js";
 import { runA8LoginSmoke } from "./a8-login.js";
 import { runA8Programs } from "./a8-programs.js";
 import { createHeroImageService, runImageSmoke } from "./hero-image.js";
@@ -703,6 +704,13 @@ if (isMain()) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       for (const [list, lines] of Object.entries(probe ?? {})) {
         process.stdout.write(`--- ${list}: page structure (content masked) ---\n${lines.join("\n")}\n`);
+      }
+      if (report.outcome !== "ok") process.exit(1);
+    } else if (command === "a8-inspect-program") {
+      const { probe, ...report } = await runA8Inspect(options.env ?? process.env);
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      for (const [page, lines] of Object.entries(probe ?? {})) {
+        process.stdout.write(`--- ${page}: page structure (content masked) ---\n${lines.join("\n")}\n`);
       }
       if (report.outcome !== "ok") process.exit(1);
     } else if (command === "refresh") {
