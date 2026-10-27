@@ -60,9 +60,9 @@
 - 公開済み記事の更新（2026-10-27 追加）: 毎日の `live-pipeline` は最初に鮮度巡回を行い、根拠Factが失効した記事（価格は7日）を `UPDATE_CANDIDATE` にして再生成・置き換える。QAに落ちる/公式ページが取れない場合は前版が公開され続け、翌日以降に再試行する（3回で停止）。手順と仕様は docs/04「既存記事更新」。この仕組みの追加前に公開した `premium-water-famfit2-24month` は図（PR #9）を持たない。反映するには `live-pipeline` を手動実行し、入力 `template_revision` に名前（例 `figures-1`）を渡す。同じ名前の再実行は何もしない。
 - 公開の上限と残り: 計画は1件だけなので、翌日以降の実行は同じ記事を冪等にスキップし、記事は増えない。増やすには計画の量産が要る（genre-comparison 9-5の6）。比較表は1社のみ。契約解除料は公式ページで未確認（記事にUNKNOWNと明記）。
 - 初回のプレビューで見つけた不具合: 実LLM（API経由）の事実抽出が出力上限の既定2,048トークンで途中切れになり `Unterminated string in JSON` で失敗した。抽出器は16,384トークンを要求し、プロバイダは `finish_reason=length` を「truncated」として報告する（#6）。
-- 記事の画像（AI生成・OpenRouter。**実装済み、`OPENROUTER_API_KEY` 未登録のため現在は画像なしで公開される**）: 公開する記事に16:9のヒーロー画像を1枚付ける。モデルは既定で `qwen/qwen-image-2.1-turbo`（OpenRouterの画像API、1枚約0.0184ドル）。`OPENROUTER_API_KEY` を **GitHub Actions secret** に入れたときだけ有効で、無ければ従来どおり画像なしで公開する（エラーにしない）。プロンプトは業種ごとの固定文で、ページ本文やLLM出力は一切入らない。画像は商品写真ではなく一般的なイラストで、記事には「イメージ画像（AI生成）。実際の商品・サービスとは異なります。」を必ず表示する。生成物は png/jpeg/webp・16:9前後・640px以上だけを受け入れ、1280pxのWebPに再エンコードして `apps/site/public/images/articles/<slug>/hero.webp` に保存し、記事と同じコミットに入れる。失敗しても記事は止めない（画像なしで公開）。既に画像のある記事の更新では再生成しない（課金なし）。費用は `api` として月次の支出に記録する（JPY換算は `IMAGE_USD_JPY`、既定200円/ドルの上限見積もり。1枚あたりの上限は `IMAGE_MAX_COST_JPY`、既定15円。月予算を超える見込みなら呼ばない）。確認用に `image-smoke` workflow（手動）が1枚だけ生成して run artifact に残す。公式商品写真は使わない（premium-water.net の /affiliate/ 規約。A8承認後にASP提供素材を検討）。
+- 記事の画像（AI生成・OpenRouter。**稼働中（2026-10-27〜、`OPENROUTER_API_KEY` 登録済み）**）: 公開する記事に16:9のヒーロー画像を1枚付ける。モデルは既定で `qwen/qwen-image-2.1-turbo`（OpenRouterの画像API、1枚約0.0184ドル）。`OPENROUTER_API_KEY` を **GitHub Actions secret** に入れたときだけ有効で、無ければ画像なしで公開する（エラーにしない）。プロンプトは業種ごとの固定文で、ページ本文やLLM出力は一切入らない。画像は商品写真ではなく一般的なイラストで、記事には「イメージ画像（AI生成）。実際の商品・サービスとは異なります。」を必ず表示する。生成物は png/jpeg/webp・16:9前後・640px以上だけを受け入れ、1280pxのWebPに再エンコードして `apps/site/public/images/articles/<slug>/hero.webp` に保存し、記事と同じコミットに入れる。失敗しても記事は止めない（画像なしで公開）。既に画像のある記事の更新では再生成しない（課金なし）。費用は `api` として月次の支出に記録する（JPY換算は `IMAGE_USD_JPY`、既定200円/ドルの上限見積もり。1枚あたりの上限は `IMAGE_MAX_COST_JPY`、既定15円。月予算を超える見込みなら呼ばない）。確認用に `image-smoke` workflow（手動）が1枚だけ生成して run artifact に残す。公式商品写真は使わない（premium-water.net の /affiliate/ 規約。A8承認後にASP提供素材を検討）。
 - 緊急停止: `gh variable set LIVE_AUTOMATION_ENABLED --body false`（ジョブは即スキップ）。あわせて `LIVE_POLICY_YAML` の `publish_enabled` も `false` に戻す。
-- A8.net: `sougakuhikaku.com` サブサイト登録済み。広告主プログラムへの提携申請・承認は未実施。確認した引越し侍案件は公開後URL提出が必要で、公式自動化経路未確認のため自動運用候補として保留。
+- A8.net: `sougakuhikaku.com` サブサイト登録済み。広告主プログラムの提携申請・承認は未完了。公開後にURL提出が必要なプログラムがあり、自動化できるまで自動運用の対象にしない。提携申請・リンク取得・URL提出にはA8の公式APIがなく、管理画面の操作が要る。CIから管理画面へログインできるかを `a8-login-smoke` workflow（手動）で確認する（下の「0-7」）。A8の利用規約は会員限定の情報（プログラム名・成果条件・報酬額）の公開を禁じるため、この公開リポジトリには書かない。
 
 ### 0-5. ASP 本人登録（審査は「公開済みの自サイトURL」で申し込む）
 
@@ -83,6 +83,16 @@
 - GA4: <https://analytics.google.com/> → プロパティ作成 → Webストリームで測定ID取得
 
 ---
+
+### 0-7. A8管理画面へのCIログイン確認（`a8-login-smoke`）
+
+A8には提携申請・リンク取得・URL提出のAPIがなく、無人運用にはCIから管理画面（`media-console.a8.net`）へログインする必要がある。セッションCookieをsecretに置く方式は期限切れで止まるため、ID/パスワードでのログインを試す。まず**ログインだけ**を1回確認し、通ってから申請・リンク取得・URL提出を足す。
+
+- 登録（本人。値はチャットやコードに書かない）: GitHubの Environment `a8`（mainブランチだけが使える）に secret `A8_LOGIN_ID` と `A8_LOGIN_PASSWORD` を入れる。`gh secret set A8_LOGIN_ID --env a8` のように実行すると値の入力を求められる。
+- 実行: Actions の `a8-login-smoke` を手動実行（mainで）。ログイン1回と会員ページ1回の読み取りだけで、申請も変更もしない。
+- 結果: ログは公開されるため、出力は `outcome`（`logged_in` / `challenge` / `rejected` / `unknown`）、ページのパス（クエリなし）、短い説明だけ。パスワード・ID・プログラム名は出さない。
+- `challenge`（CAPTCHAやメール/端末の確認）ならCIからの自動ログインは通らない。回避せず、Macの定期実行に切り替える。`rejected` は再試行しない（ロック回避）。
+- 自動操作はA8の会員規約上のリスクがある。申請は週5件程度から始め、アカウント停止の兆候があれば止める。
 
 ## Phase 1: GitHub 設定（リポジトリ → Settings → Secrets and variables → Actions）
 
@@ -115,7 +125,7 @@ CLI方式のローカル手動実行時のみ: `.env`（gitignore済み）へ `L
    pnpm tsx apps/worker/src/index.ts import-offers config/offers.live.json
    ~~~
    `status: "APPROVED"`, `active: true` にした案件だけが収益化CTAに使われる。
-   プログラム規約に「掲載後URL提出」等の継続的な手動作業がある場合、公式API/自動化経路が確認できるまでそのオファーは自動運用対象にしない（例: A8引越し侍プログラムはURL提出要件の自動化手段が未確認、docs/research参照）。
+   プログラム規約に「掲載後URL提出」等の継続的な手動作業がある場合、公式API/自動化経路が確認できるまでそのオファーは自動運用対象にしない（例: 公開後URL提出が必要なA8プログラム）。
 3. **SERP観測（B000B）**: 手動で検索（地域=日本/言語=日本語/モバイルを固定）し、上位10件を記録。形式は `SerpObservation`（`packages/domain/src/types.ts`）。無断スクレイピングはしない。検索ボリュームはKeyword Planner等の実測値のみ、取れなければUNKNOWN。
 4. **プラン作成**: `config/plans.dry-run.json` と同じ形式で `config/plans.live.json`。数値は全て対象サイトの公式ページから転記（確認日を記録）。
 
