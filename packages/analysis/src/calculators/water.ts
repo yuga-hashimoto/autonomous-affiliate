@@ -102,6 +102,7 @@ export function calculateWaterServerCost(input: WaterServerOfferInput): TotalCos
     breakdown,
     unknowns,
     conditions,
+    ...(typeof input.minimumTermMonths === "number" ? { minimumTermMonths: input.minimumTermMonths } : {}),
     warnings,
   };
 }

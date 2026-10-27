@@ -303,6 +303,83 @@ describe("B009 draft engine", () => {
     });
   });
 
+  describe("figures (chart blocks rendered by the site)", () => {
+    const waterCalc = (overrides: Record<string, unknown> = {}) =>
+      calculateWaterServerCost({
+        offerId: "offer_w",
+        title: "Water 25L",
+        waterChargeJpy: 4190,
+        shippingFeeJpy: 0,
+        electricityFeeJpy: 669,
+        months: 24,
+        initialFeeJpy: 3300,
+        cancellationFeeJpy: "UNKNOWN",
+        minimumTermMonths: 60,
+        monthlyLiters: 25,
+        ...overrides,
+      });
+    const blocks = (body: string): Record<string, unknown>[] =>
+      [...body.matchAll(/```chart\n([\s\S]*?)\n```/g)].map((match) => JSON.parse(match[1] ?? "null") as Record<string, unknown>);
+
+    it("opens a single-plan article with key figures, then the breakdown, then the term timeline", () => {
+      const found = blocks(buildTestDraft({ calculations: [waterCalc()] }).bodyMarkdown);
+      expect(found.map((block) => block.type)).toEqual(["key-figures", "bars", "term-timeline"]);
+      expect(found[0]).toEqual({
+        type: "key-figures",
+        items: [
+          { label: "24ヶ月の総額", value: "119,916円" },
+          { label: "月平均", value: "4,997円" },
+          { label: "最低利用期間", value: "60ヶ月" },
+        ],
+      });
+    });
+
+    it("draws the cost breakdown from the calculator's own rows, with unknown rows kept as UNKNOWN", () => {
+      const bars = blocks(buildTestDraft({ calculations: [waterCalc({ electricityFeeJpy: "UNKNOWN" })] }).bodyMarkdown).find(
+        (block) => block.type === "bars",
+      ) as { rows: { label: string; detail?: string; value: number | string }[] };
+      expect(bars.rows).toEqual([
+        { label: "水代", detail: "24ヶ月 × 月4,190円", value: 100560 },
+        { label: "配送料", detail: "24ヶ月 × 月0円", value: 0 },
+        { label: "電気代", detail: "24ヶ月", value: "UNKNOWN" },
+        { label: "初期費用", value: 3300 },
+      ]);
+    });
+
+    it("shows the term timeline only when the minimum term is a known number", () => {
+      const known = blocks(buildTestDraft({ calculations: [waterCalc()] }).bodyMarkdown).find((b) => b.type === "term-timeline");
+      expect(known).toMatchObject({ comparisonMonths: 24, minimumTermMonths: 60 });
+      const unknown = blocks(buildTestDraft({ calculations: [waterCalc({ minimumTermMonths: "UNKNOWN" })] }).bodyMarkdown);
+      expect(unknown.map((block) => block.type)).not.toContain("term-timeline");
+      const none = blocks(buildTestDraft().bodyMarkdown);
+      expect(none.map((block) => block.type)).not.toContain("term-timeline");
+    });
+
+    it("compares totals across plans with bars, without key figures", () => {
+      const found = blocks(
+        buildTestDraft({ calculations: [waterCalc(), waterCalc({ offerId: "offer_w2", title: "Water 40L", waterChargeJpy: 5000 })] })
+          .bodyMarkdown,
+      );
+      expect(found.map((block) => block.type)).not.toContain("key-figures");
+      expect(found[0]).toMatchObject({ type: "bars", rows: [{ label: "Water 25L" }, { label: "Water 40L" }] });
+    });
+
+    it("keeps an unknown total as UNKNOWN in the key figures", () => {
+      const found = blocks(buildTestDraft({ calculations: [waterCalc({ initialFeeJpy: "UNKNOWN" })] }).bodyMarkdown);
+      expect(found[0]).toMatchObject({ type: "key-figures", items: [{ value: "UNKNOWN" }, { value: "UNKNOWN" }, {}] });
+    });
+
+    it("cannot be broken out of its fence by a plan title containing backticks", () => {
+      // With two plans the titles are the comparison bars' row labels.
+      const body = buildTestDraft({
+        calculations: [waterCalc({ title: "A```B" }), waterCalc({ offerId: "offer_w2", title: "Water 40L" })],
+      }).bodyMarkdown;
+      const found = blocks(body); // JSON.parse throws if a fence were closed early
+      expect(found[0]).toMatchObject({ type: "bars", rows: [{ label: "A```B" }, { label: "Water 40L" }] });
+      expect(body.match(/^```chart$/gm)?.length).toBe(found.length);
+    });
+  });
+
   it("omits affiliate CTAs when no approved offer exists", () => {
     const draft = buildTestDraft({ ctaOffers: [] });
     expect(draft.offerIds).toHaveLength(0);

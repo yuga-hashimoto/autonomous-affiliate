@@ -124,6 +124,12 @@ describe("fiber / water / buyback calculators", () => {
       expect(calc.warnings?.[0]).toContain("契約解除料");
     });
 
+    it("exposes a known minimum term as a number for charts, and nothing when it is unknown or absent", () => {
+      expect(calculateWaterServerCost({ ...base, cancellationFeeJpy: "UNKNOWN", minimumTermMonths: 60 }).minimumTermMonths).toBe(60);
+      expect(calculateWaterServerCost({ ...base, cancellationFeeJpy: 0, minimumTermMonths: "UNKNOWN" }).minimumTermMonths).toBeUndefined();
+      expect(calculateWaterServerCost({ ...base, cancellationFeeJpy: 0 }).minimumTermMonths).toBeUndefined();
+    });
+
     it("gives no warning when the comparison period covers the minimum term or the term is unknown", () => {
       expect(calculateWaterServerCost({ ...base, cancellationFeeJpy: 0, minimumTermMonths: 24 }).warnings ?? []).toEqual([]);
       expect(calculateWaterServerCost({ ...base, cancellationFeeJpy: 0, minimumTermMonths: "UNKNOWN" }).warnings ?? []).toEqual([]);
