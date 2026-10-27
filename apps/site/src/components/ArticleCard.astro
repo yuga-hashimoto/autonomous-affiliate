@@ -1,5 +1,5 @@
 ---
-import { formatDate, isoDate, type ArticleLike } from "../lib/articles";
+import { formatDate, heroImageOf, isoDate, type ArticleLike } from "../lib/articles";
 
 interface Props {
   article: ArticleLike;
@@ -7,15 +7,35 @@ interface Props {
 
 const { article } = Astro.props;
 const { title, description, pubDate, offerIds } = article.data;
+const hero = heroImageOf(article.data);
 ---
 
 <li class="card">
-  <p class="card-meta">
-    <time datetime={isoDate(pubDate)}>確認日 {formatDate(pubDate)}</time>
-    {offerIds.length > 0 && <span class="pr-badge">PR含む</span>}
-  </p>
-  <h3 class="card-title">
-    <a class="card-link" href={`/articles/${article.id}/`}>{title}</a>
-  </h3>
-  <p class="card-desc">{description}</p>
+  {
+    hero && (
+      <div class="card-thumb">
+        <img
+          src={hero.src}
+          alt={hero.alt}
+          width={hero.width}
+          height={hero.height}
+          loading="lazy"
+          decoding="async"
+        />
+        <span class="card-thumb-note" aria-hidden="true">
+          AI生成
+        </span>
+      </div>
+    )
+  }
+  <div class="card-body">
+    <p class="card-meta">
+      <time datetime={isoDate(pubDate)}>確認日 {formatDate(pubDate)}</time>
+      {offerIds.length > 0 && <span class="pr-badge">PR含む</span>}
+    </p>
+    <h3 class="card-title">
+      <a class="card-link" href={`/articles/${article.id}/`}>{title}</a>
+    </h3>
+    <p class="card-desc">{description}</p>
+  </div>
 </li>

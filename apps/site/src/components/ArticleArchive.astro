@@ -67,18 +67,27 @@ const { page } = Astro.props;
 </div>
 
 <script>
-  import { formatDate } from "../lib/articles";
-
-  interface SearchEntry {
-    id: string;
-    title: string;
-    description: string;
-    date: string;
-    pr: boolean;
-  }
+  import { formatDate, type SearchEntry } from "../lib/articles";
 
   const MAX_RESULTS = 50;
   const normalize = (value: string): string => value.normalize("NFKC").toLowerCase();
+
+  /** Same markup as ArticleCard.astro's thumbnail (src comes from the validated index). */
+  function renderThumb(src: string, alt: string): HTMLDivElement {
+    const box = document.createElement("div");
+    box.className = "card-thumb";
+    const image = document.createElement("img");
+    image.src = src;
+    image.alt = alt;
+    image.loading = "lazy";
+    image.decoding = "async";
+    const note = document.createElement("span");
+    note.className = "card-thumb-note";
+    note.setAttribute("aria-hidden", "true");
+    note.textContent = "AI生成";
+    box.append(image, note);
+    return box;
+  }
 
   function renderCard(entry: SearchEntry): HTMLLIElement {
     const item = document.createElement("li");
@@ -109,7 +118,14 @@ const { page } = Astro.props;
     description.className = "card-desc";
     description.textContent = entry.description;
 
-    item.append(meta, heading, description);
+    const body = document.createElement("div");
+    body.className = "card-body";
+    body.append(meta, heading, description);
+
+    if (entry.thumbnail !== undefined && entry.thumbnailAlt !== undefined) {
+      item.append(renderThumb(entry.thumbnail, entry.thumbnailAlt));
+    }
+    item.append(body);
     return item;
   }
 

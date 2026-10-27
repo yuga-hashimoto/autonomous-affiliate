@@ -8,6 +8,7 @@ import {
   paginate,
   readingMinutes,
   relatedArticles,
+  searchEntryOf,
   sortByNewest,
   type ArticleLike,
 } from "./articles";
@@ -152,5 +153,47 @@ describe("heroImageOf", () => {
     "javascript:alert(1)",
   ])("never links an image from %s", (heroImage) => {
     expect(heroImageOf({ ...valid, heroImage })).toBeUndefined();
+  });
+});
+
+describe("searchEntryOf", () => {
+  const base = article("water", "2026-10-27T09:26:28.884Z", ["offer-1"]);
+  const withHero: ArticleLike = {
+    ...base,
+    data: {
+      ...base.data,
+      heroImage: "/images/articles/water/hero.webp",
+      heroImageAlt: "ウォーターサーバーのイメージ（AI生成）",
+      heroImageWidth: 1024,
+      heroImageHeight: 576,
+    },
+  };
+
+  it("carries the fields the archive search renders, including the thumbnail", () => {
+    expect(searchEntryOf(withHero)).toEqual({
+      id: "water",
+      title: "water",
+      description: "water desc",
+      date: "2026-10-27",
+      pr: true,
+      thumbnail: "/images/articles/water/hero.webp",
+      thumbnailAlt: "ウォーターサーバーのイメージ（AI生成）",
+    });
+  });
+
+  it("omits the thumbnail when the article has no valid hero image", () => {
+    expect(searchEntryOf(base)).toEqual({
+      id: "water",
+      title: "water",
+      description: "water desc",
+      date: "2026-10-27",
+      pr: true,
+    });
+    const hostile: ArticleLike = {
+      ...withHero,
+      data: { ...withHero.data, heroImage: "https://evil.example.com/hero.webp" },
+    };
+    expect(searchEntryOf(hostile)).not.toHaveProperty("thumbnail");
+    expect(searchEntryOf(hostile)).not.toHaveProperty("thumbnailAlt");
   });
 });

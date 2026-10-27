@@ -14,21 +14,21 @@ const HERO_SRC = /^\/images\/articles\/[a-z0-9]+(?:-[a-z0-9]+)*\/hero\.webp$/;
 const RELATED_DEFAULT_LIMIT = 3;
 const CHARS_PER_MINUTE = 500;
 
-export interface ArticleLike {
-  id: string;
-  data: {
-    title: string;
-    description: string;
-    pubDate: string;
-    offerIds: string[];
-  };
-}
-
 export interface HeroImageData {
   heroImage?: string | undefined;
   heroImageAlt?: string | undefined;
   heroImageWidth?: number | undefined;
   heroImageHeight?: number | undefined;
+}
+
+export interface ArticleLike {
+  id: string;
+  data: HeroImageData & {
+    title: string;
+    description: string;
+    pubDate: string;
+    offerIds: string[];
+  };
 }
 
 export interface HeroImageView {
@@ -52,6 +52,30 @@ export function heroImageOf(data: HeroImageData): HeroImageView | undefined {
   if (alt === undefined || alt.trim().length === 0) return undefined;
   if (!isSize(width) || !isSize(height)) return undefined;
   return { src, alt, width, height };
+}
+
+/** One row of /search.json: what the archive search needs to draw a card. */
+export interface SearchEntry {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  pr: boolean;
+  /** Validated hero image (see heroImageOf); both absent when the article has none. */
+  thumbnail?: string;
+  thumbnailAlt?: string;
+}
+
+export function searchEntryOf(article: ArticleLike): SearchEntry {
+  const hero = heroImageOf(article.data);
+  return {
+    id: article.id,
+    title: article.data.title,
+    description: article.data.description,
+    date: isoDate(article.data.pubDate),
+    pr: article.data.offerIds.length > 0,
+    ...(hero ? { thumbnail: hero.src, thumbnailAlt: hero.alt } : {}),
+  };
 }
 
 export interface Page<T> {
