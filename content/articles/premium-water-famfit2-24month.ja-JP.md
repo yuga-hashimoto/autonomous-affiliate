@@ -1,9 +1,13 @@
 ---
 title: "プレミアムウォーター famfit2の24ヶ月総額（公式料金ベースの試算）"
 description: "公式の料金ページに載る月額・送料・手数料・電気代の目安から、月12.5L×2本を24ヶ月使った場合の総額を試算します。"
-pubDate: "2026-10-27T05:44:44.009Z"
+pubDate: "2026-10-27T09:26:28.884Z"
 disclosure: "本記事にはプロモーション（PR）を含みます。"
 offerIds: []
+heroImage: "/images/articles/premium-water-famfit2-24month/hero.webp"
+heroImageAlt: "ウォーターサーバーのイメージ（AI生成）"
+heroImageWidth: 1024
+heroImageHeight: 576
 ---
 
 本記事にはプロモーション（PR）を含みます。
@@ -74,6 +78,6 @@ offerIds: []
 
 ## 出典
 
-- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-27T05:42:39.152Z（sha256: 565bc7ad5037…）
-- [公式](https://premium-water.net/price) — 確認日時: 2026-10-27T05:42:40.261Z（sha256: 6e6846afae72…）
+- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-27T09:23:26.936Z（sha256: 4a98e6a6dbe9…）
+- [公式](https://premium-water.net/price) — 確認日時: 2026-10-27T09:23:28.004Z（sha256: 938be56d8436…）
 
