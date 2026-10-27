@@ -115,6 +115,19 @@ export function credentialsFromEnv(env: NodeJS.ProcessEnv): A8Credentials {
   return { loginId, password };
 }
 
+/**
+ * The runner already has Google Chrome, so CI sets A8_BROWSER_CHANNEL=chrome and
+ * downloads nothing (installing Playwright's browser with system packages
+ * stalled on a slow mirror once and timed the job out). Locally the default
+ * Chromium is used. Only "chrome" is accepted, never free text.
+ */
+export function browserLaunchOptions(env: NodeJS.ProcessEnv): { headless: true; channel?: "chrome" } {
+  const channel = env.A8_BROWSER_CHANNEL?.trim();
+  if (!channel) return { headless: true };
+  if (channel !== "chrome") throw new Error('A8_BROWSER_CHANNEL must be "chrome" or unset');
+  return { headless: true, channel };
+}
+
 export function redactSecrets(text: string, secrets: readonly string[]): string {
   return secrets
     .filter((secret) => secret.length > 0)
@@ -197,13 +210,12 @@ async function attemptLogin(page: Page, credentials: A8Credentials): Promise<A8S
 
   await page.fill("#mediaLoginName", credentials.loginId);
   await page.fill("#mediaLoginPassword", credentials.password);
+  // The form POST is a full navigation. Waiting for it to commit (after any redirect) means the
+  // snapshot below is of the page A8 answered with, not of the login form we just left.
   await Promise.all([
-    page.waitForResponse((response) => response.request().method() === "POST" && safePath(response.url()) === "/login", {
-      timeout: NAVIGATION_TIMEOUT_MS,
-    }),
+    page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: NAVIGATION_TIMEOUT_MS }),
     page.click("form[name=asLogin] button[type=submit]"),
   ]);
-  await page.waitForLoadState("domcontentloaded");
 
   const after = await snapshotOf(page);
   const firstOutcome = classifyA8Page(after);
@@ -224,7 +236,7 @@ export async function runA8LoginSmoke(env: NodeJS.ProcessEnv): Promise<A8SmokeRe
   const credentials = credentialsFromEnv(env);
   const secrets = [credentials.loginId, credentials.password];
   const { chromium } = await import("playwright");
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(browserLaunchOptions(env));
   try {
     const context = await browser.newContext({ locale: "ja-JP", timezoneId: "Asia/Tokyo" });
     const page = await context.newPage();
