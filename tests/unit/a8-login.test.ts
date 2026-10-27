@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   A8_LOGIN_URL,
+  browserLaunchOptions,
   classifyA8Page,
   credentialsFromEnv,
   describeA8Failure,
@@ -142,6 +143,21 @@ describe("describeA8Failure", () => {
     expect(new Set(hints).size).toBe(3);
     expect(describeA8Failure("challenge")).toMatch(/CAPTCHA|認証/);
     expect(describeA8Failure("rejected")).toMatch(/再試行しない/);
+  });
+});
+
+describe("browserLaunchOptions", () => {
+  it("launches Playwright's own headless Chromium by default", () => {
+    expect(browserLaunchOptions({})).toEqual({ headless: true });
+  });
+
+  it("can use the Google Chrome already installed on the runner, so nothing is downloaded", () => {
+    expect(browserLaunchOptions({ A8_BROWSER_CHANNEL: "chrome" })).toEqual({ headless: true, channel: "chrome" });
+  });
+
+  it("refuses any other channel instead of passing arbitrary text to the launcher", () => {
+    expect(() => browserLaunchOptions({ A8_BROWSER_CHANNEL: "msedge" })).toThrow(/A8_BROWSER_CHANNEL/);
+    expect(() => browserLaunchOptions({ A8_BROWSER_CHANNEL: "chrome; rm -rf /" })).toThrow(/A8_BROWSER_CHANNEL/);
   });
 });
 
