@@ -179,5 +179,39 @@ export function repositoryContract(
       expect(rows[0]!.sessions).toBe(150);
       expect(rows[0]!.impressions).toBe("UNKNOWN");
     });
+
+    it("publications: countOnDay counts articles first published that day, not later revisions", async () => {
+      const repo = await makeRepo();
+      const publication = (id: string, itemId: string, revisionId: string, publishedAt: string, extra = {}) => ({
+        id,
+        itemId,
+        revisionId,
+        destination: "git" as const,
+        status: "SUCCEEDED" as const,
+        publishedAt,
+        ...extra,
+      });
+      // article A: first published on day 1, replaced by an update on day 2
+      await repo.publications.save(publication("pub_a1", "item_a", "rev_a1", "2026-10-27T04:00:00.000Z"));
+      await repo.publications.save(publication("pub_a2", "item_a", "rev_a2", "2026-10-28T04:00:00.000Z"));
+      expect(await repo.publications.countOnDay("2026-10-27")).toBe(1);
+      expect(await repo.publications.countOnDay("2026-10-28")).toBe(0);
+
+      // article B is new on day 2, so it is the day's one new article
+      await repo.publications.save(publication("pub_b1", "item_b", "rev_b1", "2026-10-28T05:00:00.000Z"));
+      expect(await repo.publications.countOnDay("2026-10-28")).toBe(1);
+
+      // previews, failed builds and a second destination of the same article do not count
+      await repo.publications.save(
+        publication("pub_c1", "item_c", "rev_c1", "2026-10-28T06:00:00.000Z", { destination: "preview" as const }),
+      );
+      await repo.publications.save(
+        publication("pub_d1", "item_d", "rev_d1", "2026-10-28T06:30:00.000Z", { status: "FAILED" as const }),
+      );
+      await repo.publications.save(
+        publication("pub_b2", "item_b", "rev_b1", "2026-10-28T07:00:00.000Z", { destination: "pages" as const }),
+      );
+      expect(await repo.publications.countOnDay("2026-10-28")).toBe(1);
+    });
   });
 }

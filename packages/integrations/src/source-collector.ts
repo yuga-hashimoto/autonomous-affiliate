@@ -31,7 +31,7 @@ export class SourceCollector {
     private readonly fetcher: Fetcher,
     private readonly allowlist: DomainAllowlist,
     private readonly sources: SourceRepository,
-    private readonly options: { timeoutMs?: number; provenance?: string } = {},
+    private readonly options: { timeoutMs?: number; provenance?: string; clock?: () => Date } = {},
   ) {}
 
   async collect(rawUrl: string): Promise<CollectedSource> {
@@ -52,7 +52,7 @@ export class SourceCollector {
       id: newId("src"),
       canonicalUrl,
       sourceType: "official",
-      fetchedAt: new Date().toISOString(),
+      fetchedAt: (this.options.clock ?? (() => new Date()))().toISOString(),
       hash: sha256Hex(result.body),
       provenance: this.options.provenance ?? "direct fetch of official page",
       contentType: result.contentType,

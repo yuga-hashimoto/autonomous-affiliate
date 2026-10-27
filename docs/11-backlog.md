@@ -76,6 +76,7 @@ B001→B002→B003→B005→B006→B007→B009→B010→B011→B012 の順で「
 - [x] B021: 市場調査で選ばれたジャンルの上位3記事をデータ化（キーワード・独自分析・CTA・公式出典を定義）。DoD: 商品を購入/使用しない比較記事がdry-runで生成可能。（config/plans.dry-run.json — 実データによる選定はB000A〜D後に入れ替え）
 - [x] B022: 自社記事→YouTube/Xの配信adapter（default disabled）。DoD: API未許可ならSKIPPED。note/Qiita/Zennへの自動投稿は行わない。
 - [x] B023: 実機操作不要のE2Eテスト。DoD: source→analysis→content→QA→publishまでSaaSアカウントを必要とせずに完走。（tests/e2e/dry-run.test.ts）
+- [x] B024: 公開済み記事の更新パス。DoD: 失効/テンプレ変更で再調査→分析→原稿→QAを再実行し、QA合格時だけ同じファイルを `update: <slug>` のcommitで置き換える。失敗時は前版を維持、同じトリガーの再起動は冪等、更新は新規記事の日次上限を消費しない。（packages/agents/src/update.ts、tests/unit/update-path.test.ts、docs/04）
 ## 商材選定用の新規最優先タスク（実装時はB006前に実施）
 
 - [ ] B000A: 全ジャンルの候補商材台帳、公式ASP制度調査、媒体/地域別資格ゲート（docs/15-market-validation.md）。DoD: 未審査・未承認は収益化リンク無効。

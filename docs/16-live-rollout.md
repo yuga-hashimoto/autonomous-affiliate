@@ -57,6 +57,7 @@
 - 配信: `deploy` workflowは、mainのCIが成功すると（そのコミットを）自動でCloudflare Pagesへ配信する。手動実行（workflow_dispatch）も可。`live-pipeline` はGITHUB_TOKENでpushするためCIが起動せず、自分でデプロイする（二重配信なし）。
 - 日次ジョブ: `pipeline`（ドライラン、プレビュー成果物のみ・公開なし）と `live-pipeline`（実公開）は、どちらも毎日02:17 JSTに実行する（GitHubは毎時0分の定期実行を遅延/欠落させるため0分を避けた。`live-pipeline` の旧 `0 17` は4時間以上遅れて起動した）。02:17の定期実行そのものは未確認。
 - ライブ公開（2026-10-27 開始）: 許可ドメインは `premium-water.net` のみ（robots確認済み、利用規約は本人が確認）。`LIVE_AUTOMATION_ENABLED=true`、`LIVE_POLICY_YAML`（`publish_enabled: true`）と `LIVE_PLANS_JSON`（計画1件）を登録済み。`live-pipeline` を手動実行し、`premium-water-famfit2-24month` の1本を公開した（run 40451118865、コミット `549f35f`）。`AFFILIATE_TRACKING_URLS_JSON` は未設定のため収益リンクはない（A8提携は未承認）。
+- 公開済み記事の更新（2026-10-27 追加）: 毎日の `live-pipeline` は最初に鮮度巡回を行い、根拠Factが失効した記事（価格は7日）を `UPDATE_CANDIDATE` にして再生成・置き換える。QAに落ちる/公式ページが取れない場合は前版が公開され続け、翌日以降に再試行する（3回で停止）。手順と仕様は docs/04「既存記事更新」。この仕組みの追加前に公開した `premium-water-famfit2-24month` は図（PR #9）を持たない。反映するには `live-pipeline` を手動実行し、入力 `template_revision` に名前（例 `figures-1`）を渡す。同じ名前の再実行は何もしない。
 - 公開の上限と残り: 計画は1件だけなので、翌日以降の実行は同じ記事を冪等にスキップし、記事は増えない。増やすには計画の量産が要る（genre-comparison 9-5の6）。比較表は1社のみ。契約解除料は公式ページで未確認（記事にUNKNOWNと明記）。
 - 初回のプレビューで見つけた不具合: 実LLM（API経由）の事実抽出が出力上限の既定2,048トークンで途中切れになり `Unterminated string in JSON` で失敗した。抽出器は16,384トークンを要求し、プロバイダは `finish_reason=length` を「truncated」として報告する（#6）。
 - 緊急停止: `gh variable set LIVE_AUTOMATION_ENABLED --body false`（ジョブは即スキップ）。あわせて `LIVE_POLICY_YAML` の `publish_enabled` も `false` に戻す。
@@ -122,6 +123,7 @@ CLI方式のローカル手動実行時のみ: `.env`（gitignore済み）へ `L
 
 - GitHub Actions: `live-preview` workflow（手動実行）。本番と同じLLM経路で動く。結果はジョブのサマリーとartifactに出る。
 - ローカル: `pnpm tsx apps/worker/src/index.ts run-pipeline --live --preview --policy config/policy.live-preview.yaml --plans config/plans.live-preview.json`（LLMは `LLM_PROVIDER=cli` のopencode等。遅い経路では `LLM_EXTRACT_TIMEOUT_MS` を上げる）。
+- 更新パスの非公開確認: `live-preview` の入力 `update_path` を有効にする（CLI: `--preview-update` を追加）。新規プレビューに続けて、その記事を更新パスで再生成した原稿とQAを示す（調査が2回走る）。
 - 本番のDBでプレビューを実行しない。ジョブはスラッグ＋ポリシーのバージョンで冪等管理され、QAで落ちた計画も「完了」として記録されるため、後の本番実行がスキップされる／状態遷移に失敗する。
 - プレビュー用のスラッグは `preview-` で始める。
 
@@ -144,7 +146,8 @@ pnpm tsx apps/worker/src/index.ts run-pipeline --live \
 2. GitHub Secrets `LIVE_PLANS_JSON` を設定し、`DATABASE_URL`、LLM API key/単価、`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`AFFILIATE_TRACKING_URLS_JSON` があることを確認。
 3. GitHub Variable `LIVE_AUTOMATION_ENABLED=true` にする。`.github/workflows/live-pipeline.yml` が毎日02:00 JSTにQA合格記事を `content/articles/` にcommit/pushし、Pagesへデプロイする。
 4. GitHub-hosted runnerにはローカルのOpenCodeログインは引き継がれない。**スケジュール自動運用にはAPIキー方式（OpenAI互換）が必要**。OpenCode/Claude Code/Antigravity CLI方式はローカル手動実行向け（または認証設定済みself-hosted runnerを別途用意する）。
-5. 緊急停止: GitHub Variable `LIVE_AUTOMATION_ENABLED=false` にする（workflow jobが即skip）と同時に `LIVE_POLICY_YAML` の `publish_enabled` もfalseへ。記事単位の撤去は `worker refresh`（鮮度切れ/無効Fact検知でUPDATE_CANDIDATE/REVOKED化）。
+5. 更新パスの運用: 日次実行が鮮度巡回と更新を行う。記事生成側の改善を公開済み記事へ反映したい時は `live-pipeline` を手動実行して `template_revision` に新しい名前を渡す。更新は `limits.new_articles_per_day` を消費しない（新規記事だけが1日1本）。結果は実行のジョブサマリー（記事ごとの action / update）に出る。`kept_previous` が続く時は計画の金額が公式ページとずれていることが多く、`LIVE_PLANS_JSON` を直して新しい名前で再実行する。
+6. 緊急停止: GitHub Variable `LIVE_AUTOMATION_ENABLED=false` にする（workflow jobが即skip）と同時に `LIVE_POLICY_YAML` の `publish_enabled` もfalseへ。記事単位の撤去は `worker refresh`（鮮度切れ/無効Fact検知でUPDATE_CANDIDATE/REVOKED化）。
 
 ## Phase 5: 計測と改善
 

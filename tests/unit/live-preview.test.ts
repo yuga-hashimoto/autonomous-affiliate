@@ -3,7 +3,8 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MapFetcher } from "@aff/integrations";
 import { FixtureFactExtractor } from "@aff/agents";
-import { extractTimeoutMs, runLivePipeline } from "../../apps/worker/src/index.js";
+import { createMemoryRepository } from "@aff/db";
+import { extractTimeoutMs, parseTemplateRevision, runLivePipeline } from "../../apps/worker/src/index.js";
 import { readFileSync } from "./helpers.js";
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -99,6 +100,88 @@ describe("live pipeline in preview mode", () => {
     // publish_enabled: true in the policy was ignored: nothing reached the real article store
     const articles = await readdir(path.join(ROOT, "content/articles")).catch(() => [] as string[]);
     expect(articles.some((name) => name.startsWith(SLUG))).toBe(false);
+  });
+});
+
+describe("update path in the live pipeline worker", () => {
+  const policyPath = path.join(TMP, "update-policy.yaml");
+  const plansPath = path.join(TMP, "update-plans.json");
+  const seams = {
+    fetcher: new MapFetcher(new Map([[PAGE_URL, { body: PAGE }]])),
+    extractor: new FixtureFactExtractor(),
+  };
+  const T0 = new Date("2026-10-27T04:44:25.000Z");
+
+  beforeAll(async () => {
+    await mkdir(TMP, { recursive: true });
+    const example = readFileSync(new URL("../../config/policy.live.example.yaml", import.meta.url), "utf8");
+    await writeFile(
+      policyPath,
+      example.replace("allowed_source_domains: []", "allowed_source_domains: [sim-a.example.com]"),
+      "utf8",
+    );
+    await writeFile(plansPath, JSON.stringify(PLANS), "utf8");
+  });
+
+  afterAll(async () => {
+    await rm(TMP, { recursive: true, force: true });
+    await rm(PREVIEW_DIR, { recursive: true, force: true });
+  });
+
+  it("--preview-update regenerates the article the preview just made and shows the figures", async () => {
+    const result = await runLivePipeline(
+      { policyPath, outDir: ".tmp/unused", env: { ...LLM_ENV }, preview: true, previewUpdate: true, clock: () => T0, ...seams },
+      plansPath,
+    );
+
+    expect(result.results.map((r) => [r.action, r.update?.outcome ?? null])).toEqual([
+      ["pipeline", null],
+      ["update", "previewed"],
+    ]);
+    expect(result.results[1]).toMatchObject({ slug: SLUG, qaStatus: "PASS", published: true });
+    expect(result.refresh).toBeUndefined();
+    const previewFile = path.join(PREVIEW_DIR, "content/articles", `${SLUG}.ja-JP.md`);
+    expect(await readFile(previewFile, "utf8")).toContain("```chart");
+  });
+
+  it("a preview-update outside a preview, and a malformed template revision, are refused", async () => {
+    await expect(
+      runLivePipeline({ policyPath, outDir: ".tmp/unused", env: { ...LLM_ENV, DATABASE_URL: "x" }, previewUpdate: true, ...seams }, plansPath),
+    ).rejects.toThrow(/previewUpdate/);
+    await expect(
+      runLivePipeline(
+        { policyPath, outDir: ".tmp/unused", env: { ...LLM_ENV }, preview: true, templateRevision: "bad revision;", ...seams },
+        plansPath,
+      ),
+    ).rejects.toThrow(/template revision/);
+    expect(parseTemplateRevision("figures-1")).toBe("figures-1");
+    for (const bad of ["", " ", "-x", "a b", "a/b", "x".repeat(65)]) {
+      expect(() => parseTemplateRevision(bad), JSON.stringify(bad)).toThrow(/template revision/);
+    }
+  });
+
+  it("a daily run sweeps for stale facts first and routes the stale article to the update path", async () => {
+    const repo = createMemoryRepository();
+    const run = (now: Date) =>
+      runLivePipeline(
+        { policyPath, outDir: ".tmp/unused", env: { ...LLM_ENV, DATABASE_URL: "unused-with-injected-repo" }, repo, clock: () => now, ...seams },
+        plansPath,
+      );
+
+    const first = await run(T0);
+    expect(first.results[0]).toMatchObject({ slug: SLUG, action: "pipeline", finalState: "PUBLISHED" });
+    expect(first.refresh).toEqual({ updateCandidates: [], revoked: [] });
+
+    const later = await run(new Date(T0.getTime() + 8 * 86_400_000));
+    expect(later.refresh).toEqual({ updateCandidates: [SLUG], revoked: [] });
+    // publishing is off in this policy, so the update is a preview and the item keeps waiting
+    expect(later.results[0]).toMatchObject({
+      slug: SLUG,
+      action: "update",
+      qaStatus: "PASS",
+      update: { outcome: "previewed", trigger: "stale" },
+    });
+    expect((await repo.content.getBySlug(SLUG, "ja-JP"))?.state).toBe("UPDATE_CANDIDATE");
   });
 });
 

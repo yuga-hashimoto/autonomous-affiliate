@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { PublisherIO } from "@aff/agents";
@@ -45,16 +45,36 @@ export class LivePublisherIO implements PublisherIO {
       (async (cmd, args, cwd) => execFileAsync(cmd, args, { cwd, maxBuffer: 32 * 1024 * 1024 }));
   }
 
-  async writeArtifact(path: string, content: string): Promise<void> {
-    // The publisher passes "<siteContentDir>/<file>"; resolve inside contentDir.
+  /** The publisher passes "<siteContentDir>/<file>"; resolve it inside contentDir. */
+  private resolveArtifact(path: string): string {
     const base = sanitizeRelPath(this.options.contentDir);
     const relative = path.replace(/^content\/articles\//, "");
     const target = resolve(base, relative);
     if (target !== base && !target.startsWith(`${base}${sep}`)) {
       throw new Error(`artifact path escapes content dir: ${path}`);
     }
+    return target;
+  }
+
+  async writeArtifact(path: string, content: string): Promise<void> {
+    const target = this.resolveArtifact(path);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, content, "utf8");
+  }
+
+  /** The article as it is now (undefined if absent), so a failed update can put it back. */
+  async readArtifact(path: string): Promise<string | undefined> {
+    const target = this.resolveArtifact(path);
+    try {
+      return await readFile(target, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    }
+  }
+
+  async removeArtifact(path: string): Promise<void> {
+    await rm(this.resolveArtifact(path), { force: true });
   }
 
   async buildSite(): Promise<void> {

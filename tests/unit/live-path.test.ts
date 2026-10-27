@@ -88,6 +88,31 @@ describe("LivePublisherIO (git publish path)", () => {
     expect(sha).toBe("abc123");
     expect(calls.some((c) => c.join(" ").includes("git push origin HEAD:refs/heads/main"))).toBe(true);
   });
+
+  it("reads and removes an article so a failed update can be rolled back", async () => {
+    const io = new LivePublisherIO({
+      repoRoot: TMP,
+      contentDir: CONTENT_DIR,
+      buildSite: async () => undefined,
+    });
+    expect(await io.readArtifact("content/articles/never-written.md")).toBeUndefined();
+    await io.writeArtifact("content/articles/article-rollback.md", "# v1");
+    expect(await io.readArtifact("content/articles/article-rollback.md")).toBe("# v1");
+    await io.removeArtifact("content/articles/article-rollback.md");
+    expect(await io.readArtifact("content/articles/article-rollback.md")).toBeUndefined();
+    // removing a file that is already gone is not an error
+    await io.removeArtifact("content/articles/article-rollback.md");
+  });
+
+  it("refuses to read or remove outside the content dir", async () => {
+    const io = new LivePublisherIO({
+      repoRoot: TMP,
+      contentDir: CONTENT_DIR,
+      buildSite: async () => undefined,
+    });
+    await expect(io.readArtifact("content/articles/../../evil.md")).rejects.toThrow(/escapes/);
+    await expect(io.removeArtifact("content/articles/../../evil.md")).rejects.toThrow(/escapes/);
+  });
 });
 
 describe("robots.txt checker", () => {

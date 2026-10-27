@@ -419,10 +419,16 @@ class MemoryPublicationRepository {
     return this.byKey.get(`${revisionId}:${destination}`);
   }
 
+  /** New articles only: an article counts on the day of its first successful publication. */
   async countOnDay(dayKey: string): Promise<number> {
-    return [...this.byKey.values()].filter(
-      (p) => p.destination !== "preview" && p.status === "SUCCEEDED" && dayKey === dayKeyInTz(new Date(p.publishedAt)),
-    ).length;
+    const firstPublishedAt = new Map<string, number>();
+    for (const p of this.byKey.values()) {
+      if (p.destination === "preview" || p.status !== "SUCCEEDED") continue;
+      const at = Date.parse(p.publishedAt);
+      const known = firstPublishedAt.get(p.itemId);
+      if (known === undefined || at < known) firstPublishedAt.set(p.itemId, at);
+    }
+    return [...firstPublishedAt.values()].filter((at) => dayKeyInTz(new Date(at)) === dayKey).length;
   }
 }
 

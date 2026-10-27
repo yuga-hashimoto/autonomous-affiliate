@@ -1010,10 +1010,15 @@ export function createPgRepository(pool: Pool): Repository {
     async countOnDay(dayKey: string) {
       const c = await client();
       try {
+        // New articles only: an article counts on the day of its first successful
+        // publication, so replacing a live article (update) never uses up the slot.
         const r = await c.query<{ count: string }>(
-          `SELECT count(*)::text AS count FROM publications
-           WHERE destination <> 'preview' AND status = 'SUCCEEDED'
-             AND to_char(published_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD') = $1`,
+          `SELECT count(*)::text AS count FROM (
+             SELECT item_id, min(published_at) AS first_published_at FROM publications
+             WHERE destination <> 'preview' AND status = 'SUCCEEDED'
+             GROUP BY item_id
+           ) first_publications
+           WHERE to_char(first_published_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD') = $1`,
           [dayKey],
         );
         return Number(r.rows[0]?.count ?? "0");
