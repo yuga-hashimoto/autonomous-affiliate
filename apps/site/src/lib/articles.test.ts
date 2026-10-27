@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ARTICLES_PER_PAGE,
   formatDate,
+  heroImageOf,
   isoDate,
   pageWindow,
   paginate,
@@ -115,5 +116,41 @@ describe("pageWindow", () => {
 
   it("prints a lone missing page instead of an ellipsis", () => {
     expect(pageWindow(4, 10)).toEqual([1, 2, 3, 4, 5, "…", 10]);
+  });
+});
+
+describe("heroImageOf", () => {
+  const valid = {
+    heroImage: "/images/articles/premium-water-famfit2-24month/hero.webp",
+    heroImageAlt: "ウォーターサーバーのイメージ（AI生成）",
+    heroImageWidth: 1280,
+    heroImageHeight: 720,
+  };
+
+  it("returns the image only when every field is present and valid", () => {
+    expect(heroImageOf(valid)).toEqual({
+      src: valid.heroImage,
+      alt: valid.heroImageAlt,
+      width: 1280,
+      height: 720,
+    });
+    expect(heroImageOf({})).toBeUndefined();
+    expect(heroImageOf({ ...valid, heroImageAlt: undefined })).toBeUndefined();
+    expect(heroImageOf({ ...valid, heroImageAlt: "  " })).toBeUndefined();
+    expect(heroImageOf({ ...valid, heroImageWidth: undefined })).toBeUndefined();
+    expect(heroImageOf({ ...valid, heroImageHeight: 0 })).toBeUndefined();
+    expect(heroImageOf({ ...valid, heroImageWidth: 12.5 })).toBeUndefined();
+  });
+
+  it.each([
+    "https://evil.example.com/hero.webp",
+    "//evil.example.com/hero.webp",
+    "/images/articles/../../secret/hero.webp",
+    "/images/articles/a/hero.svg",
+    "/images/articles/a/other.webp",
+    "/images/other/a/hero.webp",
+    "javascript:alert(1)",
+  ])("never links an image from %s", (heroImage) => {
+    expect(heroImageOf({ ...valid, heroImage })).toBeUndefined();
   });
 });

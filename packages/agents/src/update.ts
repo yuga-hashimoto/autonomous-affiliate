@@ -21,6 +21,7 @@ import {
   existingHashes,
   extractPlanFacts,
   transition,
+  withHeroImage,
   type PlanEvidence,
 } from "./pipeline-support.js";
 import { runArticlePipeline, type ArticlePlan, type PipelineResult, type PipelineServices } from "./pipeline.js";
@@ -321,7 +322,7 @@ export async function runArticleUpdate(
       clock,
     });
     const target: PublishTarget = { destination: dryRun ? "preview" : "git", previewDir: services.previewDir };
-    const artifact: PublishArtifact = {
+    const textArtifact: PublishArtifact = {
       itemId: item.id,
       revisionId: decision.revisionId,
       slug: plan.slug,
@@ -333,10 +334,9 @@ export async function runArticleUpdate(
       qa: decision,
       offerIds: draft.offerIds,
     };
-    const outcome = await publisher.publish(
-      { artifact, target, item: current, kind: "update" },
-      await repo.offers.listOffers(),
-    );
+    const offers = await repo.offers.listOffers();
+    const artifact = await withHeroImage(textArtifact, { plan, services, publisher, target, offers, logger: trace });
+    const outcome = await publisher.publish({ artifact, target, item: current, kind: "update" }, offers);
     if (!outcome.published) return await keep([outcome.reason], { qaStatus: "PASS" });
 
     if (dryRun) {

@@ -32,6 +32,7 @@ import {
 } from "@aff/agents";
 import { AspReportImporter, HttpFetcher, MapFetcher, checkRobots, type Fetcher } from "@aff/integrations";
 import { buildMonthlyReport, renderMonthlyReportMarkdown } from "@aff/analytics";
+import { createHeroImageService, runImageSmoke } from "./hero-image.js";
 import { LivePublisherIO } from "./live-io.js";
 import plansFixture from "../../../config/plans.dry-run.json" with { type: "json" };
 import offersFixture from "../../../config/offers.dry-run.json" with { type: "json" };
@@ -382,6 +383,8 @@ export async function runLivePipeline(
         remoteRef: env.LIVE_GIT_REMOTE_REF ?? "main",
       });
 
+  // A preview never publishes, so it never pays for an image.
+  const heroImages = previewOnly ? undefined : createHeroImageService(env, { repo, policy, clock, logger, repoRoot: ROOT });
   const spendBefore = await repo.spend.sumMonth(dayKeyInTz(clock()).slice(0, 7));
   // Expired facts turn a live article into UPDATE_CANDIDATE; the plan loop below regenerates it.
   const refresh = options.preview ? undefined : await refreshSweep(repo, policy, clock());
@@ -394,12 +397,15 @@ export async function runLivePipeline(
       fetcher: options.fetcher ?? new HttpFetcher(),
       extractor,
       publisherIO: io,
+      ...(heroImages ? { heroImages: heroImages.service } : {}),
       previewDir: previewOnly ? livePreviewDir : undefined,
       clock,
     },
     { templateRevision, previewUpdate: options.previewUpdate === true },
   );
-  const llmCostJpy = (await repo.spend.sumMonth(dayKeyInTz(clock()).slice(0, 7))) - spendBefore;
+  // Image spend is stored as it happens; the LLM spend below is what the ledger added on top.
+  const llmCostJpy =
+    (await repo.spend.sumMonth(dayKeyInTz(clock()).slice(0, 7))) - spendBefore - (heroImages?.imageCostJpy() ?? 0);
   const ledgerDelta = ledger.spentJpy - spendBefore;
   if (ledgerDelta > 0) {
     await repo.spend.recordSpend({
@@ -680,6 +686,12 @@ if (isMain()) {
       process.stdout.write(`${JSON.stringify(await runCheckRobots(arg), null, 2)}\n`);
     } else if (command === "llm-smoke") {
       process.stdout.write(`${JSON.stringify(await runLlmSmoke(options.env ?? process.env), null, 2)}\n`);
+    } else if (command === "image-smoke") {
+      const smoke = await runImageSmoke(options.env ?? process.env, {
+        verticalId: arg ?? "water_delivery",
+        outDir: join(ROOT, options.outDir),
+      });
+      process.stdout.write(`${JSON.stringify(smoke, null, 2)}\n`);
     } else if (command === "refresh") {
       process.stdout.write(`${JSON.stringify(await runRefresh(options), null, 2)}\n`);
     } else if (command === "growth") {

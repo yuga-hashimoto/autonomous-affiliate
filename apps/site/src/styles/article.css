@@ -52,6 +52,27 @@
   line-height: 1.5;
 }
 
+/* ---------- Hero image (AI-generated, always captioned) ---------- */
+.hero-image {
+  margin: 1.1rem 0 0;
+}
+
+.hero-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.hero-image figcaption {
+  margin-top: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
 .article-meta {
   display: flex;
   flex-wrap: wrap;

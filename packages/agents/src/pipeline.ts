@@ -20,7 +20,9 @@ import {
   existingHashes,
   extractPlanFacts,
   transition,
+  withHeroImage,
 } from "./pipeline-support.js";
+import type { HeroImageService } from "./hero-image.js";
 import type { FactExtractor } from "./research.js";
 
 export { computeCalculations };
@@ -73,6 +75,8 @@ export interface PipelineServices {
   fetcher?: Fetcher;
   extractor: FactExtractor;
   publisherIO: PublisherIO;
+  /** Supplies each published article's hero image; without it articles go out text-only. */
+  heroImages?: HeroImageService;
   previewDir?: string;
   clock?: () => Date;
   /** Called between repair attempts; may mutate the plan (LLM repair in live mode). */
@@ -280,7 +284,7 @@ export async function runArticlePipeline(
     };
     const draft = await buildDraftFor(plan, repo, clock);
     const latestQa = await repo.content.getLatestQaReport(item.id);
-    const artifact: PublishArtifact = {
+    const textArtifact: PublishArtifact = {
       itemId: item.id,
       revisionId: latestQa!.revisionId,
       slug: plan.slug,
@@ -293,6 +297,7 @@ export async function runArticlePipeline(
       offerIds: draft.offerIds,
     };
     const offers = await repo.offers.listOffers();
+    const artifact = await withHeroImage(textArtifact, { plan, services, publisher, target, offers, logger: trace });
     const outcome = await publisher.publish({ artifact, target, item }, offers);
     if (!outcome.published) {
       current = await transition(repo, current, "QUARANTINED", runId, policy.version);

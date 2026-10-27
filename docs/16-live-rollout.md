@@ -60,6 +60,7 @@
 - 公開済み記事の更新（2026-10-27 追加）: 毎日の `live-pipeline` は最初に鮮度巡回を行い、根拠Factが失効した記事（価格は7日）を `UPDATE_CANDIDATE` にして再生成・置き換える。QAに落ちる/公式ページが取れない場合は前版が公開され続け、翌日以降に再試行する（3回で停止）。手順と仕様は docs/04「既存記事更新」。この仕組みの追加前に公開した `premium-water-famfit2-24month` は図（PR #9）を持たない。反映するには `live-pipeline` を手動実行し、入力 `template_revision` に名前（例 `figures-1`）を渡す。同じ名前の再実行は何もしない。
 - 公開の上限と残り: 計画は1件だけなので、翌日以降の実行は同じ記事を冪等にスキップし、記事は増えない。増やすには計画の量産が要る（genre-comparison 9-5の6）。比較表は1社のみ。契約解除料は公式ページで未確認（記事にUNKNOWNと明記）。
 - 初回のプレビューで見つけた不具合: 実LLM（API経由）の事実抽出が出力上限の既定2,048トークンで途中切れになり `Unterminated string in JSON` で失敗した。抽出器は16,384トークンを要求し、プロバイダは `finish_reason=length` を「truncated」として報告する（#6）。
+- 記事の画像（AI生成・OpenRouter。**実装済み、`OPENROUTER_API_KEY` 未登録のため現在は画像なしで公開される**）: 公開する記事に16:9のヒーロー画像を1枚付ける。モデルは既定で `qwen/qwen-image-2.1-turbo`（OpenRouterの画像API、1枚約0.0184ドル）。`OPENROUTER_API_KEY` を **GitHub Actions secret** に入れたときだけ有効で、無ければ従来どおり画像なしで公開する（エラーにしない）。プロンプトは業種ごとの固定文で、ページ本文やLLM出力は一切入らない。画像は商品写真ではなく一般的なイラストで、記事には「イメージ画像（AI生成）。実際の商品・サービスとは異なります。」を必ず表示する。生成物は png/jpeg/webp・16:9前後・640px以上だけを受け入れ、1280pxのWebPに再エンコードして `apps/site/public/images/articles/<slug>/hero.webp` に保存し、記事と同じコミットに入れる。失敗しても記事は止めない（画像なしで公開）。既に画像のある記事の更新では再生成しない（課金なし）。費用は `api` として月次の支出に記録する（JPY換算は `IMAGE_USD_JPY`、既定200円/ドルの上限見積もり。1枚あたりの上限は `IMAGE_MAX_COST_JPY`、既定15円。月予算を超える見込みなら呼ばない）。確認用に `image-smoke` workflow（手動）が1枚だけ生成して run artifact に残す。公式商品写真は使わない（premium-water.net の /affiliate/ 規約。A8承認後にASP提供素材を検討）。
 - 緊急停止: `gh variable set LIVE_AUTOMATION_ENABLED --body false`（ジョブは即スキップ）。あわせて `LIVE_POLICY_YAML` の `publish_enabled` も `false` に戻す。
 - A8.net: `sougakuhikaku.com` サブサイト登録済み。広告主プログラムへの提携申請・承認は未実施。確認した引越し侍案件は公開後URL提出が必要で、公式自動化経路未確認のため自動運用候補として保留。
 
@@ -91,6 +92,7 @@ Secrets（<https://docs.github.com/en/actions/security-for-github-actions/securi
 | --- | --- | --- |
 | `DATABASE_URL` | `postgresql://...` | Phase 0-3 |
 | `LLM_API_KEY` | API key（Z.ai/OpenAI互換） | Phase 0-4（API方式のみ） |
+| `OPENROUTER_API_KEY` | OpenRouterのAPI key（記事の画像生成。任意） | 画像を付けたいとき |
 | `CLOUDFLARE_API_TOKEN` | Phase 0-2のトークン | 同上 |
 | `AFFILIATE_TRACKING_URLS_JSON` | `{"offers":{"<offer_id>":"https://...tracking..."}}` | ASP承認後（Phase 2-4） |
 | `LIVE_POLICY_YAML` | `config/policy.live.yaml` の内容（publish_enabled含む） | Phase 4。コード/履歴に入れずSecretで保管 |

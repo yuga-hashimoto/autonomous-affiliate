@@ -18,6 +18,8 @@ interface Props {
   /** Structured data object; serialised with `<` escaped so it cannot close the script tag. */
   jsonLd?: Record<string, unknown>;
   noindex?: boolean;
+  /** Site-relative image path for link previews. */
+  ogImage?: string;
 }
 
 const DEFAULT_DESCRIPTION = "公式一次情報に基づく料金・条件の比較と総額試算を提供する比較メディアです。";
@@ -28,11 +30,13 @@ const {
   ogType = "website",
   jsonLd,
   noindex = false,
+  ogImage,
 } = Astro.props;
 
 const site = Astro.site ?? new URL("https://example.com");
 const canonical = new URL(path ?? Astro.url.pathname, site);
 const fullTitle = title.includes(SITE_NAME) ? title : `${title} | ${SITE_NAME}`;
+const ogImageUrl = ogImage ? new URL(ogImage, site) : undefined;
 const jsonLdText = jsonLd ? JSON.stringify(jsonLd).replace(/</g, "\\u003c") : undefined;
 ---
 
@@ -54,7 +58,8 @@ const jsonLdText = jsonLd ? JSON.stringify(jsonLd).replace(/</g, "\\u003c") : un
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    <meta name="twitter:card" content="summary" />
+    {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
+    <meta name="twitter:card" content={ogImageUrl ? "summary_large_image" : "summary"} />
     {jsonLdText && <script type="application/ld+json" set:html={jsonLdText} />}
   </head>
   <body>
