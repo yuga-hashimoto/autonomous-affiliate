@@ -155,6 +155,40 @@ describe("OpenAI-compatible provider", () => {
     expect(result.modelId).toBe("test-model");
   });
 
+  it("sends the requested output-token limit", async () => {
+    let sent: { max_tokens?: number } = {};
+    const provider = makeProvider({
+      fetchImpl: (async (_url: unknown, init: { body: string }) => {
+        sent = JSON.parse(init.body) as { max_tokens?: number };
+        return new Response(JSON.stringify(jsonResponse), { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    await provider.complete(
+      { task: "t", prompt: "p", limits: { timeoutMs: 1000, maxCostJpy: 0, attempts: 1, maxOutputTokens: 9000 } },
+      new AbortController().signal,
+    );
+    expect(sent.max_tokens).toBe(9000);
+  });
+
+  it("reports a completion cut off by the token limit as truncation, not as bad JSON", async () => {
+    const provider = makeProvider({
+      fetchImpl: (async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: '{"facts":[{"text":"cut off mid' }, finish_reason: "length" }],
+            usage: { prompt_tokens: 3000, completion_tokens: 2048 },
+          }),
+          { status: 200 },
+        )) as unknown as typeof fetch,
+    });
+    await expect(
+      provider.complete(
+        { task: "t", prompt: "p", limits: { timeoutMs: 1000, maxCostJpy: 0, attempts: 1 } },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow(/truncated.*finish_reason=length.*completion_tokens/);
+  });
+
   it("refuses to construct without mandatory cost rates", () => {
     expect(() => makeProvider({ inputCostJpyPer1m: 0 })).toThrow(/forbidden/);
     expect(() => makeProvider({ apiKey: "" })).toThrow(/LLM_API_KEY/);

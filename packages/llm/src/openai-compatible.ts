@@ -8,6 +8,8 @@ import {
   type ProviderResponse,
 } from "./gateway.js";
 
+const DEFAULT_MAX_OUTPUT_TOKENS = 2048;
+
 export interface OpenAiCompatibleConfig {
   providerId: string;
   baseUrl: string;
@@ -71,7 +73,7 @@ export class OpenAiCompatibleProvider implements LLMProvider {
           { role: "user", content: request.prompt },
         ],
           response_format: { type: "json_object" },
-          max_tokens: request.limits.maxOutputTokens ?? 2048,
+          max_tokens: request.limits.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
           ...(this.config.reasoningEffort
             ? { thinking: { type: "enabled" }, reasoning_effort: this.config.reasoningEffort }
             : {}),
@@ -113,6 +115,13 @@ export class OpenAiCompatibleProvider implements LLMProvider {
     }
     const inputTokens = payload.usage?.prompt_tokens ?? 0;
     const outputTokens = payload.usage?.completion_tokens ?? 0;
+    if (choice?.finish_reason === "length") {
+      // A cut-off JSON body would otherwise surface as an opaque SyntaxError.
+      throw new ProviderPermanentError(
+        this.config.providerId,
+        `completion truncated at the output-token limit (finish_reason=length, completion_tokens=${outputTokens}, max_tokens=${request.limits.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS})`,
+      );
+    }
     const costJpy = Math.ceil(
       (inputTokens / 1_000_000) * this.config.inputCostJpyPer1m +
         (outputTokens / 1_000_000) * this.config.outputCostJpyPer1m,

@@ -6,6 +6,7 @@ import { FACT_EXTRACTION_TASK, LlmFactExtractor } from "@aff/agents";
 interface Call {
   task: string;
   content: string;
+  maxOutputTokens?: number;
 }
 
 /** Records each request and answers with facts keyed by what the content contains. */
@@ -15,9 +16,14 @@ function fakeGateway(answer: (content: string) => { text: string; claimType: str
 } {
   const calls: Call[] = [];
   const gateway: LLMGateway = {
-    async generateStructured<T>(request: { task: string; input: Record<string, unknown>; schema: z.ZodType<T> }) {
+    async generateStructured<T>(request: {
+      task: string;
+      input: Record<string, unknown>;
+      schema: z.ZodType<T>;
+      limits: { maxOutputTokens?: number };
+    }) {
       const content = String(request.input.content ?? "");
-      calls.push({ task: request.task, content });
+      calls.push({ task: request.task, content, maxOutputTokens: request.limits.maxOutputTokens });
       const output = request.schema.parse({ facts: answer(content) });
       return { output, provider: "fake", costJpy: 0 } as never;
     },
@@ -50,6 +56,19 @@ describe("LlmFactExtractor on real-world HTML", () => {
     expect(sent).toContain("レギュラー(12L) | 1,620円（税込・宅配料込）");
     expect(sent).toContain("途中解除料 2年未満 12,980円");
     expect(sent).not.toMatch(/<script|<nav|window\.__DATA__/);
+  });
+
+  it("allows an answer long enough for a page's dozens of facts (the provider default of 2,048 tokens cuts the JSON off)", async () => {
+    const { gateway, calls } = fakeGateway(() => []);
+    await new LlmFactExtractor(gateway, LIMITS).extract(longPage(), "text/html");
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) expect(call.maxOutputTokens).toBeGreaterThanOrEqual(8000);
+  });
+
+  it("lets the caller set a different output limit", async () => {
+    const { gateway, calls } = fakeGateway(() => []);
+    await new LlmFactExtractor(gateway, { ...LIMITS, maxOutputTokens: 4096 }).extract(longPage(), "text/html");
+    for (const call of calls) expect(call.maxOutputTokens).toBe(4096);
   });
 
   it("never sends more than the window size per call nor more calls than the window budget", async () => {
