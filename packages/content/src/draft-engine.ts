@@ -7,6 +7,32 @@ function yen(amount: number | "UNKNOWN"): string {
 }
 
 /**
+ * A fenced `chart` block the site turns into a figure (apps/site/plugins/charts.mjs).
+ * The data comes straight from the calculators, so the figure can only show what
+ * the text already says. Backticks are escaped so no text can close the fence.
+ */
+function chartBlock(spec: Record<string, unknown>): string[] {
+  return ["```chart", JSON.stringify(spec).replace(/`/g, "\\u0060"), "```", ""];
+}
+
+/** "水代（24ヶ月 × 月4,190円）" → label "水代", detail "24ヶ月 × 月4,190円". */
+function breakdownRow(row: { label: string; amountJpy: number | "UNKNOWN" }): Record<string, unknown> {
+  const match = /^(.+?)（(.+)）$/.exec(row.label);
+  return { label: match?.[1] ?? row.label, ...(match?.[2] ? { detail: match[2] } : {}), value: row.amountJpy };
+}
+
+function keyFigures(calc: DraftInput["calculations"][number]): Record<string, unknown> {
+  return {
+    type: "key-figures",
+    items: [
+      { label: `${calc.comparisonMonths}ヶ月の総額`, value: yen(calc.totalJpy) },
+      { label: "月平均", value: yen(calc.monthlyAverageJpy) },
+      ...(calc.minimumTermMonths !== undefined ? [{ label: "最低利用期間", value: `${calc.minimumTermMonths}ヶ月` }] : []),
+    ],
+  };
+}
+
+/**
  * B009: deterministic draft builder. Every claim carries explicit fact/source
  * references, prices always show formula + assumptions, and CTAs render only
  * for approved, active offers with site permission. Hands-on claims throw.
@@ -30,6 +56,18 @@ export function buildDraft(input: DraftInput): Draft {
   // --- Comparison table (uniform unit) ---
   body.push("## 総額比較（同一条件・同一通貨）");
   body.push("");
+  const [firstCalc] = input.calculations;
+  if (input.calculations.length === 1 && firstCalc) {
+    body.push(...chartBlock(keyFigures(firstCalc)));
+  } else if (firstCalc) {
+    body.push(
+      ...chartBlock({
+        type: "bars",
+        title: `${firstCalc.comparisonMonths}ヶ月の総額`,
+        rows: input.calculations.map((calc) => ({ label: calc.title, value: calc.totalJpy })),
+      }),
+    );
+  }
   body.push("| プラン | 総額 | 月平均 | 不明点 |");
   body.push("| --- | --- | --- | --- |");
   for (const calc of input.calculations) {
@@ -57,6 +95,13 @@ export function buildDraft(input: DraftInput): Draft {
   for (const calc of input.calculations) {
     body.push(`### ${calc.title}`);
     body.push("");
+    body.push(
+      ...chartBlock({
+        type: "bars",
+        title: `${calc.comparisonMonths}ヶ月の費用の内訳`,
+        rows: calc.breakdown.map(breakdownRow),
+      }),
+    );
     body.push(`- 計算式: \`${calc.formula}\``);
     body.push(`- 式バージョン: ${calc.formulaVersion}`);
     for (const assumption of calc.assumptions) {
@@ -92,6 +137,16 @@ export function buildDraft(input: DraftInput): Draft {
     for (const calc of withConditions) {
       body.push(`### ${calc.title}`);
       body.push("");
+      if (calc.minimumTermMonths !== undefined) {
+        body.push(
+          ...chartBlock({
+            type: "term-timeline",
+            title: "比較期間と最低利用期間",
+            comparisonMonths: calc.comparisonMonths,
+            minimumTermMonths: calc.minimumTermMonths,
+          }),
+        );
+      }
       for (const condition of calc.conditions ?? []) {
         body.push(`- ${condition.label}: ${condition.value}`);
       }

@@ -95,6 +95,8 @@ export interface TotalCostCalculation {
   unknowns: string[];
   /** Terms outside the total; unknown ones are surfaced next to the total. */
   conditions?: CalcCondition[];
+  /** Minimum contract term in months when the official page states it; absent otherwise (charts read this, not `conditions`). */
+  minimumTermMonths?: number;
   /** Cautions about reading the total (for example, period shorter than the minimum term). */
   warnings?: string[];
 }

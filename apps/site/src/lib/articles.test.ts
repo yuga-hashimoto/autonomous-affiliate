@@ -58,6 +58,11 @@ describe("readingMinutes", () => {
     const body = `${"あ".repeat(1200)}\n\n| a | b |\n| --- | --- |\n`;
     expect(readingMinutes(body)).toBe(3);
   });
+
+  it("does not count the data inside chart blocks", () => {
+    const chart = `\`\`\`chart\n{"type":"bars","title":"${"内訳".repeat(800)}","rows":[]}\n\`\`\``;
+    expect(readingMinutes(`${"あ".repeat(400)}\n\n${chart}\n`)).toBe(readingMinutes("あ".repeat(400)));
+  });
 });
 
 describe("relatedArticles", () => {

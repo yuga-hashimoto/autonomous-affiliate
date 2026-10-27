@@ -1,0 +1,170 @@
+/*
+ * Figures drawn from the article's own calculation (see plugins/charts.mjs).
+ * Every number is also real text, so the bars are decoration: they are hidden
+ * from assistive technology and never carry meaning through colour alone.
+ * Colours come from the shared tokens, so dark mode needs no extra rules.
+ */
+.prose .chart {
+  margin: 1.4rem 0 1.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.prose .chart-title {
+  padding: 0.55rem 0.95rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--brand-tint);
+  color: var(--brand);
+  font-size: 0.9375rem;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+/* ---------- key figures ---------- */
+.prose .chart-key-figures {
+  border-top: 3px solid var(--brand-solid);
+}
+
+.prose .chart-key-figures dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  margin: 0;
+}
+
+.prose .figure-item {
+  padding: 0.85rem 1rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.prose .figure-item:last-child {
+  border-bottom: 0;
+}
+
+/* Narrow screens: the total gets a full row, the rest share the next one. */
+@media (max-width: 39.99rem) {
+  .prose .figure-item:first-child:not(:only-child) {
+    grid-column: 1 / -1;
+  }
+
+  .prose .figure-item:nth-child(2):not(:last-child) {
+    border-right: 1px solid var(--border);
+  }
+}
+
+@media (min-width: 40rem) {
+  .prose .figure-item {
+    border-bottom: 0;
+    border-right: 1px solid var(--border);
+  }
+
+  .prose .figure-item:last-child {
+    border-right: 0;
+  }
+}
+
+.prose .figure-item dt {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.prose .figure-item dd {
+  margin: 0.1rem 0 0;
+  color: var(--brand);
+  font-size: 1.625rem;
+  font-weight: 800;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.prose .figure-item dd.figure-unknown {
+  color: var(--unknown-text);
+  font-size: 1.0625rem;
+}
+
+/* ---------- bars ---------- */
+.prose .chart-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0.2rem 0.95rem 0.5rem;
+}
+
+.prose .chart-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.1rem 0.8rem;
+  margin: 0;
+  padding: 0.65rem 0 0.7rem;
+  border-top: 1px solid var(--border);
+}
+
+.prose .chart-row:first-child {
+  border-top: 0;
+}
+
+.prose .chart-label {
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.prose .chart-value {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.prose .chart-detail {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.prose .chart-track {
+  grid-column: 1 / -1;
+  display: block;
+  height: 0.65rem;
+  margin-top: 0.3rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.prose .chart-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--brand-solid);
+}
+
+.prose .row-term .chart-bar-fill {
+  background: var(--link);
+}
+
+/* An unconfirmed amount draws no bar: a hatched track and a grey tag instead. */
+.prose .row-unknown .chart-track {
+  background: repeating-linear-gradient(135deg, var(--surface-sunken) 0 6px, var(--border) 6px 8px);
+}
+
+.prose .row-unknown .chart-value {
+  padding: 0 0.45rem;
+  border-radius: var(--radius-sm);
+  background: var(--unknown-bg);
+  color: var(--unknown-text);
+  font-size: 0.8125rem;
+}
+
+.prose .chart-note {
+  margin: 0;
+  padding: 0.7rem 0.95rem;
+  border-top: 1px solid var(--border);
+  border-left: 3px solid var(--link);
+  background: var(--surface-sunken);
+  font-size: 0.875rem;
+  line-height: 1.7;
+}

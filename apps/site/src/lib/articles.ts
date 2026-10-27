@@ -58,7 +58,7 @@ export function formatDate(iso: string): string {
 
 /** Rough reading time from the markdown body; markdown punctuation and whitespace are not counted. */
 export function readingMinutes(markdownBody: string): number {
-  const visible = markdownBody.replace(/[\s|#>*`\-[\]()]/g, "");
+  const visible = markdownBody.replace(/```chart[\s\S]*?```/g, "").replace(/[\s|#>*`\-[\]()]/g, "");
   return Math.max(1, Math.ceil(visible.length / CHARS_PER_MINUTE));
 }
 
