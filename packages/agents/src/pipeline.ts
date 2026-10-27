@@ -1,9 +1,7 @@
 import {
-  assertTransition,
   dayKeyInTz,
+  isLiveState,
   newId,
-  type AffiliateOffer,
-  type ContentItem,
   type ContentState,
   type Logger,
   type PolicyConfig,
@@ -11,25 +9,21 @@ import {
   type QualityDecision,
 } from "@aff/domain";
 import type { Repository } from "@aff/db";
-import { buildDraft, QaEngine, DraftRejectedError } from "@aff/content";
-import {
-  calculateFiberTotalCost,
-  calculateSimTotalCost,
-  calculateWaterServerCost,
-  buildDecisionMatrix,
-  type TotalCostCalculation,
-} from "@aff/analysis";
-import {
-  createFreshnessPolicy,
-  DomainAllowlist,
-  MapFetcher,
-  SourceCollector,
-  SourceUnavailableError,
-  type Fetcher,
-} from "@aff/integrations";
+import { QaEngine, DraftRejectedError } from "@aff/content";
+import { createFreshnessPolicy, MapFetcher, type Fetcher } from "@aff/integrations";
 import { PublisherAgent, type PublishArtifact, type PublishTarget, type PublisherIO } from "./publisher.js";
 import { checkPlanEvidence, type DerivedAmount } from "./plan-evidence.js";
-import { toFact, type FactExtractor } from "./research.js";
+import {
+  buildDraftFor,
+  collectPlanSources,
+  computeCalculations,
+  existingHashes,
+  extractPlanFacts,
+  transition,
+} from "./pipeline-support.js";
+import type { FactExtractor } from "./research.js";
+
+export { computeCalculations };
 
 export type VerticalCalculatorKey = "sim" | "fiber" | "water";
 
@@ -97,28 +91,6 @@ export interface PipelineResult {
   reasons: string[];
 }
 
-function transition(
-  repo: Repository,
-  item: ContentItem,
-  to: ContentState,
-  runId: string,
-  policyVersion: string,
-): Promise<ContentItem> {
-  assertTransition(item.state, to);
-  return (async () => {
-    await repo.content.recordTransition({
-      itemId: item.id,
-      runId,
-      fromState: item.state,
-      toState: to,
-      policyVersion,
-      evidenceIds: [],
-      at: new Date().toISOString(),
-    });
-    return repo.content.updateState(item.id, to);
-  })();
-}
-
 /**
  * Runs one article through research → analysis → draft → QA → publish.
  * Deterministic, idempotent (job_key per stage+plan), fail closed: any
@@ -140,6 +112,24 @@ export async function runArticlePipeline(
     topic: plan.verticalId,
   });
   let current = item;
+
+  // A live article is only ever replaced by the update path (update.ts): this
+  // pipeline would otherwise try PUBLISHED -> APPROVED_AUTOMATICALLY under a new
+  // policy version, and a revoked article must not return without re-verification.
+  if (isLiveState(item.state) || item.state === "REVOKED") {
+    trace.info("article is already published or revoked; the new-article pipeline leaves it alone", {
+      state: item.state,
+    });
+    const qa = await repo.content.getLatestQaReport(item.id);
+    return {
+      itemId: item.id,
+      slug: plan.slug,
+      finalState: item.state,
+      qaStatus: qa?.status ?? "UNKNOWN",
+      published: isLiveState(item.state),
+      reasons: [isLiveState(item.state) ? "already_published" : "revoked"],
+    };
+  }
 
   // B003 idempotency: re-running the same plan does not duplicate work.
   const jobKey = `pipeline|${plan.slug}|${policy.version}`;
@@ -169,38 +159,15 @@ export async function runArticlePipeline(
 
     // --- Stage: research (B006/B008) ---
     if (current.state === "ELIGIBILITY_CHECKED") {
-      const collector = new SourceCollector(
-        services.fetcher ?? new MapFetcher(new Map()),
-        new DomainAllowlist(policy.security.allowed_source_domains),
-        repo.sources,
-        { provenance: `pipeline:${plan.slug}` },
-      );
-      const freshness = createFreshnessPolicy(policy);
-      let collected = 0;
-      for (const url of plan.sourceUrls) {
-        let collectedSource;
-        try {
-          collectedSource = await collector.collect(url);
-          collected += 1;
-        } catch (error) {
-          if (error instanceof SourceUnavailableError) {
-            reasons.push(`source_unavailable:${url}`);
-            continue;
-          }
-          throw error;
-        }
-        const specs = await services.extractor.extract(collectedSource.body, collectedSource.record.contentType);
-        for (const spec of specs) {
-          const expiresAt = new Date(
-            Date.parse(collectedSource.record.fetchedAt) +
-              freshness.maxAgeDaysFor(spec.claimType) * 86_400_000,
-          ).toISOString();
-          await repo.facts.save(
-            toFact(spec, collectedSource.record.id, collectedSource.record.fetchedAt, expiresAt, (prefix) => newId(prefix)),
-          );
-        }
-      }
-      trace.info("research done", { sources: collected });
+      const { collected, unavailable } = await collectPlanSources(plan, {
+        repo,
+        policy,
+        fetcher: services.fetcher ?? new MapFetcher(new Map()),
+        clock,
+      });
+      for (const url of unavailable) reasons.push(`source_unavailable:${url}`);
+      await extractPlanFacts(collected, { repo, policy, extractor: services.extractor });
+      trace.info("research done", { sources: collected.length });
       current = await transition(repo, current, "RESEARCHED", runId, policy.version);
     }
 
@@ -255,6 +222,7 @@ export async function runArticlePipeline(
         sources: await repo.sources.list(),
         itemId: item.id,
         revisionId: newId("rev"),
+        now: clock(),
       });
       await repo.content.saveQaReport(decision);
       await repo.content.saveRevision({
@@ -355,96 +323,6 @@ export async function runArticlePipeline(
     trace.error("pipeline failed", { error });
     throw error;
   }
-}
-
-async function existingHashes(repo: Repository, excludeSlug: string): Promise<Set<string>> {
-  const items = await repo.content.listAll();
-  const hashes = new Set<string>();
-  for (const item of items) {
-    if (item.slug === excludeSlug) continue;
-    const rev = await repo.content.getLatestRevision(item.id);
-    if (rev) hashes.add(rev.contentHash);
-  }
-  return hashes;
-}
-
-export function computeCalculations(plan: ArticlePlan): TotalCostCalculation[] {
-  return plan.calculators.map((entry) => {
-    switch (entry.calculator) {
-      case "sim":
-        return calculateSimTotalCost(entry.input as never);
-      case "fiber":
-        return calculateFiberTotalCost(entry.input as never);
-      case "water":
-        return calculateWaterServerCost(entry.input as never);
-    }
-  });
-}
-
-async function buildDraftFor(plan: ArticlePlan, repo: Repository, clock: () => Date) {
-  const calculations = computeCalculations(plan);
-  const allOffers = await repo.offers.listOffers();
-  const offerById = new Map(allOffers.map((o) => [o.id, o]));
-  const comparedOffers = plan.calculators
-    .map((entry) => {
-      const id = String(entry.input.offerId);
-      return offerById.get(id);
-    })
-    .filter((o): o is AffiliateOffer => Boolean(o));
-  const planOffers =
-    plan.offerIds.length === 0
-      ? comparedOffers
-      : comparedOffers.filter((o) => plan.offerIds.includes(o.id));
-  const sources = await repo.sources.list();
-  const facts = await repo.facts.listAll();
-  const factIdsByOfferId = Object.fromEntries(
-    plan.calculators.map((entry) => {
-      const offerId = String(entry.input.offerId);
-      const terms = entry.factEvidenceTerms ?? [String(entry.input.title)];
-      const matchingFacts = facts.filter(
-        (fact) =>
-          fact.claimType === "price" &&
-          terms.some((term) => term.length > 0 && fact.text.includes(term)),
-      );
-      return [offerId, matchingFacts.map((fact) => fact.id)];
-    }),
-  );
-  const conditionsByOffer = new Map(
-    plan.calculators.map((entry) => [String(entry.input.offerId), entry.conditions ?? {}]),
-  );
-  const matrix = plan.decisionCriteria
-    ? buildDecisionMatrix(
-        comparedOffers.map((o) => ({
-          offerId: o.id,
-          title: o.title,
-          conditions: { ...(conditionsByOffer.get(o.id) ?? {}), ...offerConditions(o) },
-        })),
-        plan.decisionCriteria!,
-      )
-    : undefined;
-  return buildDraft({
-    slug: plan.slug,
-    title: plan.title,
-    locale: plan.locale,
-    audience: plan.audience,
-    purpose: plan.purpose,
-    facts,
-    sources,
-    offers: comparedOffers,
-    calculations,
-    factIdsByOfferId,
-    matrix,
-    ctaOffers: planOffers,
-    now: clock(),
-  });
-}
-
-function offerConditions(offer: AffiliateOffer): Record<string, string | number> {
-  return {
-    reward: offer.rewardAmountJpy ?? "UNKNOWN",
-    conversion_event: offer.conversionEvent ?? "UNKNOWN",
-    ...offer.constraints,
-  };
 }
 
 /** Guard for budget-aware scheduling (docs/07). */

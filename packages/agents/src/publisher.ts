@@ -7,7 +7,7 @@ import type {
   Publication,
   QualityDecision,
 } from "@aff/domain";
-import { dayKeyInTz, isFresh, newId, newTraceId, sha256Hex } from "@aff/domain";
+import { dayKeyInTz, isFresh, isLiveState, newId, newTraceId, sha256Hex } from "@aff/domain";
 
 export interface PublishArtifact {
   itemId: string;
@@ -31,11 +31,25 @@ export interface PublishTarget {
 export interface PublisherIO {
   /** Writes the artifact somewhere durable (FS in MVP). */
   writeArtifact(path: string, content: string): Promise<void>;
+  /**
+   * Current content of an artifact, or undefined when there is none. A failed
+   * live publish uses it to put the previous version back.
+   */
+  readArtifact?(path: string): Promise<string | undefined>;
+  /** Deletes an artifact; used to undo the write of a first publication that failed. */
+  removeArtifact?(path: string): Promise<void>;
   /** Static site build used to verify the artifact; throw to trigger rollback. */
   buildSite?(): Promise<void>;
   /** Commits the artifact in the site repository (live destinations). */
   commitArtifact?(path: string, message: string): Promise<string>;
 }
+
+/**
+ * "new" is a first publication and counts against `limits.new_articles_per_day`.
+ * "update" replaces an article that is already live and is not capped by it
+ * (docs/04 "既存記事更新").
+ */
+export type PublishKind = "new" | "update";
 
 export interface PublisherDeps {
   repo: Repository;
@@ -55,7 +69,9 @@ export type PublishDenialReason =
   | "offer_not_approved"
   | "offer_terms_unverified"
   | "manual_offer_requirement"
-  | "lock_unavailable";
+  | "lock_unavailable"
+  | "update_without_live_article"
+  | "publish_failed";
 
 /**
  * B012: deterministic publication gate (docs/04 can_publish) + idempotent
@@ -121,10 +137,16 @@ export class PublisherAgent {
   }
 
   async publish(
-    input: { artifact: PublishArtifact; target: PublishTarget; item: ContentItem },
+    input: { artifact: PublishArtifact; target: PublishTarget; item: ContentItem; kind?: PublishKind },
     offers: AffiliateOffer[],
   ): Promise<{ published: true; publication: Publication } | { published: false; reason: PublishDenialReason }> {
     const { artifact, target, item } = input;
+    const kind = input.kind ?? "new";
+    // An update bypasses the new-article cap, so it must really replace a live article.
+    if (kind === "update" && !isLiveState(item.state)) {
+      this.deps.logger.warn("publish denied", { slug: artifact.slug, reason: "update_without_live_article" });
+      return { published: false, reason: "update_without_live_article" };
+    }
     const decision = await this.canPublish({ artifact, target }, offers);
     if (!decision.ok) {
       this.deps.logger.warn("publish denied", { slug: artifact.slug, reason: decision.reason });
@@ -142,6 +164,9 @@ export class PublisherAgent {
       // Idempotency: same revision + destination publishes once (docs/04).
       const existing = await this.deps.repo.publications.get(artifact.revisionId, target.destination);
       if (existing) {
+        if (existing.status !== "SUCCEEDED") {
+          return { published: false, reason: "publish_failed" };
+        }
         this.deps.logger.info("publish skipped (already published)", {
           revisionId: artifact.revisionId,
           destination: target.destination,
@@ -149,7 +174,7 @@ export class PublisherAgent {
         return { published: true, publication: existing };
       }
 
-      if (target.destination !== "preview") {
+      if (target.destination !== "preview" && kind === "new") {
         const dayKey = dayKeyInTz(clock());
         const todays = await this.deps.repo.publications.countOnDay(dayKey);
         if (todays >= this.deps.policy.limits.new_articles_per_day) {
@@ -159,7 +184,12 @@ export class PublisherAgent {
 
       const path = `${this.deps.siteContentDir}/${artifact.slug}.${artifact.locale}.md`;
       let commitSha: string | undefined;
+      let previous: string | undefined;
+      let written = false;
       try {
+        if (target.destination !== "preview") {
+          previous = await this.deps.io.readArtifact?.(path);
+        }
         // QA hashed the body; frontmatter carries only QA-approved metadata.
         const file = [
           "---",
@@ -174,21 +204,24 @@ export class PublisherAgent {
           "",
         ].join("\n");
         await this.deps.io.writeArtifact(path, file);
+        written = true;
         if (target.destination !== "preview") {
           await this.deps.io.buildSite?.();
           commitSha = await this.deps.io.commitArtifact?.(
             path,
-            `publish: ${artifact.slug} (${artifact.revisionId})`,
+            `${kind === "update" ? "update" : "publish"}: ${artifact.slug} (${artifact.revisionId})`,
           );
         }
       } catch (error) {
-        // Rollback: keep the previous version (docs/04).
+        // Rollback: keep the previous version (docs/04). Nothing may stay in the
+        // working tree that the site build rejected or that was never committed.
         this.deps.logger.error("publish failed; keeping previous version", {
           slug: artifact.slug,
           error,
         });
-        const failed = await this.recordPublication(artifact, item, target.destination, "FAILED", undefined);
-        return { published: true, publication: failed };
+        if (written) await this.restore(path, previous);
+        await this.recordPublication(artifact, item, target.destination, "FAILED", undefined);
+        return { published: false, reason: "publish_failed" };
       }
 
       const publication = await this.recordPublication(artifact, item, target.destination, "SUCCEEDED", commitSha);
@@ -196,6 +229,18 @@ export class PublisherAgent {
       return { published: true, publication };
     } finally {
       await this.deps.repo.locks.release("publisher", holder);
+    }
+  }
+
+  private async restore(path: string, previous: string | undefined): Promise<void> {
+    try {
+      if (previous !== undefined) {
+        await this.deps.io.writeArtifact(path, previous);
+      } else {
+        await this.deps.io.removeArtifact?.(path);
+      }
+    } catch (error) {
+      this.deps.logger.error("rollback failed; the article store needs a manual check", { path, error });
     }
   }
 

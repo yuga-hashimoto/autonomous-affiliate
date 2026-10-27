@@ -4,3 +4,4 @@ export * from "./pipeline.js";
 export * from "./plan-evidence.js";
 export * from "./opportunity.js";
 export * from "./refresh.js";
+export * from "./update.js";

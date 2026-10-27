@@ -15,6 +15,12 @@ on:
       plans:
         description: Plans file in the repository (under config/)
         default: config/plans.live-preview.json
+      update_path:
+        description: >-
+          Also run the update path on each article the preview produced (regenerate it as
+          a daily update would) and show that draft too. Costs a second research round.
+        type: boolean
+        default: false
 
 concurrency:
   group: affiliate-live-preview
@@ -30,6 +36,7 @@ jobs:
     env:
       POLICY: ${{ inputs.policy }}
       PLANS: ${{ inputs.plans }}
+      UPDATE_PATH: ${{ inputs.update_path }}
       LLM_PROVIDER: openai-compatible
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
       LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
@@ -53,7 +60,9 @@ jobs:
           test -f "$POLICY" && test -f "$PLANS"
       - name: Run the preview (real pages, real LLM, nothing is published)
         run: |
-          pnpm -s tsx apps/worker/src/index.ts run-pipeline --live --preview --policy "$POLICY" --plans "$PLANS" > raw-output.txt
+          ARGS=()
+          if [ "$UPDATE_PATH" = "true" ]; then ARGS+=(--preview-update); fi
+          pnpm -s tsx apps/worker/src/index.ts run-pipeline --live --preview --policy "$POLICY" --plans "$PLANS" "${ARGS[@]}" > raw-output.txt
           sed -n '/^{/,$p' raw-output.txt > result.json
           jq -e '.results | length > 0' result.json > /dev/null
       - name: Summarise
@@ -63,9 +72,9 @@ jobs:
             echo "## live-preview"
             if [ -s result.json ]; then
               echo
-              echo "| article | state | QA | preview file |"
-              echo "| --- | --- | --- | --- |"
-              jq -r '.results[] | "| \(.slug) | \(.finalState) | \(.qaStatus) | \(.published) |"' result.json
+              echo "| article | step | update | state | QA | preview file |"
+              echo "| --- | --- | --- | --- | --- | --- |"
+              jq -r '.results[] | "| \(.slug) | \(.action) | \(.update.outcome // "-") | \(.finalState) | \(.qaStatus) | \(.published) |"' result.json
               echo
               jq -r '.results[] | select(.qaFailures) | "**\(.slug)**", (.qaFailures[] | "- `\(.id)`: \(.detail)")' result.json
               echo

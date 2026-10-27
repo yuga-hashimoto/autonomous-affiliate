@@ -133,7 +133,11 @@ export interface PublicationRepository {
   /** Idempotent on (revisionId, destination): returns the existing publication. */
   save(publication: Publication): Promise<{ publication: Publication; created: boolean }>;
   get(revisionId: string, destination: Publication["destination"]): Promise<Publication | undefined>;
-  /** Count of successful non-preview publications on a day key (YYYY-MM-DD). */
+  /**
+   * Number of articles whose first successful non-preview publication falls on
+   * the day key (YYYY-MM-DD, Asia/Tokyo). Later revisions of an article (updates)
+   * do not count: the daily limit caps new articles only.
+   */
   countOnDay(dayKey: string): Promise<number>;
 }
 

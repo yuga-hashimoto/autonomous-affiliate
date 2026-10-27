@@ -1,13 +1,17 @@
-import type { Fact, PolicyConfig, ContentState } from "@aff/domain";
+import { isLiveState, type Fact, type PolicyConfig, type ContentState } from "@aff/domain";
 import type { Repository } from "@aff/db";
 import { createFreshnessPolicy } from "@aff/integrations";
 import { prioritizeGrowth } from "@aff/analytics";
+import { transition } from "./pipeline-support.js";
 import type { GrowthPlan } from "@aff/analytics";
 
 /**
  * B017: freshness patrol. Published content whose facts expired is moved to
- * UPDATE_CANDIDATE; content in QUARANTINE-worthy condition (INVALID facts) is
- * revoked (auto-unpublished) until re-verification passes.
+ * UPDATE_CANDIDATE (the update path, update.ts, regenerates it); content with
+ * INVALID facts is revoked until re-verification passes.
+ *
+ * Staleness is judged from the revision that is live (`currentRevision`), so a
+ * candidate that never went live cannot hide an expired article.
  */
 export async function refreshSweep(
   repo: Repository,
@@ -19,10 +23,13 @@ export async function refreshSweep(
   const items = await repo.content.listAll();
   const updateCandidates: string[] = [];
   const revoked: string[] = [];
+  const runId = `refresh:${now.toISOString()}`;
 
   for (const item of items) {
-    if (item.state !== "PUBLISHED" && item.state !== "MEASURING") continue;
-    const revision = await repo.content.getLatestRevision(item.id);
+    if (!isLiveState(item.state)) continue;
+    const revision =
+      (item.currentRevision ? await repo.content.getRevision(item.currentRevision) : undefined) ??
+      (await repo.content.getLatestRevision(item.id));
     if (!revision) continue;
     const relatedFacts = facts.filter((f) => revision.sourceIds.some((s) => f.sourceIds.includes(s)));
     if (relatedFacts.length === 0) continue;
@@ -30,29 +37,22 @@ export async function refreshSweep(
     const expired = relatedFacts.filter((f) => !freshness.isFactUsable(f, now));
     const invalid = relatedFacts.filter((f) => f.verificationStatus === "INVALID");
     if (invalid.length > 0) {
-      await repo.content.updateState(item.id, "REVOKED");
-      await repo.content.recordTransition({
-        itemId: item.id,
-        runId: `refresh:${now.toISOString()}`,
-        fromState: item.state,
-        toState: "REVOKED",
-        policyVersion: policy.version,
+      await transition(repo, item, "REVOKED", runId, policy.version, {
         evidenceIds: invalid.map((f) => f.id),
-        at: now.toISOString(),
+        at: now,
       });
       revoked.push(item.slug);
       continue;
     }
-    if (expired.length > 0) {
-      await repo.content.updateState(item.id, "UPDATE_CANDIDATE");
-      await repo.content.recordTransition({
-        itemId: item.id,
-        runId: `refresh:${now.toISOString()}`,
-        fromState: item.state,
-        toState: "UPDATE_CANDIDATE",
-        policyVersion: policy.version,
+    if (expired.length > 0 && item.state !== "UPDATE_CANDIDATE") {
+      // PUBLISHED -> MEASURING -> UPDATE_CANDIDATE: the state machine has no direct edge.
+      const measuring =
+        item.state === "PUBLISHED"
+          ? await transition(repo, item, "MEASURING", runId, policy.version, { at: now })
+          : item;
+      await transition(repo, measuring, "UPDATE_CANDIDATE", runId, policy.version, {
         evidenceIds: expired.map((f) => f.id),
-        at: now.toISOString(),
+        at: now,
       });
       updateCandidates.push(item.slug);
     }

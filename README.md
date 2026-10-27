@@ -79,7 +79,7 @@ pnpm pipeline:dry-run   # フィクスチャソース → 試算 → 原稿 → 
 pnpm --filter site build  # プレビュー記事を含むサイトビルドの検証は tests/e2e が実施
 ~~~
 
-- `apps/worker` — パイプラインCLI。`run-pipeline`（dry-run）/ `run-pipeline --live`（実運用・前提条件を満たさなければ停止）/ `import-offers` / `import-conversions` / `serp-import` / `check-robots` / `refresh` / `growth` / `report`。dry-runは secrets 不要。
+- `apps/worker` — パイプラインCLI。`run-pipeline`（dry-run）/ `run-pipeline --live`（実運用・前提条件を満たさなければ停止。鮮度巡回と公開済み記事の更新も行う。`--template-revision <名前>` で公開済み記事を作り直す。docs/04）/ `import-offers` / `import-conversions` / `serp-import` / `check-robots` / `refresh` / `growth` / `report`。dry-runは secrets 不要。
 - `packages/*` — domain（policy/state machine/logging）、db、llm（budget ledger / OpenAI互換provider）、integrations（source collector/allowlist/ASP取込/計測モック/robots確認）、analysis（ジャンル別試算）、content（draft/QA）、agents、analytics。
 - `config/policy.dry-run.yaml` — フィクスチャ用 allowlist を含む検証済みポリシー。
 - `config/policy.live.example.yaml` — 実運用ポリシーのテンプレート（allowlist未設定のままでは起動しない）。

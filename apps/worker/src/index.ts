@@ -21,13 +21,14 @@ import {
   mockJson,
 } from "@aff/llm";
 import {
-  runArticlePipeline,
+  runPlan,
   refreshSweep,
   growthPlan,
   FixtureFactExtractor,
   LlmFactExtractor,
   type FactExtractor,
   type ArticlePlan,
+  type PlanRunResult,
 } from "@aff/agents";
 import { AspReportImporter, HttpFetcher, MapFetcher, checkRobots, type Fetcher } from "@aff/integrations";
 import { buildMonthlyReport, renderMonthlyReportMarkdown } from "@aff/analytics";
@@ -58,10 +59,34 @@ export interface WorkerOptions {
   fetcher?: Fetcher;
   /** Replaces the LLM fact extractor (tests). */
   extractor?: FactExtractor;
+  /**
+   * Names a change of the article generator (for example "figures-1"). Every live
+   * article of the plans is regenerated once per revision (docs/04 "既存記事更新").
+   */
+  templateRevision?: string;
+  /**
+   * Preview only: after each plan's normal preview run, run the update path on the
+   * article the preview just "published" (in memory), to see the regenerated draft.
+   */
+  previewUpdate?: boolean;
+}
+
+const TEMPLATE_REVISION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/** The revision becomes part of a job key and a workflow input, so it is a short plain token. */
+export function parseTemplateRevision(value: string): string {
+  if (!TEMPLATE_REVISION_PATTERN.test(value)) {
+    throw new Error(
+      `template revision must be 1-64 characters of letters, digits, '.', '_' or '-' (starting with a letter or digit), got "${value}"`,
+    );
+  }
+  return value;
 }
 
 export interface PipelineRunResult {
   mode: "dry-run" | "live";
+  /** Freshness sweep done before the plans (live runs with a database only). */
+  refresh?: { updateCandidates: string[]; revoked: string[] };
   results: {
     slug: string;
     finalState: string;
@@ -70,6 +95,10 @@ export interface PipelineRunResult {
     publishReason?: string;
     /** Failed QA checks (id + detail); present only for articles QA blocked. */
     qaFailures?: { id: string; status: string; detail: string }[];
+    /** "pipeline" is a new article, "update" regenerates a live one. */
+    action: "pipeline" | "update";
+    /** Present for updates: updated | previewed | kept_previous | skipped. */
+    update?: { outcome: string; trigger: string; reasons: string[]; commitSha?: string };
   }[];
   llmCostJpy: number;
 }
@@ -295,6 +324,11 @@ export async function runLivePipeline(
 ): Promise<PipelineRunResult> {
   const clock = options.clock ?? (() => new Date());
   const env = options.env ?? process.env;
+  if (options.previewUpdate && !options.preview) {
+    throw new Error("previewUpdate only applies to a preview run");
+  }
+  const templateRevision =
+    options.templateRevision === undefined ? undefined : parseTemplateRevision(options.templateRevision);
   const parsedPolicy = parsePolicyText(await readFile(resolveInputPath(options.policyPath), "utf8"));
   // Preview can never publish, whatever the policy file says.
   const policy: PolicyConfig = options.preview
@@ -349,16 +383,22 @@ export async function runLivePipeline(
       });
 
   const spendBefore = await repo.spend.sumMonth(dayKeyInTz(clock()).slice(0, 7));
-  const results = await runPlans(plansRaw.plans, {
-    repo,
-    policy,
-    logger,
-    fetcher: options.fetcher ?? new HttpFetcher(),
-    extractor,
-    publisherIO: io,
-    previewDir: previewOnly ? livePreviewDir : undefined,
-    clock,
-  });
+  // Expired facts turn a live article into UPDATE_CANDIDATE; the plan loop below regenerates it.
+  const refresh = options.preview ? undefined : await refreshSweep(repo, policy, clock());
+  const results = await runPlans(
+    plansRaw.plans,
+    {
+      repo,
+      policy,
+      logger,
+      fetcher: options.fetcher ?? new HttpFetcher(),
+      extractor,
+      publisherIO: io,
+      previewDir: previewOnly ? livePreviewDir : undefined,
+      clock,
+    },
+    { templateRevision, previewUpdate: options.previewUpdate === true },
+  );
   const llmCostJpy = (await repo.spend.sumMonth(dayKeyInTz(clock()).slice(0, 7))) - spendBefore;
   const ledgerDelta = ledger.spentJpy - spendBefore;
   if (ledgerDelta > 0) {
@@ -371,7 +411,7 @@ export async function runLivePipeline(
       estimated: true,
     });
   }
-  return { mode: "live", results, llmCostJpy: Math.max(llmCostJpy, ledgerDelta) };
+  return { mode: "live", ...(refresh ? { refresh } : {}), results, llmCostJpy: Math.max(llmCostJpy, ledgerDelta) };
 }
 
 async function createLedger(
@@ -387,21 +427,44 @@ async function createLedger(
   );
 }
 
+function toRunResult(outcome: PlanRunResult): PipelineRunResult["results"][number] {
+  return {
+    slug: outcome.slug,
+    finalState: outcome.finalState,
+    qaStatus: outcome.qaStatus,
+    published: outcome.published,
+    publishReason: outcome.publishReason,
+    ...(outcome.qaFailures ? { qaFailures: outcome.qaFailures } : {}),
+    action: outcome.action,
+    ...(outcome.update
+      ? {
+          update: {
+            outcome: outcome.update.outcome,
+            trigger: outcome.update.trigger,
+            reasons: outcome.update.reasons,
+            ...(outcome.update.commitSha ? { commitSha: outcome.update.commitSha } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
 async function runPlans(
   plans: ArticlePlan[],
-  services: Parameters<typeof runArticlePipeline>[1],
+  services: Parameters<typeof runPlan>[1],
+  options: { templateRevision?: string; previewUpdate?: boolean } = {},
 ): Promise<PipelineRunResult["results"]> {
   const results: PipelineRunResult["results"] = [];
   for (const plan of plans) {
-    const outcome = await runArticlePipeline(plan, services);
-    results.push({
-      slug: outcome.slug,
-      finalState: outcome.finalState,
-      qaStatus: outcome.qaStatus,
-      published: outcome.published,
-      publishReason: outcome.publishReason,
-      ...(outcome.qaFailures ? { qaFailures: outcome.qaFailures } : {}),
-    });
+    const outcome = await runPlan(plan, services, { templateRevision: options.templateRevision });
+    results.push(toRunResult(outcome));
+    if (options.previewUpdate && outcome.published) {
+      // The preview run left the article "published" in memory; regenerate it as an update would.
+      const update = await runPlan(plan, services, {
+        templateRevision: options.templateRevision ?? "preview-update",
+      });
+      results.push(toRunResult(update));
+    }
   }
   return results;
 }
@@ -572,6 +635,8 @@ if (isMain()) {
       plans: { type: "string" },
       live: { type: "boolean", default: false },
       preview: { type: "boolean", default: false },
+      "template-revision": { type: "string" },
+      "preview-update": { type: "boolean", default: false },
     },
     allowPositionals: true,
     strict: true,
@@ -581,10 +646,18 @@ if (isMain()) {
   if (values.preview && !values.live) {
     throw new Error("--preview only applies to a live run (use it with --live)");
   }
+  if (values["preview-update"] && !values.preview) {
+    throw new Error("--preview-update only applies to a preview run (use it with --live --preview)");
+  }
+  if (values["template-revision"] !== undefined && !values.live) {
+    throw new Error("--template-revision only applies to a live run (use it with --live)");
+  }
   const options: WorkerOptions = {
     policyPath: values.policy ?? "config/policy.dry-run.yaml",
     outDir: values.out ?? ".tmp/preview",
     ...(values.preview ? { preview: true } : {}),
+    ...(values["preview-update"] ? { previewUpdate: true } : {}),
+    ...(values["template-revision"] !== undefined ? { templateRevision: values["template-revision"] } : {}),
   };
   try {
     options.logger = createLogger({ level: "info", sink: (line) => process.stderr.write(`${line}\n`) });

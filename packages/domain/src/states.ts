@@ -56,6 +56,17 @@ export function allowedTransitions(from: ContentState): readonly ContentState[] 
 /** Terminal-ish states from which the MVP cannot proceed without external change. */
 export const BLOCKING_STATES: readonly ContentState[] = ["QUARANTINED", "REJECTED"];
 
+/**
+ * States in which the article file is live on the site. The new-article
+ * pipeline never touches these; only the update path may replace the file
+ * (docs/04 "既存記事更新").
+ */
+export const LIVE_STATES: readonly ContentState[] = ["PUBLISHED", "MEASURING", "UPDATE_CANDIDATE"];
+
+export function isLiveState(state: ContentState): boolean {
+  return LIVE_STATES.includes(state);
+}
+
 // ---- Job run state machine (docs/04 retry / dead letter) ----
 
 export const JOB_STATES = [

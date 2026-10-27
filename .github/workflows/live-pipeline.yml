@@ -8,6 +8,14 @@ on:
     # (the last :00 run of this workflow started more than 4 hours late).
     - cron: "17 17 * * *"
   workflow_dispatch:
+    inputs:
+      template_revision:
+        description: >-
+          Name of a change to the article generator (for example figures-1). Every live
+          article of the plans is regenerated once for this name (docs/04). Leave empty
+          for the normal daily run; a repeated name does nothing, a new name runs again.
+        required: false
+        default: ""
 
 concurrency:
   group: affiliate-live-pipeline
@@ -54,8 +62,37 @@ jobs:
           test -n "$LIVE_PLANS_JSON" || { echo "LIVE_PLANS_JSON is not configured" >&2; exit 1; }
           printf '%s' "$LIVE_POLICY_YAML" > config/policy.live.yaml
           printf '%s' "$LIVE_PLANS_JSON" > config/plans.live.json
-      - name: Research and QA; publish only when the policy flag is enabled
-        run: pnpm tsx apps/worker/src/index.ts run-pipeline --live --policy config/policy.live.yaml --plans config/plans.live.json
+      - name: Research and QA; publish new articles and update live ones only when the policy flag is enabled
+        env:
+          # The input is read from the environment, never interpolated into the script.
+          TEMPLATE_REVISION: ${{ inputs.template_revision }}
+        run: |
+          ARGS=()
+          if [ -n "$TEMPLATE_REVISION" ]; then ARGS+=(--template-revision "$TEMPLATE_REVISION"); fi
+          pnpm tsx apps/worker/src/index.ts run-pipeline --live --policy config/policy.live.yaml --plans config/plans.live.json "${ARGS[@]}" > raw-output.txt
+          cat raw-output.txt
+      - name: Summarise new articles and updates
+        if: always()
+        continue-on-error: true
+        run: |
+          {
+            echo "## live-pipeline"
+            if [ -s raw-output.txt ]; then
+              sed -n '/^{/,$p' raw-output.txt > result.json
+              echo
+              echo "Stale articles found by the sweep: $(jq -r '(.refresh.updateCandidates // []) | join(", ") | if . == "" then "none" else . end' result.json)"
+              echo
+              echo "| article | action | update | state | QA | written |"
+              echo "| --- | --- | --- | --- | --- | --- |"
+              jq -r '.results[] | "| \(.slug) | \(.action) | \(.update.outcome // "-") | \(.finalState) | \(.qaStatus) | \(.published) |"' result.json
+              echo
+              jq -r '.results[] | select(.update.reasons | length > 0) | "- **\(.slug)**: \(.update.reasons | join(", "))"' result.json
+              jq -r '.results[] | select(.qaFailures) | "**\(.slug)**", (.qaFailures[] | "- `\(.id)`: \(.detail)")' result.json
+            else
+              echo
+              echo "The run produced no result (see the job log)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Build and deploy the committed site
         run: |
           pnpm --filter site build
