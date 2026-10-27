@@ -701,7 +701,9 @@ if (isMain()) {
     } else if (command === "a8-programs") {
       const { probe, ...report } = await runA8Programs(options.env ?? process.env);
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-      if (probe) process.stdout.write(`--- page structure (content masked) ---\n${probe.join("\n")}\n`);
+      for (const [list, lines] of Object.entries(probe ?? {})) {
+        process.stdout.write(`--- ${list}: page structure (content masked) ---\n${lines.join("\n")}\n`);
+      }
       if (report.outcome !== "ok") process.exit(1);
     } else if (command === "refresh") {
       process.stdout.write(`${JSON.stringify(await runRefresh(options), null, 2)}\n`);

@@ -10,13 +10,22 @@ import { CONSOLE_ORIGIN, safePath, withA8Session, type A8SmokeResult } from "./a
  * with every piece of content masked, to learn what the console looks like.
  */
 
-const PARTNERED_PATH = "/program/list/partnered";
 const PAGE_SIZE = 50;
 const MAX_PAGES = 10;
 const PROBE_MAX_LINES = 600;
 const PROBE_LABEL_MAX = 40;
 const PROBE_SHORT_TEXT_MAX = 12;
 const PROGRAM_ID = /^[A-Za-z0-9]{3,40}$/;
+
+/** The console's program lists. Where a program is listed says what its approval state is. */
+export const PROGRAM_LISTS = {
+  partnered: { path: "/program/list/partnered", status: "approved" },
+  applying: { path: "/program/list/applying", status: "pending" },
+  terminated: { path: "/program/list/terminated", status: "ended" },
+  canceled: { path: "/program/list/canceled", status: "ended" },
+} as const;
+export type ListKind = keyof typeof PROGRAM_LISTS;
+const LIST_KINDS = Object.keys(PROGRAM_LISTS) as ListKind[];
 
 export type ProgramStatus = "approved" | "pending" | "rejected" | "ended" | "unknown";
 
@@ -96,7 +105,27 @@ export function classifyProgramStatus(text: string, hrefs: readonly string[]): P
   return hrefs.some((href) => /\/create-link(\?|$)/.test(href)) ? "approved" : "unknown";
 }
 
-export function parseProgramRows(rows: readonly RawProgramRow[]): PartneredProgram[] {
+/**
+ * A program's status from the list it was found in, unless its wording says it is over or
+ * refused. Only the partnered list needs more than the list: a row there counts as approved
+ * only when it links to the ad-link page, otherwise it is unknown (not approved).
+ */
+export function statusInList(list: ListKind, text: string, hrefs: readonly string[]): ProgramStatus {
+  const byWording = classifyProgramStatus(text, hrefs);
+  if (byWording === "ended" || byWording === "rejected") return byWording;
+  if (list === "partnered") return byWording === "approved" || byWording === "pending" ? byWording : "unknown";
+  return PROGRAM_LISTS[list].status;
+}
+
+export type ListState = "programs" | "empty" | "unrecognized";
+
+/** An empty list shows a "no data" area; a page with neither rows nor that area is not understood. */
+export function listState(page: { rows: number; noDataShown: boolean }): ListState {
+  if (page.rows > 0) return "programs";
+  return page.noDataShown ? "empty" : "unrecognized";
+}
+
+export function parseProgramRows(rows: readonly RawProgramRow[], list: ListKind = "partnered"): PartneredProgram[] {
   const seen = new Set<string>();
   const programs: PartneredProgram[] = [];
   for (const row of rows) {
@@ -104,7 +133,7 @@ export function parseProgramRows(rows: readonly RawProgramRow[]): PartneredProgr
     seen.add(row.programId);
     programs.push({
       programId: row.programId,
-      status: classifyProgramStatus(row.text, row.hrefs),
+      status: statusInList(list, row.text, row.hrefs),
       hasAdLinkPage: row.hrefs.some((href) => /\/create-link(\?|$)/.test(href) && programIdOf(href) === row.programId),
     });
   }
@@ -137,6 +166,8 @@ export interface ProbeNode {
 }
 
 /** Tags whose text is interface wording (column headings, buttons, form labels), never page data. */
+/** Tags whose short text is shown outside a program row: menu items and buttons, not values. */
+const SHORT_TEXT_TAGS = new Set(["a", "li", "button"]);
 const LABEL_TAGS = new Set(["th", "button", "label", "legend", "option", "caption", "summary", "h1", "h2", "h3", "h4", "h5"]);
 /** The only words printed from masked text, so a status vocabulary can be learned. */
 const STATUS_WORDS = [
@@ -181,8 +212,9 @@ function describeNode(node: ProbeNode, masked: boolean): string {
   const text = node.text.trim();
   if (text) {
     const isLabel = LABEL_TAGS.has(node.tag) && text.length <= PROBE_LABEL_MAX;
-    const isShortOutsideRows = !masked && text.length <= PROBE_SHORT_TEXT_MAX;
-    parts.push(isLabel || isShortOutsideRows ? ` "${text}"` : ` T${text.length}${statusWordsIn(text)}`);
+    const isShortOutsideRows = !masked && SHORT_TEXT_TAGS.has(node.tag) && text.length <= PROBE_SHORT_TEXT_MAX;
+    // Long digit strings (ids, numbers) are never printed, even in a label.
+    parts.push(isLabel || isShortOutsideRows ? ` "${text.replace(/\d{5,}/g, "#")}"` : ` T${text.length}${statusWordsIn(text)}`);
   }
   return parts.join("");
 }
@@ -227,7 +259,7 @@ export const READ_PROGRAM_ROWS = `(() => {
       hrefs,
     });
   }
-  return Array.from(rows.values());
+  return { rows: Array.from(rows.values()), noDataShown: document.querySelector(".noDataArea") !== null };
 })()`;
 
 /** Runs in the page: the element tree with only structure and own text. */
@@ -262,52 +294,83 @@ export const DUMP_TREE = `(() => {
       children,
     };
   };
-  return walk(document.body, 0);
+  return walk(document.querySelector("main") || document.body, 0);
 })()`;
 
+export interface ListReport {
+  state: ListState;
+  pagesRead: number;
+  programs: ProgramSummary;
+}
+
 export interface ProgramsReport {
-  outcome: "ok" | "login_failed";
+  /** "unrecognized" when any list page was neither a list of programs nor an empty list. */
+  outcome: "ok" | "login_failed" | "unrecognized";
   login?: A8SmokeResult;
-  pagesRead?: number;
-  programs?: ProgramSummary;
-  probe?: string[];
+  lists?: Record<ListKind, ListReport>;
+  /** Masked structure of each list page that is not empty, by list. */
+  probe?: Partial<Record<ListKind, string[]>>;
 }
 
-async function readListPage(page: Page, pageNo: number): Promise<RawProgramRow[]> {
-  const url = `${CONSOLE_ORIGIN}${PARTNERED_PATH}?pageNo=${pageNo}&pageSize=${PAGE_SIZE}&sortKey=APPROVED_DATE&sortOrder=DESC`;
-  await page.goto(url, { waitUntil: "domcontentloaded" });
-  if (safePath(page.url()) !== PARTNERED_PATH) {
-    throw new Error(`the partnered list redirected to ${safePath(page.url())}; the session is not usable`);
+interface ListPage {
+  rows: RawProgramRow[];
+  noDataShown: boolean;
+}
+
+async function readListPage(page: Page, list: ListKind, pageNo: number): Promise<ListPage> {
+  const { path } = PROGRAM_LISTS[list];
+  const query = list === "partnered" ? "&sortKey=APPROVED_DATE&sortOrder=DESC" : "";
+  await page.goto(`${CONSOLE_ORIGIN}${path}?pageNo=${pageNo}&pageSize=${PAGE_SIZE}${query}`, { waitUntil: "domcontentloaded" });
+  if (safePath(page.url()) !== path) {
+    throw new Error(`${path} redirected to ${safePath(page.url())}; the session is not usable`);
   }
-  return (await page.evaluate(READ_PROGRAM_ROWS)) as RawProgramRow[];
+  return (await page.evaluate(READ_PROGRAM_ROWS)) as ListPage;
 }
 
-async function readAllPrograms(page: Page, probeFirstPage: boolean): Promise<{ programs: PartneredProgram[]; pages: number; probe?: string[] }> {
+async function readList(
+  page: Page,
+  list: ListKind,
+  probe: boolean,
+): Promise<{ report: ListReport; probe?: string[] }> {
   const found = new Map<string, PartneredProgram>();
-  let probe: string[] | undefined;
-  let pages = 0;
+  let state: ListState = "empty";
+  let probeLines: string[] | undefined;
+  let pagesRead = 0;
   for (let pageNo = 1; pageNo <= MAX_PAGES; pageNo += 1) {
-    const rows = await readListPage(page, pageNo);
-    if (pageNo === 1 && probeFirstPage) {
-      probe = renderProbe((await page.evaluate(DUMP_TREE)) as ProbeNode);
+    const listPage = await readListPage(page, list, pageNo);
+    pagesRead = pageNo;
+    const pageState = listState({ rows: listPage.rows.length, noDataShown: listPage.noDataShown });
+    if (pageNo === 1) {
+      state = pageState;
+      // An empty list was already seen; print the structure only of pages that have something on them.
+      if (probe && pageState !== "empty") probeLines = renderProbe((await page.evaluate(DUMP_TREE)) as ProbeNode);
     }
-    pages = pageNo;
-    const fresh = parseProgramRows(rows).filter((program) => !found.has(program.programId));
+    const fresh = parseProgramRows(listPage.rows, list).filter((program) => !found.has(program.programId));
     if (fresh.length === 0) break;
     for (const program of fresh) found.set(program.programId, program);
   }
-  return { programs: Array.from(found.values()), pages, ...(probe ? { probe } : {}) };
+  return {
+    report: { state, pagesRead, programs: summarizePrograms(Array.from(found.values())) },
+    ...(probeLines ? { probe: probeLines } : {}),
+  };
 }
 
-/** Logs in, reads the partnered list and returns counts by status. Changes nothing in the console. */
+async function readAllLists(page: Page, probe: boolean): Promise<Pick<ProgramsReport, "lists" | "probe">> {
+  const lists = {} as Record<ListKind, ListReport>;
+  const probes: Partial<Record<ListKind, string[]>> = {};
+  for (const list of LIST_KINDS) {
+    const result = await readList(page, list, probe);
+    lists[list] = result.report;
+    if (result.probe) probes[list] = result.probe;
+  }
+  return { lists, ...(Object.keys(probes).length > 0 ? { probe: probes } : {}) };
+}
+
+/** Logs in, reads the program lists and returns counts by status. Changes nothing in the console. */
 export async function runA8Programs(env: NodeJS.ProcessEnv): Promise<ProgramsReport> {
   const probe = env.A8_PROBE === "1";
-  const { login, value } = await withA8Session(env, (page) => readAllPrograms(page, probe));
-  if (!value) return { outcome: "login_failed", login };
-  return {
-    outcome: "ok",
-    pagesRead: value.pages,
-    programs: summarizePrograms(value.programs),
-    ...(value.probe ? { probe: value.probe } : {}),
-  };
+  const { login, value } = await withA8Session(env, (page) => readAllLists(page, probe));
+  if (!value?.lists) return { outcome: "login_failed", login };
+  const unrecognized = LIST_KINDS.some((list) => value.lists?.[list].state === "unrecognized");
+  return { outcome: unrecognized ? "unrecognized" : "ok", ...value };
 }

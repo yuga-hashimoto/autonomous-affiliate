@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   classifyProgramStatus,
   hrefShape,
+  listState,
   parseProgramRows,
   programIdOf,
   renderProbe,
+  statusInList,
   summarizePrograms,
   type ProbeNode,
   type RawProgramRow,
@@ -73,6 +75,34 @@ describe("classifyProgramStatus", () => {
 
   it("does not guess: no ad-link page and no known word is unknown", () => {
     expect(classifyProgramStatus("株式会社サンプル", [])).toBe("unknown");
+  });
+});
+
+describe("statusInList", () => {
+  const withLink = ["/program/create-link?programId=s0000001"];
+
+  it("gives every program the meaning of the list it was found in", () => {
+    expect(statusInList("applying", "A社", [])).toBe("pending");
+    expect(statusInList("terminated", "A社", withLink)).toBe("ended");
+    expect(statusInList("canceled", "A社", [])).toBe("ended");
+    expect(statusInList("partnered", "A社", withLink)).toBe("approved");
+  });
+
+  it("does not call a partnered row approved without its ad-link page", () => {
+    expect(statusInList("partnered", "A社", [])).toBe("unknown");
+  });
+
+  it("lets wording that says a program is over or refused win over the list", () => {
+    expect(statusInList("partnered", "A社 プログラム終了", withLink)).toBe("ended");
+    expect(statusInList("applying", "A社 却下", [])).toBe("rejected");
+  });
+});
+
+describe("listState", () => {
+  it("tells an empty list from a page it does not understand", () => {
+    expect(listState({ rows: 3, noDataShown: false })).toBe("programs");
+    expect(listState({ rows: 0, noDataShown: true })).toBe("empty");
+    expect(listState({ rows: 0, noDataShown: false })).toBe("unrecognized");
   });
 });
 
@@ -175,6 +205,32 @@ describe("renderProbe", () => {
     const text = renderProbe(form).join("\n");
     expect(text).toContain("select");
     expect(text).toContain("webSiteId");
+  });
+
+  it("does not print account details shown in the page header (media id, site name)", () => {
+    // The first real run printed these from short <p> text, because "short text outside rows" was shown.
+    const header = node("header", {
+      children: [
+        node("div", {
+          cls: ["siteMeta"],
+          children: [node("span", { cls: ["labelInfo"], text: "メディアID" }), node("p", { cls: ["value"], text: "a99999999999" })],
+        }),
+        node("div", {
+          cls: ["siteMeta"],
+          children: [node("span", { cls: ["labelInfo"], text: "サイト名" }), node("p", { cls: ["value"], text: "テストサイト様" })],
+        }),
+      ],
+    });
+    const text = renderProbe(header).join("\n");
+    expect(text).not.toContain("a99999999999");
+    expect(text).not.toContain("テストサイト様");
+    expect(text).not.toContain("メディアID");
+  });
+
+  it("replaces long digit strings in any printed text", () => {
+    const text = renderProbe(node("button", { text: "No.12345678 を見る" })).join("\n");
+    expect(text).not.toContain("12345678");
+    expect(text).toContain("#");
   });
 
   it("caps the number of lines", () => {
