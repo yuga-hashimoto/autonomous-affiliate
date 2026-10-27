@@ -292,7 +292,9 @@ export const READ_PROGRAM_ROWS = `(() => {
       hrefs,
     });
   }
-  return { rows: Array.from(rows.values()), noDataShown: document.querySelector(".noDataArea") !== null };
+  const noData = document.querySelector(".noDataArea");
+  const noDataShown = noData !== null && noData.getClientRects().length > 0 && getComputedStyle(noData).visibility !== "hidden";
+  return { rows: Array.from(rows.values()), noDataShown };
 })()`;
 
 /** Runs in the page: the element tree with only structure and own text. */
@@ -346,9 +348,36 @@ export interface ProgramsReport {
   probe?: Partial<Record<ListKind, string[]>>;
 }
 
-interface ListPage {
+export interface ListPage {
   rows: RawProgramRow[];
   noDataShown: boolean;
+}
+
+const SETTLE_TIMEOUT_MS = 12_000;
+const SETTLE_PAUSE_MS = 1_000;
+const RECHECK_DELAY_MS = 2_000;
+
+/**
+ * The console draws most of its pages with JavaScript after the document has loaded (a loading
+ * spinner shows first), so reading straight after navigation sees a page with nothing on it.
+ * Wait for the network to go quiet, then a moment more.
+ */
+export async function settlePage(page: Page): Promise<void> {
+  await page.waitForLoadState("networkidle", { timeout: SETTLE_TIMEOUT_MS }).catch(() => undefined);
+  await page.waitForTimeout(SETTLE_PAUSE_MS);
+}
+
+/**
+ * Reads the program rows of the current page once it has loaded. An empty answer is trusted only
+ * after a second look a little later, because a "no data" message can be on screen before the data arrives.
+ */
+export async function readRowsWhenLoaded(page: Page): Promise<ListPage> {
+  await settlePage(page);
+  const first = (await page.evaluate(READ_PROGRAM_ROWS)) as ListPage;
+  if (first.rows.length > 0) return first;
+  await page.waitForTimeout(RECHECK_DELAY_MS);
+  await settlePage(page);
+  return (await page.evaluate(READ_PROGRAM_ROWS)) as ListPage;
 }
 
 async function readListPage(page: Page, list: ListKind, pageNo: number): Promise<ListPage> {
@@ -358,7 +387,7 @@ async function readListPage(page: Page, list: ListKind, pageNo: number): Promise
   if (safePath(page.url()) !== path) {
     throw new Error(`${path} redirected to ${safePath(page.url())}; the session is not usable`);
   }
-  return (await page.evaluate(READ_PROGRAM_ROWS)) as ListPage;
+  return readRowsWhenLoaded(page);
 }
 
 async function readList(
