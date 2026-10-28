@@ -10,10 +10,10 @@ import {
 } from "@aff/domain";
 import type { Repository } from "@aff/db";
 import { QaEngine, DraftRejectedError } from "@aff/content";
-import { createFreshnessPolicy, MapFetcher, type Fetcher } from "@aff/integrations";
+import { createFreshnessPolicy, MapFetcher, type CollectedSource, type Fetcher } from "@aff/integrations";
 import { PublisherAgent, type PublishArtifact, type PublishTarget, type PublisherIO } from "./publisher.js";
 import { checkPlanEvidence, type DerivedAmount } from "./plan-evidence.js";
-import { completeDraftedPlan } from "./plan-draft.js";
+import { draftPlanFromPages, type QuoteSelector } from "./plan-quotes.js";
 import {
   buildDraftFor,
   collectPlanSources,
@@ -104,6 +104,8 @@ export interface PipelineServices {
   /** Overrides the collector's fetcher (fixtures in dry-run). */
   fetcher?: Fetcher;
   extractor: FactExtractor;
+  /** Points at passages of a page for a plan kept as a brief (docs/18); without it such a plan is not made. */
+  quoteSelector?: QuoteSelector;
   publisherIO: PublisherIO;
   /** Supplies each published article's hero image; without it articles go out text-only. */
   heroImages?: HeroImageService;
@@ -192,6 +194,7 @@ export async function runArticlePipeline(
     }
 
     // --- Stage: research (B006/B008) ---
+    let collectedPages: CollectedSource[] | undefined;
     if (current.state === "ELIGIBILITY_CHECKED") {
       const { collected, unavailable } = await collectPlanSources(plan, {
         repo,
@@ -200,23 +203,27 @@ export async function runArticlePipeline(
         clock,
       });
       for (const url of unavailable) reasons.push(`source_unavailable:${url}`);
+      collectedPages = collected;
       await extractPlanFacts(collected, { repo, policy, extractor: services.extractor });
       trace.info("research done", { sources: collected.length });
       current = await transition(repo, current, "RESEARCHED", runId, policy.version);
     }
 
     // --- Stage: plan drafting (docs/18) ---
-    // A plan kept as a brief gets its amounts from this cycle's official facts. Done on every
-    // run (not only right after research) so a resumed article has them too.
-    const drafted = completeDraftedPlan(
-      plan,
-      (await repo.facts.listAll()).filter((fact) => createFreshnessPolicy(policy).isFactUsable(fact, clock())),
-      await repo.sources.list(),
-    );
+    // A plan kept as a brief gets its amounts from quotes of this cycle's official pages. Done on
+    // every run (not only right after research) so a resumed article has them too.
+    const drafted = await draftPlanFromPages(plan, {
+      repo,
+      policy,
+      clock,
+      selector: services.quoteSelector,
+      collected: collectedPages,
+      fetcher: services.fetcher,
+    });
     if (!drafted.ok) {
       current = await transition(repo, current, "QUARANTINED", runId, policy.version);
       await repo.jobs.update({ ...jobRecord, state: "SUCCEEDED", lastError: "plan_draft_failed" });
-      trace.warn("plan could not be drafted from the official facts", { issues: drafted.issues });
+      trace.warn("plan could not be drafted from the official page", { issues: drafted.issues });
       return {
         itemId: item.id,
         slug: plan.slug,

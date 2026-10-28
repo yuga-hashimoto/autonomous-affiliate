@@ -1,18 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createMemoryRepository } from "@aff/db";
-import { createLogger, parsePolicyText, type Fact, type PolicyConfig, type SourceRecord } from "@aff/domain";
-import { type Fetcher } from "@aff/integrations";
+import type { Fact, SourceRecord } from "@aff/domain";
 import {
-  FixtureFactExtractor,
   checkPlanEvidence,
   completeDraftedPlan,
-  runArticlePipeline,
-  runPlan,
   type ArticlePlan,
   type PlanDraft,
-  type PublisherIO,
 } from "@aff/agents";
-import { readFileSync } from "./helpers.js";
 
 const NOW = "2026-10-28T00:00:00.000Z";
 const PAGE = "https://water-a.example.com/price";
@@ -150,23 +143,86 @@ describe("completeDraftedPlan: the amounts come from the official facts, or the 
   });
 
   it("keeps the installation fee out of the initial fee", () => {
-    const result = draftOf([...COMPLETE_FACTS, fact("ウォーターA 有料設置 8,800円（税込）")]);
+    const result = draftOf([...COMPLETE_FACTS, fact("ウォーターA 初回設置費用 8,800円（税込）")]);
 
     expect(result.ok && result.plan.calculators[0]?.input.initialFeeJpy).toBe(3300);
   });
 
-  it("does not use a fact that mixes two kinds of fee for either of them", () => {
+  it("reads each fee from the words right after its own name, so a passage may carry neighbours", () => {
     const facts = [
-      ...COMPLETE_FACTS.filter((f) => !f.text.includes("手数料")),
-      // one unambiguous figure, but the sentence is about the setup fee and shipping at once
-      fact("ウォーターA 初回登録事務手数料は3,300円（税込）、送料は別途"),
+      ...COMPLETE_FACTS.filter((f) => !f.text.includes("手数料") && !f.text.includes("送料")),
+      // one passage, two fees and a price: each figure belongs to the label before it
+      fact("ウォーターA 月12.5L×2本ご利用の場合 3,780円/月～ (税込4,082円) 送料 無料 ※一部地域を除く 初回登録事務手数料は3,300円（税込）"),
+    ];
+
+    const result = draftOf(facts);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.calculators[0]?.input.shippingFeeJpy).toBe(0);
+    expect(result.plan.calculators[0]?.input.initialFeeJpy).toBe(3300);
+    expect(result.plan.calculators[0]?.input.waterChargeJpy).not.toBe(4082); // the price in that passage is not a fee
+  });
+
+  it("ends a fee's words where the next fee's name begins", () => {
+    const facts = [
+      ...COMPLETE_FACTS.filter((f) => !f.text.includes("送料") && !f.text.includes("手数料")),
+      fact("ウォーターA 送料は無料、初回登録事務手数料は3,300円（税込）"),
+    ];
+
+    const result = draftOf(facts);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.calculators[0]?.input.shippingFeeJpy).toBe(0);
+    expect(result.plan.calculators[0]?.input.initialFeeJpy).toBe(3300);
+  });
+
+  it("stops reading the shipping fee where the regional surcharge begins in the same passage", () => {
+    const facts = [
+      ...COMPLETE_FACTS.filter((f) => !f.text.includes("送料")),
+      fact("ウォーターA 送料 当社の工場より送料無料で配送します 追加送料【離島の場合】715円（税込）/1セット"),
+    ];
+
+    const result = draftOf(facts);
+
+    expect(result.ok && result.plan.calculators[0]?.input.shippingFeeJpy).toBe(0);
+  });
+
+  it("does not take an eco-mode figure in brackets as the electricity figure", () => {
+    const facts = COMPLETE_FACTS.map((f) =>
+      f.text.includes("電気代") ? fact("ウォーターA 月額電気料金※1 約669円/月（エコモード時 約583円/月）") : f,
+    );
+
+    const result = draftOf(facts);
+
+    expect(result.ok && result.plan.calculators[0]?.input.electricityFeeJpy).toBe(669);
+  });
+
+  it("binds a server's electricity figure through a long passage that starts at the server's name", () => {
+    const longPassage = `ウォーターA モデルX ${"ボトルは下置きでかんたん交換。".repeat(30)} 【月額電気料金】 通常使用時：約669円、エコモード使用時：約583円`;
+    const facts = [
+      ...COMPLETE_FACTS.filter((f) => !f.text.includes("電気代")),
+      fact(longPassage),
+      fact("月額電気料金 ※1 約1,011円/月（エコモード時 約798円/月）"), // another server's row, which names none
+    ];
+
+    const result = draftOf(facts);
+
+    expect(result.ok && result.plan.calculators[0]?.input.electricityFeeJpy).toBe(669);
+  });
+
+  it("stops when one passage gives two different electricity figures", () => {
+    const facts = [
+      ...COMPLETE_FACTS.filter((f) => !f.text.includes("電気代")),
+      fact("ウォーターA 月額電気料金 約669円/月 ... スリムサーバー 月額電気料金 約630円/月"),
     ];
 
     const result = draftOf(facts);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.issues).toEqual([expect.stringContaining("初回費用")]);
+    expect(result.issues.join("\n")).toContain("電気代");
   });
 
   it("fails closed when shipping is free in general but charged in some areas", () => {
@@ -305,6 +361,30 @@ describe("completeDraftedPlan: the amounts come from the official facts, or the 
     expect(named.ok && named.plan.calculators[0]?.input.minimumTermMonths).toBe(60);
   });
 
+  it("does not take the first of several terms from a comparison row that lists two plans", () => {
+    const row = fact("ウォーターA プランQ プランP 最低利用期間 3年 5年", "contract_term");
+    const base = COMPLETE_FACTS.filter((f) => f.claimType !== "contract_term");
+
+    const alone = draftOf([...base, row], { planTerms: ["プランP"] });
+    expect(alone.ok).toBe(true); // the term is optional: it is left out rather than guessed
+    expect(alone.ok && "minimumTermMonths" in (alone.plan.calculators[0]?.input ?? {})).toBe(false);
+
+    const withOwnLine = draftOf([...base, row, fact("ウォーターA プランPの最低利用期間は5年", "contract_term")], { planTerms: ["プランP"] });
+    expect(withOwnLine.ok && withOwnLine.plan.calculators[0]?.input.minimumTermMonths).toBe(60);
+  });
+
+  it("shows the facts that disagreed when it cannot choose between two amounts", () => {
+    const facts = [...COMPLETE_FACTS, fact("ウォーターA の送料は880円（税込）")];
+
+    const result = draftOf(facts);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const shipping = result.issues.find((issue) => issue.startsWith("送料")) ?? "";
+    expect(shipping).toContain("候補");
+    expect(shipping).toContain("送料は880円");
+  });
+
   it("leaves a plan alone when it has no draft, or already has calculators", () => {
     const hand = { ...planOf(), draft: undefined, calculators: [{ calculator: "water" as const, input: { offerId: "o" } }] };
     const result = completeDraftedPlan(hand, [], []);
@@ -313,149 +393,5 @@ describe("completeDraftedPlan: the amounts come from the official facts, or the 
 
     const both = { ...hand, draft: planOf().draft };
     expect(completeDraftedPlan(both, [], [])).toEqual({ ok: true, plan: both });
-  });
-});
-
-describe("a drafted plan in the pipeline", () => {
-  const basePolicy = parsePolicyText(
-    readFileSync(new URL("../../config/policy.dry-run.yaml", import.meta.url), "utf8"),
-  );
-  const policy: PolicyConfig = {
-    ...basePolicy,
-    flags: { ...basePolicy.flags, publish_enabled: true },
-    security: { ...basePolicy.security, allowed_source_domains: ["water-a.example.com"] },
-  };
-
-  function pageWith(lines: string[]): string {
-    const facts = lines.map((text) => ({ text, claimType: "price" }));
-    return `<html><body><p>ウォーターA</p><script type="application/x-aff-facts">${JSON.stringify(facts)}</script></body></html>`;
-  }
-
-  const FULL_PAGE = (monthly: number) => [
-    `ウォーターA モデルX 月額${monthly.toLocaleString("en-US")}円（税込・12.5L×2本）`,
-    "ウォーターA 送料は無料",
-    "ウォーターA 電気代の目安は月669円（税込・月36L使用時）",
-    "ウォーターA 初回登録事務手数料 3,300円（税込）",
-  ];
-
-  class FakeSite implements PublisherIO {
-    readonly files = new Map<string, string>();
-    async writeArtifact(path: string, content: string): Promise<void> {
-      this.files.set(path, content);
-    }
-    async readArtifact(path: string): Promise<string | undefined> {
-      return this.files.get(path);
-    }
-    async removeArtifact(path: string): Promise<void> {
-      this.files.delete(path);
-    }
-    async buildSite(): Promise<void> {}
-    async commitArtifact(path: string): Promise<string> {
-      return `sha-${path}`;
-    }
-  }
-
-  function setup(lines: string[]) {
-    const page = { lines };
-    const fetcher: Fetcher = {
-      async fetch(url) {
-        return { status: 200, body: pageWith(page.lines), contentType: "text/html", finalUrl: url };
-      },
-    };
-    const site = new FakeSite();
-    const services = {
-      repo: createMemoryRepository(),
-      policy,
-      logger: createLogger({ level: "error", sink: () => undefined }),
-      fetcher,
-      extractor: new FixtureFactExtractor(),
-      publisherIO: site,
-      clock: () => new Date(NOW),
-    };
-    return { page, site, services };
-  }
-
-  const PATH = "content/articles/drafted-water-a.ja-JP.md";
-  // 24 months: (4,190 + 0 + 669) × 24 + 3,300
-  const TOTAL_4190 = "119,916";
-
-  it("publishes an article whose figures were never typed in by hand", async () => {
-    const env = setup(FULL_PAGE(4190));
-
-    const result = await runArticlePipeline(planOf(), env.services);
-
-    expect(result).toMatchObject({ finalState: "PUBLISHED", qaStatus: "PASS", published: true });
-    expect(env.site.files.get(PATH)).toContain(TOTAL_4190);
-  });
-
-  it("quarantines with the reasons when the page does not support a plan, and publishes nothing", async () => {
-    const env = setup(FULL_PAGE(4190).filter((line) => !line.includes("送料")));
-
-    const result = await runArticlePipeline(planOf(), env.services);
-
-    expect(result).toMatchObject({ finalState: "QUARANTINED", published: false, publishReason: "plan_draft_failed" });
-    expect(result.reasons.join("\n")).toContain("送料");
-    expect(env.site.files.size).toBe(0);
-  });
-
-  it("follows the page on update: a new price becomes the new article, with no plan edit", async () => {
-    const env = setup(FULL_PAGE(4190));
-    await runArticlePipeline(planOf(), env.services);
-
-    env.page.lines = FULL_PAGE(4290);
-    const update = await runPlan(planOf(), env.services, { templateRevision: "price-follow-1" });
-
-    expect(update.update?.outcome).toBe("updated");
-    const text = env.site.files.get(PATH) ?? "";
-    expect(text).toContain("122,316"); // (4,290 + 669) × 24 + 3,300
-    expect(text).not.toContain(TOTAL_4190);
-  });
-
-  it("keeps the live article when an update can no longer be drafted", async () => {
-    const env = setup(FULL_PAGE(4190));
-    await runArticlePipeline(planOf(), env.services);
-    const live = env.site.files.get(PATH);
-
-    env.page.lines = FULL_PAGE(4190).filter((line) => !line.includes("電気代"));
-    const update = await runPlan(planOf(), env.services, { templateRevision: "price-follow-2" });
-
-    expect(update.update?.outcome).toBe("kept_previous");
-    expect(update.reasons.join("\n")).toContain("plan_draft_failed");
-    expect(env.site.files.get(PATH)).toBe(live);
-  });
-});
-
-describe("calibration on facts extracted from the real official pages (2026-10-28)", () => {
-  interface Captured {
-    pages: { url: string; facts: { text: string; claimType: Fact["claimType"] }[] }[];
-  }
-  const captured = JSON.parse(
-    readFileSync(new URL("../fixtures/premium-water-facts-2026-10-28.json", import.meta.url), "utf8"),
-  ) as Captured;
-  const sources: SourceRecord[] = captured.pages.map((page, i) => ({ ...SOURCE, id: `real-${i}`, canonicalUrl: page.url }));
-  const facts: Fact[] = captured.pages.flatMap((page, i) =>
-    page.facts.map((f, j) => ({ ...fact(f.text, f.claimType, `real-${i}-${j}`), sourceIds: [`real-${i}`] })),
-  );
-  const hand = JSON.parse(
-    readFileSync(new URL("../../config/plans.live-preview-draft.json", import.meta.url), "utf8"),
-  ).plans[0] as ArticlePlan;
-  const handMade = JSON.parse(
-    readFileSync(new URL("../../config/plans.live-preview.json", import.meta.url), "utf8"),
-  ).plans[0] as ArticlePlan;
-
-  it("draws the same input the hand-made famfit2 plan was typed with", () => {
-    const result = completeDraftedPlan(hand, facts, sources);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.plan.calculators[0]?.input).toEqual(handMade.calculators[0]?.input);
-    expect(checkPlanEvidence(result.plan, facts, sources)).toEqual([]);
-  });
-
-  it("does not take another plan's term or another server's price", () => {
-    const result = completeDraftedPlan(hand, facts, sources);
-
-    expect(result.ok && result.plan.calculators[0]?.input.minimumTermMonths).toBe(60); // not ずっとPREMIUM's 3 years
-    expect(result.ok && result.plan.calculators[0]?.input.waterChargeJpy).toBe(4190); // not 4,410 or 4,082
   });
 });

@@ -15,7 +15,7 @@ import type { ArticlePlan, CalculatorEntry, PlanDraft } from "./pipeline.js";
  * a model never decides which number counts, and the QA number check
  * (`checkPlanEvidence`) still runs on the result.
  */
-export type DraftResult = { ok: true; plan: ArticlePlan } | { ok: false; issues: string[] };
+export type DraftResult = { ok: true; plan: ArticlePlan; facts?: Fact[] } | { ok: false; issues: string[] };
 
 type Tier = readonly Fact[];
 
@@ -51,23 +51,54 @@ function usageLiters(text: string): number[] {
   ];
 }
 
-/** What a fee fact is about. A fact about two kinds is not used for either: the figure could belong to both. */
-const FEE_LABELS = {
+/**
+ * Where a fee is named. A passage may carry several fees and a plan's price next to them,
+ * so a fee's figure is read only from the words right after its own name (`clausesOf`).
+ */
+const FEE_PATTERNS = {
   // A regional surcharge ("追加送料") is an addition to the shipping fee, not the fee.
-  shipping: (text: string) => /送料|配送料|配達料/.test(text) && !/追加送料|地域加算/.test(text),
-  electricity: (text: string) => /電気代|電気料金/.test(text),
+  shipping: { label: /(?<!追加)(?:送料|配送料|配達料)/g },
+  electricity: { label: /電気代|電気料金/g },
   // The setup fee is named by its prefix: pause, delivery and payment fees also say 事務手数料.
   // Installation is a different cost.
-  initial: (text: string) => /(?:初回|登録|初期|契約)[^。、:：]{0,8}(?:手数料|費用)/.test(text) && !/設置/.test(text),
+  initial: { label: /(?:初回|登録|初期|契約)[^。、:：]{0,8}(?:手数料|費用)/g, skip: /設置/ },
   // The contract termination fee, not any sentence that says 解約 (a pause ends in 強制解約).
-  cancellation: (text: string) => /契約解除料|解約金|解約料|違約金|解除料/.test(text),
-} as const;
-type FeeKey = keyof typeof FEE_LABELS;
+  cancellation: { label: /契約解除料|解約金|解約料|違約金|解除料/g },
+} as const satisfies Record<string, { label: RegExp; skip?: RegExp }>;
+type FeeKey = keyof typeof FEE_PATTERNS;
+const FEE_KEYS = Object.keys(FEE_PATTERNS) as FeeKey[];
+
+function labelHits(text: string, key: FeeKey): RegExpExecArray[] {
+  const { label } = FEE_PATTERNS[key];
+  const skip = "skip" in FEE_PATTERNS[key] ? (FEE_PATTERNS[key] as { skip: RegExp }).skip : undefined;
+  return [...text.matchAll(new RegExp(label.source, "g"))].filter((hit) => !skip || !skip.test(hit[0]));
+}
 
 function feeKeysOf(text: string): FeeKey[] {
   const t = norm(text);
-  return (Object.keys(FEE_LABELS) as FeeKey[]).filter((key) => FEE_LABELS[key](t));
+  return FEE_KEYS.filter((key) => labelHits(t, key).length > 0);
 }
+
+const MAX_CLAUSE_CHARS = 80;
+
+/**
+ * The words after each mention of the fee, up to the end of the sentence, a "※" note,
+ * a surcharge, the next fee's name or 80 characters.
+ */
+function clausesOf(text: string, key: FeeKey): string[] {
+  const t = norm(text);
+  const starts = FEE_KEYS.flatMap((other) => labelHits(t, other).map((hit) => hit.index));
+  return labelHits(t, key).map((hit) => {
+    const from = hit.index;
+    const after = from + hit[0].length;
+    const stop = t.slice(after).search(/。|\s※|追加送料/);
+    const ends = [t.length, from + MAX_CLAUSE_CHARS, ...starts.filter((start) => start > from), ...(stop >= 0 ? [after + stop] : [])];
+    return t.slice(from, Math.min(...ends));
+  });
+}
+
+/** An eco-mode figure in brackets is another way of using the product, not the figure. */
+const withoutEcoMode = (text: string): string => text.replace(/[（(][^）)]*エコ[^）)]*[）)]/g, " ");
 
 /** The tiers a field is read from: facts that name the service first, then the service's other page facts. */
 function tiersOf(draft: PlanDraft, facts: readonly Fact[], pageSourceIds: ReadonlySet<string>): Tier[] {
@@ -89,6 +120,16 @@ function distinctOf<T>(values: readonly T[]): T[] {
   return [...new Set(values)];
 }
 
+const shorten = (text: string): string => (text.length > 80 ? `${text.slice(0, 80)}…` : text);
+
+/** The facts a failure is about, shortened, so it can be understood from the run log alone. */
+const examplesOf = (facts: readonly Fact[]): string => `候補: ${facts.slice(0, 3).map((fact) => `「${shorten(fact.text)}」`).join("")}`;
+
+function nearMisses(tiers: readonly Tier[]): string {
+  const withYen = tiers.flat().filter((fact) => yenAmounts(fact.text).length > 0);
+  return withYen.length === 0 ? "該当するFactがありません" : examplesOf(withYen);
+}
+
 /** One figure for a fee fact: the amount it states, 0 when it says it is free, otherwise it is ambiguous. */
 function figureOf(text: string): number | "ambiguous" | "silent" {
   const amounts = yenAmounts(text);
@@ -105,20 +146,21 @@ function figureOf(text: string): number | "ambiguous" | "silent" {
   return "ambiguous";
 }
 
-function readFee(key: FeeKey, tiers: readonly Tier[]): Read<{ amount: number; facts: Fact[] }> {
+function readFee(key: FeeKey, tiers: readonly Tier[]): Read<{ amount: number; facts: Fact[]; clauses: string[] }> {
   for (const tier of tiers) {
-    const facts = tier.filter((fact) => {
-      const keys = feeKeysOf(fact.text);
-      return keys.length === 1 && keys[0] === key;
-    });
-    const figures = facts.map((fact) => ({ fact, figure: figureOf(fact.text) })).filter((entry) => entry.figure !== "silent");
+    const figures = tier
+      .flatMap((fact) => clausesOf(fact.text, key).map((clause) => ({ fact, clause, figure: figureOf(withoutEcoMode(clause)) })))
+      .filter((entry) => entry.figure !== "silent");
     if (figures.length === 0) continue;
-    if (figures.some((entry) => entry.figure === "ambiguous")) {
-      return { kind: "conflict", detail: "図が一つに決まらない記載があります（地域別の例外など）" };
+    const ambiguous = figures.filter((entry) => entry.figure === "ambiguous");
+    if (ambiguous.length > 0) {
+      return { kind: "conflict", detail: `図が一つに決まらない記載があります（地域別の例外・複数の金額など）。${examplesOf(ambiguous.map((entry) => entry.fact))}` };
     }
     const amounts = distinctOf(figures.map((entry) => entry.figure as number));
-    if (amounts.length > 1) return { kind: "conflict", detail: `${amounts.map((a) => `${a}円`).join("・")}の記載があります` };
-    return { kind: "value", value: { amount: amounts[0]!, facts: figures.map((entry) => entry.fact) } };
+    if (amounts.length > 1) {
+      return { kind: "conflict", detail: `${amounts.map((a) => `${a}円`).join("・")}の記載があります。${examplesOf(figures.map((entry) => entry.fact))}` };
+    }
+    return { kind: "value", value: { amount: amounts[0]!, facts: figures.map((entry) => entry.fact), clauses: figures.map((entry) => entry.clause) } };
   }
   return { kind: "none" };
 }
@@ -151,13 +193,6 @@ function waterCandidate(text: string, monthlyLiters: number): WaterCandidate | u
   return undefined;
 }
 
-/** Facts a failed read looked at, shortened, so a failure says what was near (the run log is where it is read). */
-function nearMisses(tiers: readonly Tier[]): string {
-  const withYen = tiers.flat().filter((fact) => yenAmounts(fact.text).length > 0).slice(0, 3);
-  if (withYen.length === 0) return "該当するFactがありません";
-  const short = (text: string): string => (text.length > 80 ? `${text.slice(0, 80)}…` : text);
-  return `候補: ${withYen.map((fact) => `「${short(fact.text)}」`).join("")}`;
-}
 
 function readWater(tiers: readonly Tier[], monthlyLiters: number): Read<WaterCandidate> {
   for (const tier of tiers) {
@@ -178,8 +213,9 @@ function readTermMonths(tiers: readonly Tier[]): Read<number> {
     const months = tier.flatMap((fact) => {
       const t = norm(fact.text);
       if (feeKeysOf(t).length > 0 || !/最低利用期間|最低契約期間|契約期間/.test(t)) return [];
-      const match = t.match(/(\d+)\s*(年|ヶ月|か月|カ月)/);
-      return match ? [Number(match[1]) * (match[2] === "年" ? 12 : 1)] : [];
+      // A row that lists several plans ("3年 5年") does not say which belongs to this one.
+      const terms = [...new Set([...t.matchAll(/(\d+)\s*(年|ヶ月|か月|カ月)/g)].map((m) => Number(m[1]) * (m[2] === "年" ? 12 : 1)))];
+      return terms.length === 1 ? terms : [];
     });
     if (months.length === 0) continue;
     const distinct = distinctOf(months);
@@ -222,7 +258,7 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
 
   const fees = Object.fromEntries(
     (["shipping", "electricity", "initial", "cancellation"] as const).map((key) => [key, readFee(key, tiers)]),
-  ) as Record<FeeKey, Read<{ amount: number; facts: Fact[] }>>;
+  ) as Record<FeeKey, Read<{ amount: number; facts: Fact[]; clauses: string[] }>>;
   for (const key of ["shipping", "electricity", "initial"] as const) {
     const read = fees[key];
     if (read.kind === "none") missing(FIELD_NAME[key]);
@@ -237,9 +273,8 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
     return { ok: false, issues };
   }
 
-  const electricityFacts = fees.electricity.value.facts;
   const bases = distinctOf(
-    tiers.flat().flatMap((fact) => (FEE_LABELS.electricity(norm(fact.text)) ? usageLiters(fact.text) : [])),
+    tiers.flat().flatMap((fact) => (labelHits(norm(fact.text), "electricity").length > 0 || /kwh|電気|消費電力/i.test(norm(fact.text)) ? usageLiters(fact.text) : [])),
   );
   const input: Record<string, unknown> = {
     offerId: draft.offerId,
@@ -252,7 +287,7 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
     cancellationFeeJpy: fees.cancellation.kind === "value" ? fees.cancellation.value.amount : "UNKNOWN",
     monthlyLiters: draft.monthlyLiters,
     ...(term.kind === "value" ? { minimumTermMonths: term.value } : {}),
-    ...(electricityFacts.some((fact) => ESTIMATE.test(norm(fact.text))) ? { electricityIsEstimate: true } : {}),
+    ...(fees.electricity.value.clauses.some((clause) => ESTIMATE.test(clause)) ? { electricityIsEstimate: true } : {}),
     ...(bases.length === 1 ? { electricityBasisLiters: bases[0] } : {}),
   };
   return {
