@@ -39,6 +39,8 @@ describe.skipIf(!browser)("READ_PROGRAM_ROWS on program cards", () => {
       const { rows } = (await page.evaluate(READ_PROGRAM_ROWS)) as ListPage;
 
       expect(rows.map((row) => row.programId)).toEqual(["s00000001111111", "s00000002222222"]);
+      expect(rows[0]?.name).toBe("ダミー水");
+      expect(rows[1]?.name).toBe("別のダミー");
       expect(rows[0]?.text).toContain("ダミー水");
       expect(rows[0]?.text).not.toContain("別のダミー");
       expect(rows[1]?.text).toContain("別のダミー");

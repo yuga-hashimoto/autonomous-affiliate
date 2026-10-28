@@ -31,6 +31,8 @@ export type ProgramStatus = "approved" | "pending" | "rejected" | "ended" | "unk
 
 export interface RawProgramRow {
   programId: string;
+  /** The program's name, when the page shows it separately. Used to pick a vertical, then dropped. */
+  name?: string;
   /** Visible text of the row. Used to decide the status, then dropped. */
   text: string;
   hrefs: string[];
@@ -39,6 +41,8 @@ export interface RawProgramRow {
 export interface PartneredProgram {
   programId: string;
   status: ProgramStatus;
+  /** Which vertical the program's name belongs to ("other" when none). The name itself is not kept. */
+  vertical: string;
   /** The row links to the page that makes ad links. */
   hasAdLinkPage: boolean;
 }
@@ -51,6 +55,8 @@ export interface ProgramSummary {
   ended: number;
   unknown: number;
   withAdLinkPage: number;
+  /** Approved programs per vertical, so the kind of program is known without printing any name. */
+  approvedByVertical: Record<string, number>;
 }
 
 export function programIdOf(href: string): string | undefined {
@@ -87,6 +93,28 @@ function shapeOf(path: string, search: string): string {
     .filter((pair) => pair.length > 0)
     .map((pair) => `${pair.split("=")[0] ?? ""}=*`);
   return `${segments.join("/")}${keys.length > 0 ? `?${keys.join("&")}` : ""}`;
+}
+
+/**
+ * Which vertical (docs/01) a program name belongs to, by public vocabulary. The first rule that
+ * matches wins, so the specific ones come first (a car buyback is not a general buyback).
+ */
+const VERTICAL_RULES: readonly (readonly [string, RegExp])[] = [
+  ["car_buyback", /車(買取|買い取り|査定)|自動車.*(買取|査定)|廃車/],
+  ["water_delivery", /ウォーターサーバー|宅配水|天然水|ミネラルウォーター|水の宅配|ウォーター/],
+  ["moving", /引越|引っ越し/],
+  ["fiber", /光回線|光コラボ|ホームルーター|WiMAX|ワイマックス|Wi-?Fi|ネット回線|インターネット接続|フレッツ|ひかり/i],
+  ["mobile", /SIM|モバイル|スマホ|スマートフォン|携帯/i],
+  ["utilities", /電力|電気|都市ガス|ガス会社/],
+  ["buyback", /買取|買い取り|査定/],
+  ["education", /スクール|講座|資格|学習|英会話|プログラミング|通信教育|教室/],
+  ["career", /転職|求人|派遣|就職|看護師|キャリア|エージェント/],
+  ["saas", /クラウド|SaaS|会計|ソフト|ツール|システム|サーバー/i],
+];
+const NAME_FALLBACK_LENGTH = 120;
+
+export function verticalOf(name: string): string {
+  return VERTICAL_RULES.find(([, pattern]) => pattern.test(name))?.[0] ?? "other";
 }
 
 const ENDED = /プログラム終了|提携解除|提携終了|提携停止|掲載終了|掲載停止|配信停止|募集終了|停止中/;
@@ -134,6 +162,7 @@ export function parseProgramRows(rows: readonly RawProgramRow[], list: ListKind 
     programs.push({
       programId: row.programId,
       status: statusInList(list, row.text, row.hrefs),
+      vertical: verticalOf(row.name?.trim() || row.text.slice(0, NAME_FALLBACK_LENGTH)),
       hasAdLinkPage: row.hrefs.some((href) => /\/create-link(\?|$)/.test(href) && programIdOf(href) === row.programId),
     });
   }
@@ -150,6 +179,9 @@ export function summarizePrograms(programs: readonly PartneredProgram[]): Progra
     ended: count("ended"),
     unknown: count("unknown"),
     withAdLinkPage: programs.filter((program) => program.hasAdLinkPage).length,
+    approvedByVertical: programs
+      .filter((program) => program.status === "approved")
+      .reduce<Record<string, number>>((counts, program) => ({ ...counts, [program.vertical]: (counts[program.vertical] ?? 0) + 1 }), {}),
   };
 }
 
@@ -286,8 +318,10 @@ export const READ_PROGRAM_ROWS = `(() => {
     if (!match || rows.has(match[1])) continue;
     const container = anchor.closest(".pgCard") || anchor.closest("tr, li, article") || (anchor.parentElement && anchor.parentElement.parentElement) || anchor;
     const hrefs = Array.from(container.querySelectorAll("a[href]")).map((a) => a.getAttribute("href") || "").slice(0, 30);
+    const nameElement = container.querySelector(".pgName");
     rows.set(match[1], {
       programId: match[1],
+      name: nameElement ? (nameElement.innerText || "").replace(/\\s+/g, " ").trim().slice(0, 120) : undefined,
       text: (container.innerText || "").replace(/\\s+/g, " ").trim().slice(0, 400),
       hrefs,
     });
