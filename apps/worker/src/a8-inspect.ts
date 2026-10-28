@@ -177,7 +177,7 @@ async function inspectPage(page: Page, keyword: string, siteName: string): Promi
   };
 }
 
-async function open(page: Page, target: string): Promise<void> {
+export async function openProgramPage(page: Page, target: string): Promise<void> {
   if (!isProgramPagePath(target)) throw new Error(`refusing to open ${hrefShape(target)}`);
   await page.goto(`${CONSOLE_ORIGIN}${target}`, { waitUntil: "domcontentloaded" });
   await settlePage(page);
@@ -188,14 +188,14 @@ const SEARCH_FORM_FIELD = `${SEARCH_FORM} input[name=keywordBox]`;
 const SEARCH_FORM_BUTTON = `${SEARCH_FORM} .searchAction button[type=submit]`;
 const SECOND_SEARCH_NAVIGATION_MS = 8_000;
 
-interface SearchResult extends ListPage {
+export interface SearchResult extends ListPage {
   /** 1 when the header search was enough, 2 when the search page's own form had to be used. */
   attempts: 1 | 2;
   probe: string[];
 }
 
-async function searchFor(page: Page, keyword: string): Promise<SearchResult> {
-  await open(page, SEARCH_TOP_PATH);
+export async function searchFor(page: Page, keyword: string): Promise<SearchResult> {
+  await openProgramPage(page, SEARCH_TOP_PATH);
   await page.fill(KEYWORD_FIELD, keyword);
   await Promise.all([
     page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: NAVIGATION_TIMEOUT_MS }),
@@ -232,12 +232,12 @@ async function inspectProgram(page: Page, keyword: string, siteName: string): Pr
   const detailPath = pickDetailPath(first);
   if (!detailPath) return { outcome: "unrecognized", reason: "the matching result has no detail link", search: summary, probe };
 
-  await open(page, detailPath);
+  await openProgramPage(page, detailPath);
   const detail = await inspectPage(page, keyword, siteName);
   probe.detail = detail.probe;
   if (!detail.applyEntry) return { outcome: "ok", search: summary, detail: detail.summary, probe };
 
-  await open(page, detail.applyEntry);
+  await openProgramPage(page, detail.applyEntry);
   const apply = await inspectPage(page, keyword, siteName);
   probe.apply = apply.probe;
   return { outcome: "ok", search: summary, detail: detail.summary, apply: apply.summary, probe };
