@@ -84,7 +84,7 @@ export function factsLinkedToEntry(
   );
 }
 
-function sourceIdsOfPages(urls: readonly string[], sources: readonly SourceRecord[]): Set<string> {
+export function sourceIdsOfPages(urls: readonly string[], sources: readonly SourceRecord[]): Set<string> {
   const wanted = new Set(urls.map(canonicalizeUrl));
   return new Set(sources.filter((source) => wanted.has(canonicalizeUrl(source.canonicalUrl))).map((source) => source.id));
 }

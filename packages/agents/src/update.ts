@@ -14,6 +14,7 @@ import { BudgetExceededError } from "@aff/llm";
 import { createFreshnessPolicy, MapFetcher } from "@aff/integrations";
 import { PublisherAgent, type PublishArtifact, type PublishTarget } from "./publisher.js";
 import { checkPlanEvidence } from "./plan-evidence.js";
+import { completeDraftedPlan } from "./plan-draft.js";
 import {
   buildDraftFor,
   collectPlanSources,
@@ -245,8 +246,17 @@ export async function runArticleUpdate(
     }
     const evidence: PlanEvidence = { sources: collected.map((source) => source.record), facts };
 
+    // --- a plan kept as a brief takes its amounts from this cycle's facts (docs/18) ---
+    const completed = completeDraftedPlan(
+      inputPlan,
+      evidence.facts.filter((fact) => createFreshnessPolicy(policy).isFactUsable(fact, clock())),
+      evidence.sources,
+    );
+    if (!completed.ok) return await keep(["plan_draft_failed", ...completed.issues]);
+    const currentPlan = completed.plan;
+
     // --- analysis ---
-    const calculations = computeCalculations(inputPlan);
+    const calculations = computeCalculations(currentPlan);
     for (const calculation of calculations) {
       await repo.analyses.save({
         id: newId("ana"),
@@ -261,7 +271,7 @@ export async function runArticleUpdate(
 
     // --- draft + QA against this cycle's evidence only ---
     const freshness = createFreshnessPolicy(policy);
-    let plan = inputPlan;
+    let plan = currentPlan;
     let attempts = 0;
     let decision: QualityDecision;
     let draft: Awaited<ReturnType<typeof buildDraftFor>>;
