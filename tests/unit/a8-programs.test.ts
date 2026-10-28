@@ -3,6 +3,7 @@ import {
   classifyProgramStatus,
   hrefShape,
   listState,
+  verticalOf,
   parseProgramRows,
   programIdOf,
   renderProbe,
@@ -98,6 +99,56 @@ describe("statusInList", () => {
   });
 });
 
+describe("verticalOf", () => {
+  it.each([
+    ["プレミアムウォーター ウォーターサーバー", "water_delivery"],
+    ["天然水の宅配サービス", "water_delivery"],
+    ["格安SIM モバイル", "mobile"],
+    ["スマホ乗り換え", "mobile"],
+    ["光回線 ホームルーター", "fiber"],
+    ["引越し見積もり比較", "moving"],
+    ["ブランド品の買取", "buyback"],
+    ["車買取 一括査定", "car_buyback"],
+    ["電力会社の切り替え", "utilities"],
+    ["プログラミングスクール", "education"],
+    ["看護師の転職", "career"],
+    ["クラウド会計ソフト", "saas"],
+  ])("puts %s under %s", (name, vertical) => {
+    expect(verticalOf(name)).toBe(vertical);
+  });
+
+  it("prefers the specific vertical: a car buyback is not a general buyback", () => {
+    expect(verticalOf("自動車の買取・査定")).toBe("car_buyback");
+  });
+
+  it("says other when nothing matches", () => {
+    expect(verticalOf("おいしいお菓子の通販")).toBe("other");
+    expect(verticalOf("")).toBe("other");
+  });
+});
+
+describe("approved programs by vertical", () => {
+  const link = (id: string): string[] => [`/program/create-link?programId=${id}`];
+
+  it("counts only approved programs and never keeps a name", () => {
+    const programs = parseProgramRows([
+      { programId: "s0000001", text: "x", name: "ウォーターサーバーA", hrefs: link("s0000001") },
+      { programId: "s0000002", text: "x", name: "ウォーターサーバーB", hrefs: link("s0000002") },
+      { programId: "s0000003", text: "x", name: "光回線C", hrefs: link("s0000003") },
+      { programId: "s0000004", text: "x", name: "光回線D (ad-link page missing)", hrefs: [] },
+      { programId: "s0000005", text: "プログラム終了", name: "光回線E", hrefs: link("s0000005") },
+    ]);
+    const summary = summarizePrograms(programs);
+    expect(summary.approvedByVertical).toEqual({ water_delivery: 2, fiber: 1 });
+    expect(JSON.stringify(programs)).not.toContain("ウォーターサーバーA");
+  });
+
+  it("falls back to the start of the row text when a row has no separate name", () => {
+    const programs = parseProgramRows([{ programId: "s0000006", text: "格安SIM のご案内", hrefs: link("s0000006") }]);
+    expect(summarizePrograms(programs).approvedByVertical).toEqual({ mobile: 1 });
+  });
+});
+
 describe("listState", () => {
   it("tells an empty list from a page it does not understand", () => {
     expect(listState({ rows: 3, noDataShown: false })).toBe("programs");
@@ -131,6 +182,7 @@ describe("parseProgramRows and summarizePrograms", () => {
       ended: 1,
       unknown: 1,
       withAdLinkPage: 3,
+      approvedByVertical: { other: 2 },
     });
   });
 
