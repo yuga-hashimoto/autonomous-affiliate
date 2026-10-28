@@ -1,12 +1,13 @@
 name: a8-apply
 
 # Manual. Logs in to the A8 media console, finds one advertiser program the account has
-# not joined, chooses the target site in its application form and presses the first
-# button of the application (提携申請). It stops on the page that comes next and prints
-# that page's structure; it presses nothing there.
+# not joined, chooses the target site in its application form and presses the application
+# button (提携申請). THAT PRESS IS THE APPLICATION: it goes to the result page, where the
+# program may already be joined. The result page is only read, never pressed.
 #
 # The owner has handed the applications to the AI (AGENTS.md). Consent to terms, CAPTCHAs
 # and identity checks are not passed: if one appears the run stops and reports it.
+# One run applies to one program: the first search result that mentions the keyword.
 #
 # The repository and this log are public and A8's terms forbid publishing member-only
 # details, so the output is: counts, yes/no flags and the page structure with content masked.
@@ -39,7 +40,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Start the application
+      - name: Apply to the program
         run: pnpm tsx apps/worker/src/index.ts a8-apply-start
         env:
           A8_BROWSER_CHANNEL: chrome

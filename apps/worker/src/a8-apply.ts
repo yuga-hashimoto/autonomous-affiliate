@@ -12,10 +12,9 @@ import {
 } from "./a8-programs.js";
 
 /**
- * The first step of applying to one advertiser program (提携申請): choose the target site in
- * the form on the program's detail page and press the button that leads on. It stops on the page
- * that comes next and prints that page's structure, so the following step can be built from
- * what is really there. It never presses anything on that next page.
+ * Applies to one advertiser program (提携申請): choose the target site in the form on the
+ * program's detail page and press the application button. That press is the application; it
+ * leads to a result page, which is read (never pressed) and printed as masked structure.
  *
  * The program and the account are member-only information and the log is public, so only
  * counts, flags and the masked page structure are printed.
@@ -163,8 +162,8 @@ async function startApplication(page: Page, keyword: string, siteName: string): 
   if (!chosen || hidden === "different") return refused("the target site could not be chosen", { search: summary, site: siteReport });
   if ((await page.locator(APPLY_BUTTON).count()) !== 1) return refused("the application button was not found", { search: summary, site: siteReport });
 
-  // The click may be the application itself, so a page that does not navigate is reported as
-  // it stands rather than thrown away as an error.
+  // The click is the application, so a page that does not navigate is reported as it stands
+  // rather than thrown away as an error.
   const before = page.url();
   await Promise.all([
     page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: NAVIGATION_TIMEOUT_MS }).catch(() => undefined),
@@ -188,7 +187,7 @@ async function startApplication(page: Page, keyword: string, siteName: string): 
   };
 }
 
-/** Logs in, chooses the target site in one program's application form and presses the first button. */
+/** Logs in, chooses the target site in one program's application form and applies. */
 export async function runA8Apply(env: NodeJS.ProcessEnv): Promise<ApplyReport> {
   const keyword = env.A8_PROGRAM_KEYWORD?.trim();
   if (!keyword || keyword.length > KEYWORD_MAX_LENGTH) {
