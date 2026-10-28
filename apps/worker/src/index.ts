@@ -32,6 +32,7 @@ import {
 } from "@aff/agents";
 import { AspReportImporter, HttpFetcher, MapFetcher, checkRobots, type Fetcher } from "@aff/integrations";
 import { buildMonthlyReport, renderMonthlyReportMarkdown } from "@aff/analytics";
+import { runA8ExportApproved } from "./a8-export.js";
 import { runA8Inspect } from "./a8-inspect.js";
 import { runA8LoginSmoke } from "./a8-login.js";
 import { runA8Programs } from "./a8-programs.js";
@@ -712,6 +713,11 @@ if (isMain()) {
       for (const [page, lines] of Object.entries(probe ?? {})) {
         process.stdout.write(`--- ${page}: page structure (content masked) ---\n${lines.join("\n")}\n`);
       }
+      if (report.outcome !== "ok") process.exit(1);
+    } else if (command === "a8-export-approved") {
+      const { encrypted, ...report } = await runA8ExportApproved(options.env ?? process.env);
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      if (encrypted) process.stdout.write(`ENCRYPTED:${encrypted}\n`);
       if (report.outcome !== "ok") process.exit(1);
     } else if (command === "refresh") {
       process.stdout.write(`${JSON.stringify(await runRefresh(options), null, 2)}\n`);
