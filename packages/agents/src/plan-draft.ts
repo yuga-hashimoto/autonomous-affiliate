@@ -21,21 +21,46 @@ type Tier = readonly Fact[];
 
 const norm = (text: string): string => text.normalize("NFKC");
 
+const NUMBER = "(\\d{1,3}(?:,\\d{3})+|\\d+)";
+const toNumber = (text: string): number => Number(text.replace(/,/g, ""));
+
+/**
+ * The yen amounts a fact states. Pages often give a tax-excluded and a tax-included
+ * price side by side ("3,880円/月（税込4,190円）"); when exactly one amount is marked
+ * 税込 that is the figure, as the comparison is on tax-included prices.
+ */
 function yenAmounts(text: string): number[] {
-  return [...norm(text).matchAll(/(\d{1,3}(?:,\d{3})+|\d+)\s*円/g)].map((match) => Number(match[1]!.replace(/,/g, "")));
+  const t = norm(text);
+  const all = [...t.matchAll(new RegExp(`${NUMBER}\\s*円`, "g"))].map((match) => toNumber(match[1]!));
+  const included = [
+    ...t.matchAll(new RegExp(`税込\\s*[:：]?\\s*${NUMBER}\\s*円`, "g")),
+    ...t.matchAll(new RegExp(`${NUMBER}\\s*円\\s*[（(]\\s*税込\\s*[）)]`, "g")),
+  ].map((match) => toNumber(match[1]!));
+  const distinctIncluded = [...new Set(included)];
+  return distinctIncluded.length === 1 ? distinctIncluded : all;
 }
 
 const FREE = /無料|ゼロ円/;
 const ESTIMATE = /目安|約|概算|想定/;
-const LITERS = /(\d+(?:\.\d+)?)\s*L/gi;
+/** Monthly use an electricity figure is based on: "36L/月" or "月36L". */
+function usageLiters(text: string): number[] {
+  const t = norm(text);
+  return [
+    ...[...t.matchAll(/(\d+(?:\.\d+)?)\s*L\s*\/\s*月/gi)].map((m) => Number(m[1])),
+    ...[...t.matchAll(/月\s*(\d+(?:\.\d+)?)\s*L/gi)].map((m) => Number(m[1])),
+  ];
+}
 
 /** What a fee fact is about. A fact about two kinds is not used for either: the figure could belong to both. */
 const FEE_LABELS = {
-  shipping: (text: string) => /送料|配送料|配達料/.test(text),
+  // A regional surcharge ("追加送料") is an addition to the shipping fee, not the fee.
+  shipping: (text: string) => /送料|配送料|配達料/.test(text) && !/追加送料|地域加算/.test(text),
   electricity: (text: string) => /電気代|電気料金/.test(text),
-  // Installation is a different cost; the setup fee is the registration / office fee.
-  initial: (text: string) => (/(?:初回|登録|事務)[^。、]{0,8}手数料|初期費用/.test(text)) && !/設置/.test(text),
-  cancellation: (text: string) => /解約|解除|違約/.test(text),
+  // The setup fee is named by its prefix: pause, delivery and payment fees also say 事務手数料.
+  // Installation is a different cost.
+  initial: (text: string) => /(?:初回|登録|初期|契約)[^。、:：]{0,8}(?:手数料|費用)/.test(text) && !/設置/.test(text),
+  // The contract termination fee, not any sentence that says 解約 (a pause ends in 強制解約).
+  cancellation: (text: string) => /契約解除料|解約金|解約料|違約金|解除料/.test(text),
 } as const;
 type FeeKey = keyof typeof FEE_LABELS;
 
@@ -52,6 +77,12 @@ function tiersOf(draft: PlanDraft, facts: readonly Fact[], pageSourceIds: Readon
   return [named, page];
 }
 
+/** Facts that hold every fragment, when the brief names them; otherwise the usual tiers. */
+function selected(terms: readonly string[] | undefined, facts: readonly Fact[], tiers: readonly Tier[]): Tier[] {
+  if (!terms || terms.length === 0) return [...tiers];
+  return [facts.filter((fact) => terms.every((term) => fact.text.includes(term)))];
+}
+
 type Read<T> = { kind: "value"; value: T } | { kind: "none" } | { kind: "conflict"; detail: string };
 
 function distinctOf<T>(values: readonly T[]): T[] {
@@ -65,6 +96,11 @@ function figureOf(text: string): number | "ambiguous" | "silent" {
   if (amounts.length === 1 && amounts[0] === 0) return 0;
   if (amounts.length === 1 && !free) return amounts[0]!;
   if (amounts.length === 0 && free) return 0;
+  if (amounts.length > 1 && !free) {
+    // "通常使用時約669円、エコモード使用時約583円": the normal-use figure, when exactly one is marked so.
+    const normal = [...norm(text).matchAll(new RegExp(`通常[^0-9円]{0,8}?${NUMBER}\\s*円`, "g"))].map((m) => toNumber(m[1]!));
+    if (new Set(normal).size === 1) return normal[0]!;
+  }
   if (amounts.length === 0) return "silent";
   return "ambiguous";
 }
@@ -168,7 +204,7 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
   const missing = (name: string): void => void issues.push(`${name}: 公式Factに金額が見つかりません`);
   const conflicting = (name: string, detail: string): void => void issues.push(`${name}: 金額が一意に決まりません（${detail}）`);
 
-  const water = readWater(tiers, draft.monthlyLiters);
+  const water = readWater(selected(draft.priceTerms, facts, tiers), draft.monthlyLiters);
   if (water.kind === "none") issues.push(`${FIELD_NAME.water}: 月${draft.monthlyLiters}Lあたりの金額を示す公式Factが見つかりません`);
   if (water.kind === "conflict") issues.push(`${FIELD_NAME.water}: ${water.detail}`);
 
@@ -182,7 +218,7 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
   }
   if (fees.cancellation.kind === "conflict") conflicting(FIELD_NAME.cancellation, fees.cancellation.detail);
 
-  const term = readTermMonths(tiers);
+  const term = readTermMonths(selected(draft.planTerms, facts, tiers));
   if (term.kind === "conflict") conflicting(FIELD_NAME.term, term.detail);
 
   if (issues.length > 0 || water.kind !== "value" || fees.shipping.kind !== "value" || fees.electricity.kind !== "value" || fees.initial.kind !== "value") {
@@ -190,7 +226,9 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
   }
 
   const electricityFacts = fees.electricity.value.facts;
-  const bases = distinctOf(electricityFacts.flatMap((fact) => [...norm(fact.text).matchAll(LITERS)].map((m) => Number(m[1]))));
+  const bases = distinctOf(
+    tiers.flat().flatMap((fact) => (FEE_LABELS.electricity(norm(fact.text)) ? usageLiters(fact.text) : [])),
+  );
   const input: Record<string, unknown> = {
     offerId: draft.offerId,
     title: draft.title,

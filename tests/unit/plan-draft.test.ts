@@ -198,6 +198,90 @@ describe("completeDraftedPlan: the amounts come from the official facts, or the 
     expect(twoTerms.ok).toBe(false);
   });
 
+  it("reads the tax-inclusive figure when a fact states both tax-excluded and tax-included prices", () => {
+    const facts = [
+      fact("ウォーターA モデルX 月額3,880円（税込4,190円・12.5L×2本）"),
+      ...COMPLETE_FACTS.filter((f) => !f.text.includes("月額")),
+    ];
+
+    const result = draftOf(facts);
+
+    expect(result.ok && result.plan.calculators[0]?.input.waterChargeJpy).toBe(4190);
+  });
+
+  it("takes the normal-use electricity figure when a fact also gives an eco-mode one", () => {
+    const facts = COMPLETE_FACTS.map((f) =>
+      f.text.includes("電気代") ? fact("ウォーターA の電気代は通常使用時約669円、エコモード使用時約583円") : f,
+    );
+
+    const result = draftOf(facts);
+
+    expect(result.ok && result.plan.calculators[0]?.input.electricityFeeJpy).toBe(669);
+  });
+
+  it("reads the volume an electricity estimate is based on from another fact of the page", () => {
+    const facts = [
+      ...COMPLETE_FACTS.map((f) => (f.text.includes("電気代") ? fact("ウォーターA 電気代は通常使用時約669円") : f)),
+      fact("電気料金の表示は温水・冷水ともに各600cc/日、36L/月使用時、27円/kwhとして算出", "terms"),
+    ];
+
+    const result = draftOf(facts);
+
+    expect(result.ok && result.plan.calculators[0]?.input.electricityBasisLiters).toBe(36);
+  });
+
+  it("does not take a pause, delivery or payment fee for the initial fee, or a pause for a cancellation fee", () => {
+    const facts = [
+      ...COMPLETE_FACTS,
+      fact("ウォーターA 休止事務手数料: 880円（税込）。60日以上休止すると発生し、120日経過で強制解約となる"),
+      fact("ウォーターA 配送事務手数料: お水1セットあたり1,100円（税込）"),
+      fact("ウォーターA 決済事務手数料: 220円（税込）"),
+    ];
+
+    const result = draftOf(facts);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.calculators[0]?.input.initialFeeJpy).toBe(3300);
+    expect(result.plan.calculators[0]?.input.cancellationFeeJpy).toBe("UNKNOWN");
+  });
+
+  it("does not take a regional surcharge as the shipping fee", () => {
+    const facts = [
+      ...COMPLETE_FACTS.filter((f) => !f.text.includes("送料")),
+      fact("ウォーターA の送料は一部地域を除き無料"),
+      fact("ウォーターA 追加送料: 離島の場合 715円（税込）/1セット"),
+    ];
+
+    const result = draftOf(facts);
+
+    expect(result.ok && result.plan.calculators[0]?.input.shippingFeeJpy).toBe(0);
+  });
+
+  it("lets the plan name the price line: only facts holding every priceTerms fragment are read for the water charge", () => {
+    const facts = [
+      ...COMPLETE_FACTS.filter((f) => !f.text.includes("月額")),
+      fact("ウォーターA プランP（省エネサーバー利用・月12.5L×2本）: 3,880円/月（税込4,190円）"),
+      fact("ウォーターA プランP（デザインサーバー利用・月12.5L×2本）: 4,080円/月（税込4,410円）"),
+    ];
+
+    expect(draftOf(facts).ok).toBe(false); // two lines, nothing says which is this service's
+    const named = draftOf(facts, { priceTerms: ["プランP", "省エネサーバー"] });
+    expect(named.ok && named.plan.calculators[0]?.input.waterChargeJpy).toBe(4190);
+  });
+
+  it("lets the plan name its own terms: another plan's minimum term is not read", () => {
+    const facts = [
+      ...COMPLETE_FACTS.filter((f) => f.claimType !== "contract_term"),
+      fact("ウォーターA プランPの最低利用期間は5年", "contract_term"),
+      fact("ウォーターA プランQの最低利用期間は3年", "contract_term"),
+    ];
+
+    expect(draftOf(facts).ok).toBe(false);
+    const named = draftOf(facts, { planTerms: ["プランP"] });
+    expect(named.ok && named.plan.calculators[0]?.input.minimumTermMonths).toBe(60);
+  });
+
   it("leaves a plan alone when it has no draft, or already has calculators", () => {
     const hand = { ...planOf(), draft: undefined, calculators: [{ calculator: "water" as const, input: { offerId: "o" } }] };
     const result = completeDraftedPlan(hand, [], []);
@@ -315,5 +399,40 @@ describe("a drafted plan in the pipeline", () => {
     expect(update.update?.outcome).toBe("kept_previous");
     expect(update.reasons.join("\n")).toContain("plan_draft_failed");
     expect(env.site.files.get(PATH)).toBe(live);
+  });
+});
+
+describe("calibration on facts extracted from the real official pages (2026-10-28)", () => {
+  interface Captured {
+    pages: { url: string; facts: { text: string; claimType: Fact["claimType"] }[] }[];
+  }
+  const captured = JSON.parse(
+    readFileSync(new URL("../fixtures/premium-water-facts-2026-10-28.json", import.meta.url), "utf8"),
+  ) as Captured;
+  const sources: SourceRecord[] = captured.pages.map((page, i) => ({ ...SOURCE, id: `real-${i}`, canonicalUrl: page.url }));
+  const facts: Fact[] = captured.pages.flatMap((page, i) =>
+    page.facts.map((f, j) => ({ ...fact(f.text, f.claimType, `real-${i}-${j}`), sourceIds: [`real-${i}`] })),
+  );
+  const hand = JSON.parse(
+    readFileSync(new URL("../../config/plans.live-preview-draft.json", import.meta.url), "utf8"),
+  ).plans[0] as ArticlePlan;
+  const handMade = JSON.parse(
+    readFileSync(new URL("../../config/plans.live-preview.json", import.meta.url), "utf8"),
+  ).plans[0] as ArticlePlan;
+
+  it("draws the same input the hand-made famfit2 plan was typed with", () => {
+    const result = completeDraftedPlan(hand, facts, sources);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.calculators[0]?.input).toEqual(handMade.calculators[0]?.input);
+    expect(checkPlanEvidence(result.plan, facts, sources)).toEqual([]);
+  });
+
+  it("does not take another plan's term or another server's price", () => {
+    const result = completeDraftedPlan(hand, facts, sources);
+
+    expect(result.ok && result.plan.calculators[0]?.input.minimumTermMonths).toBe(60); // not ずっとPREMIUM's 3 years
+    expect(result.ok && result.plan.calculators[0]?.input.waterChargeJpy).toBe(4190); // not 4,410 or 4,082
   });
 });

@@ -1,0 +1,340 @@
+{
+ "_comment": "Facts extracted from the official pages by glm-5.3-flash (LLM_CLI route) on 2026-10-28, kept only where they concern the amounts the plan drafter reads. Test fixture for docs/18 calibration; not a statement of current prices.",
+ "capturedAt": "2026-10-28T14:57:02.873Z",
+ "pages": [
+  {
+   "url": "https://premium-water.net/price/motto/",
+   "facts": [
+    {
+     "text": "プレミアムウォーター もっとPREMIUMプラン: 月々3,780円(税込4,082円)/月〜（月12.5L×2本ご利用の場合）",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプラン（デザイン性を重視したサーバー利用・月12.5L×2本の場合）: 4,080円/月（税込4,410円）",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプランでデザイン性重視のサーバー（AURA Water Serverまたはamadanaグランデサーバー）を選んだ場合のサーバーレンタル料: 200円/月（税込220円）",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプランでデザイン性重視のサーバーを選んだ場合の天然水の料金: 3,880円/月（税込4,190円）",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプラン（省エネサーバー利用・月12.5L×2本の場合）: 3,880円/月（税込4,190円）",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプランで省エネサーバー（famfit2またはスリムサーバー4）を選んだ場合のサーバーレンタル料: 無料",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプランで省エネサーバーを選んだ場合の天然水の料金: 3,880円/月（税込4,190円）",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプラン（コスパ重視・月12.5L×2本の場合）: 3,780円/月（税込4,082円）",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプランでamadanaスタンダードサーバーを選んだ場合のサーバーレンタル料: 無料",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプランでamadanaスタンダードサーバーを選んだ場合の天然水の料金: 3,780円/月（税込4,082円）",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプラン（月12.5L×2本ご利用の場合）の送料: 無料（一部地域を除く）",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプラン（amadanaスタンダードサーバー利用）の天然水1セット（12.5L×2本）の料金: 3,780円/月（税込4,082円）",
+     "claimType": "price"
+    },
+    {
+     "text": "ずっとPREMIUMプラン（amadanaスタンダードサーバー利用）の天然水1セット（12.5L×2本）の料金: 3,880円/月（税込4,190円）",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプランの最低利用期間: 5年",
+     "claimType": "contract_term"
+    },
+    {
+     "text": "ずっとPREMIUMプランの最低利用期間: 3年",
+     "claimType": "contract_term"
+    },
+    {
+     "text": "ずっとPREMIUMプラン（amadanaスタンダードサーバー利用）のサーバーレンタル料: 無料",
+     "claimType": "price"
+    },
+    {
+     "text": "amadanaスタンダードサーバー利用の場合、天然水を毎月1セット注文すると、ずっとPREMIUMプランと比較してもっとPREMIUMプランは1年間で税込1,296円、毎月税込108円お得",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプラン（スリムサーバー4利用）の天然水1セット（12.5L×2本）の料金: 3,880円/月（税込4,190円）",
+     "claimType": "price"
+    },
+    {
+     "text": "ずっとPREMIUMプラン（スリムサーバー4利用）の天然水1セット（12.5L×2本）の料金: 3,980円/月（税込4,298円）",
+     "claimType": "price"
+    },
+    {
+     "text": "スリムサーバー4利用の場合、天然水を毎月1セット注文すると、ずっとPREMIUMプランと比較してもっとPREMIUMプランは1年間で税込1,296円、毎月税込108円お得",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプラン（amadanaグランデサーバー利用）の天然水1セット（12.5L×2本）の料金: 3,880円/月（税込4,190円）",
+     "claimType": "price"
+    },
+    {
+     "text": "ずっとPREMIUMプラン（amadanaグランデサーバー利用）の天然水1セット（12.5L×2本）の料金: 3,880円/月（税込4,190円）",
+     "claimType": "price"
+    },
+    {
+     "text": "ずっとPREMIUMプラン（amadanaグランデサーバー利用）のサーバーレンタル料: 1,000円/月（税込1,100円）",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプラン（amadanaグランデサーバー利用）のサーバーレンタル料: 200円/月（税込220円）",
+     "claimType": "price"
+    },
+    {
+     "text": "amadanaグランデサーバー利用の場合、天然水を毎月1セット注文すると、ずっとPREMIUMプランと比較してもっとPREMIUMプランは1年間で税込10,560円、毎月税込880円お得",
+     "claimType": "price"
+    },
+    {
+     "text": "最低利用期間が経過した後は、お客様からのお申出が無い限り継続して利用できる",
+     "claimType": "contract_term"
+    },
+    {
+     "text": "最後に配送した日から最大59日間まで定期配送を無料で休止でき、約1か月のお水代を1本分の2,041円(税込)に節約可能（もっとPREMIUMプラン・amadanaスタンダードサーバー・12.5L×2本を4週に1回の配送周期で定期配送した場合）",
+     "claimType": "cancellation"
+    },
+    {
+     "text": "もっとPREMIUMプランの天然水は、記載の地域を除き採水工場より送料無料で配送される（エリアにより送料が発生）",
+     "claimType": "coverage_area"
+    },
+    {
+     "text": "追加送料: 北海道・青森・秋田・岩手・沖縄本島の場合 220円（税込）/1セット（2本）",
+     "claimType": "coverage_area"
+    },
+    {
+     "text": "追加送料: 沖縄本島を除く沖縄県離島の場合 715円（税込）/1セット（2本）",
+     "claimType": "coverage_area"
+    },
+    {
+     "text": "初回登録事務手数料: 3,300円（税込）（お申込みにあたり初回費用として支払う）",
+     "claimType": "price"
+    },
+    {
+     "text": "休止事務手数料: 880円（税込）（60日以上連続で休止された場合に発生し、さらに90日以上連続で休止された場合にも発生）",
+     "claimType": "price"
+    },
+    {
+     "text": "配送事務手数料: お水1セットあたり1‚100円（税込）、ウォーターサーバー1台あたり5‚500円（税込）（ご不在による保管期限切れや受取拒否等、お客様都合により当社へ返送された場合に発生）",
+     "claimType": "price"
+    },
+    {
+     "text": "最低利用期間内に解約した場合は契約解除料が発生する",
+     "claimType": "cancellation"
+    },
+    {
+     "text": "クレジットカード払い（VISA/Mastercard/JCB/Diners Club/AMERICAN EXPRESS）の手数料: 無料",
+     "claimType": "price"
+    },
+    {
+     "text": "キャリア決済（docomo/au/SoftBank）の手数料: 無料（スマートフォンの契約・使用状況により利用できない場合あり）",
+     "claimType": "price"
+    },
+    {
+     "text": "Amazon Payの手数料: 無料（Webからの新規お申込みでのみ利用可能）",
+     "claimType": "price"
+    },
+    {
+     "text": "後払いドットコム（口座振替）の手数料: サーバー1台につき220円（税込）（決済が発生した月に決済事務手数料220円（税込）がかかる）",
+     "claimType": "price"
+    },
+    {
+     "text": "請求書払いの手数料: 送付先1か所につき330円（税込）/枚（法人のお客様のみ利用可能）",
+     "claimType": "price"
+    },
+    {
+     "text": "定期配送の休止について: 60日以上連続で休止された場合に休止事務手数料880円（税込）が発生し、さらに90日経過後にも880円（税込）、120日経過後で強制解約となる（お水の最終配送予定日を起算日とする）",
+     "claimType": "cancellation"
+    },
+    {
+     "text": "ウォーターサーバーの解約は、マイページの「お客様登録情報」より案内されている",
+     "claimType": "terms"
+    },
+    {
+     "text": "プレミアムウォーターのキャリア決済（docomo/au/SoftBank）は手数料無料で、スマートフォンのご利用料金とまとめて支払える決済方法である",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーターのAmazon Pay決済は手数料無料で、Amazonアカウントに登録済みのクレジットカード情報を利用する支払方法である",
+     "claimType": "price"
+    },
+    {
+     "text": "後払いドットコム（口座振替）の手数料はサーバー1台につき220円（税込）で、決済が発生した月に決済事務手数料220円（税込）がかかる",
+     "claimType": "price"
+    },
+    {
+     "text": "請求書払いの手数料は送付先1か所につき330円（税込）/枚である",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプランは月12.5L×2本ご利用の場合、3,780円/月～（税込4,082円）である",
+     "claimType": "price"
+    },
+    {
+     "text": "もっとPREMIUMプランの送料は一部地域を除き無料である",
+     "claimType": "price"
+    },
+    {
+     "text": "定期配送は60日以上連続で休止された場合、休止事務手数料880円（税込）が発生する（お水の最終配送予定日を起算日とする）",
+     "claimType": "price"
+    },
+    {
+     "text": "定期配送の休止はさらに90日経過後にも880円（税込）が発生し、120日経過後で強制解約となる",
+     "claimType": "cancellation"
+    },
+    {
+     "text": "ウォーターサーバーの解約はマイページの「お客様登録情報」より申し込む",
+     "claimType": "cancellation"
+    },
+    {
+     "text": "プレミアムウォーターを最低利用期間内で解約する場合、契約解除料が発生する",
+     "claimType": "cancellation"
+    },
+    {
+     "text": "最低ご利用期間内で解約する場合、契約解除料が発生する",
+     "claimType": "contract_term"
+    },
+    {
+     "text": "amadanaスタンダードサーバーの月額電気料金は約1,060円（JDSA基準1804、各600cc/日・36L/月使用時・27円/kwhで算出）である",
+     "claimType": "price"
+    },
+    {
+     "text": "famfit2の月額電気料金は通常使用時約669円、エコモード使用時約583円（エコモード6時間/日は通常の約2割減が目安）である",
+     "claimType": "price"
+    },
+    {
+     "text": "スリムサーバー4の月額電気料金はロング約630円/月（エコモード時約520円/月）、ショート約666円/月（エコモード時約549円/月）である",
+     "claimType": "price"
+    },
+    {
+     "text": "電気料金の表示はJDSA基準（1804）による測定結果で、温水・冷水ともに各600cc/日、36L/月使用時、27円/kwhとして算出されており、使用状況により料金は変わる",
+     "claimType": "terms"
+    },
+    {
+     "text": "同ページ掲載のウォーターサーバーのエコモード時の電気代は約798円/月。",
+     "claimType": "price"
+    },
+    {
+     "text": "同ページ掲載のウォーターサーバーの月額電気料金は約1,011円/月（エコモード時 約798円/月）。",
+     "claimType": "price"
+    },
+    {
+     "text": "同ページ掲載のウォーターサーバーの月額電気料金はJDSA基準（1804）による測定結果で、温水・冷水ともに各600cc/日、36L/月使用時、27円/kwhとして算出。",
+     "claimType": "other"
+    },
+    {
+     "text": "amadanaグランデサーバーの一日あたりの電気料金は約21円（エコモード使用時 約17円）。",
+     "claimType": "price"
+    },
+    {
+     "text": "amadanaグランデサーバーの月額電気料金は約610円（エコモード使用時 約490円）。",
+     "claimType": "price"
+    }
+   ]
+  },
+  {
+   "url": "https://premium-water.net/price/",
+   "facts": [
+    {
+     "text": "プレミアムウォーター もっとPREMIUMプラン: 月12.5L×2本ご利用の場合 3,780円/月～（税込4,082円）、最低利用期間：5年（お水代がもっとお得なプラン）",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター もっとPREMIUMプラン（税込表記）: 3,780円/月～(税込4,082円)",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター 7.2Lプラン（軽量ボトル専用プラン）: 月7.2L×3本セットをご利用の場合 4,620円/月～（税込4,989円）、最低利用期間：5年",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター PREMIUM WATER MOM CLUB（妊婦又は未就学のお子様がいるご家庭限定）: 月12.5L×2本ご利用の場合 3,580円/月～（税込3,866円）、最低利用期間：5年",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター もっとPREMIUMプラン・7.2Lプラン・PREMIUM WATER MOM CLUBの最低利用期間は5年",
+     "claimType": "contract_term"
+    },
+    {
+     "text": "プレミアムウォーター ずっとPREMIUMプランの最低利用期間は3年",
+     "claimType": "contract_term"
+    },
+    {
+     "text": "プレミアムウォーター 初回登録事務手数料: 3,300円（税込）",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター 休止事務手数料: 880円（税込）で、60日以上連続で休止された場合に発生し、さらに90日以上連続で休止された場合にも発生する",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター 配送事務手数料（お客様都合による返送時）: お水1セットあたり1,100円（税込）",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター 配送事務手数料（お客様都合による返送時）: ウォーターサーバー1台あたり5,500円（税込）",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター は最低利用期間内に「解約」をした場合に契約解除料が発生する（famfit購入プランをのぞく）",
+     "claimType": "cancellation"
+    },
+    {
+     "text": "プレミアムウォーター は各エリアの水源の天然水を採水工場より送料無料で配送する（エリアにより送料が発生する場合あり）",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター 追加送料: 北海道・青森・秋田・岩手・沖縄本島の場合 220円（税込）/1セット",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター 追加送料: 沖縄本島を除く沖縄県離島の場合 715円（税込）/1セット",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター クレジットカード払い（VISA/Mastercard/JCB/Diners Club/AMERICAN EXPRESS）の手数料は無料",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター キャリア決済（docomo/au/SoftBank）の手数料は無料",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター Amazon Payの手数料は無料で、Webからの新規お申込みでのみ利用できる",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター 後払いドットコム（口座振替）の手数料: サーバー1台につき220円（税込）",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター 請求書払いの手数料: 送付先1か所につき330円（税込）/枚で、法人のお客様のみ利用可能",
+     "claimType": "price"
+    },
+    {
+     "text": "プレミアムウォーター その他の料金プラン一覧に「ずっとPREMIUMプラン」があり、最低利用期間が3年でご利用いただけるベーシックなプランと説明されている",
+     "claimType": "terms"
+    }
+   ]
+  }
+ ]
+}

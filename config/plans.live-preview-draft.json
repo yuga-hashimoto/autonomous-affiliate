@@ -17,9 +17,19 @@
         "calculator": "water",
         "offerId": "offer-premium-water-famfit2",
         "title": "プレミアムウォーター famfit2（もっとPREMIUMプラン）",
-        "evidenceTerms": ["famfit2", "プレミアムウォーター", "PREMIUM"],
+        "evidenceTerms": [
+          "famfit2",
+          "プレミアムウォーター"
+        ],
         "months": 24,
-        "monthlyLiters": 25
+        "monthlyLiters": 25,
+        "planTerms": [
+          "もっとPREMIUM"
+        ],
+        "priceTerms": [
+          "もっとPREMIUM",
+          "省エネサーバー"
+        ]
       },
       "offerIds": []
     }

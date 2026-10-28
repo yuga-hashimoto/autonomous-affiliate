@@ -67,6 +67,16 @@ export interface PlanDraft {
   months: number;
   /** Monthly volume the comparison assumes; the page's charge must be for this volume. */
   monthlyLiters: number;
+  /**
+   * The brief's statement of which page lines are this service's water price when the
+   * page prices by plan and server rather than by the service's name (for example
+   * "もっとPREMIUM" and "省エネサーバー" for a server the page does not name in its
+   * price table). A price fact must contain every fragment. Without it the facts that
+   * name the service are read.
+   */
+  priceTerms?: string[];
+  /** Likewise for the minimum term: the facts must contain every fragment (the plan's name). */
+  planTerms?: string[];
 }
 
 export interface ArticlePlan {
