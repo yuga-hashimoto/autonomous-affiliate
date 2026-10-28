@@ -128,7 +128,7 @@ export interface ApplyReport {
   /** The site chosen in the selector and whether the form's own copy agreed. */
   site?: { chosen: boolean; hidden: HiddenSiteState };
   /** The page the button led to. */
-  reached?: { page: string; siteShown: boolean; checkboxes: number; submitButtons: number };
+  reached?: { navigated: boolean; page: string; siteShown: boolean; checkboxes: number; submitButtons: number };
   /** Masked structure of the page reached. */
   probe?: string[];
 }
@@ -163,8 +163,11 @@ async function startApplication(page: Page, keyword: string, siteName: string): 
   if (!chosen || hidden === "different") return refused("the target site could not be chosen", { search: summary, site: siteReport });
   if ((await page.locator(APPLY_BUTTON).count()) !== 1) return refused("the application button was not found", { search: summary, site: siteReport });
 
+  // The click may be the application itself, so a page that does not navigate is reported as
+  // it stands rather than thrown away as an error.
+  const before = page.url();
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: NAVIGATION_TIMEOUT_MS }),
+    page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: NAVIGATION_TIMEOUT_MS }).catch(() => undefined),
     page.click(APPLY_BUTTON),
   ]);
   await settlePage(page);
@@ -175,6 +178,7 @@ async function startApplication(page: Page, keyword: string, siteName: string): 
     search: summary,
     site: siteReport,
     reached: {
+      navigated: page.url() !== before,
       page: hrefShape(page.url()),
       siteShown: reached.text.includes(siteName),
       checkboxes: reached.checkboxes,
