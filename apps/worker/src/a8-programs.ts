@@ -59,6 +59,10 @@ export interface ProgramSummary {
   approvedByVertical: Record<string, number>;
 }
 
+export function isProgramId(id: string): boolean {
+  return PROGRAM_ID.test(id);
+}
+
 export function programIdOf(href: string): string | undefined {
   const match = /[?&]programId=([^&#]*)/.exec(href);
   const id = match?.[1];
@@ -414,7 +418,7 @@ export async function readRowsWhenLoaded(page: Page): Promise<ListPage> {
   return (await page.evaluate(READ_PROGRAM_ROWS)) as ListPage;
 }
 
-async function readListPage(page: Page, list: ListKind, pageNo: number): Promise<ListPage> {
+export async function readListPage(page: Page, list: ListKind, pageNo: number): Promise<ListPage> {
   const { path } = PROGRAM_LISTS[list];
   const query = list === "partnered" ? "&sortKey=APPROVED_DATE&sortOrder=DESC" : "";
   await page.goto(`${CONSOLE_ORIGIN}${path}?pageNo=${pageNo}&pageSize=${PAGE_SIZE}${query}`, { waitUntil: "domcontentloaded" });
