@@ -1,0 +1,27 @@
+{
+  "$comment": "Preview-only. The draft version of plans.live-preview.json: no yen amount is written here, they are read from the official facts (docs/18). The slug starts with preview- and is never published.",
+  "plans": [
+    {
+      "slug": "preview-draft-premium-water-famfit2-24month",
+      "title": "プレミアムウォーター famfit2の24ヶ月総額（公式料金ベースの試算）",
+      "audience": "家庭でボトル型ウォーターサーバーの利用を検討している人",
+      "purpose": "公式の料金ページに載る月額・送料・手数料・電気代の目安から、月12.5L×2本を24ヶ月使った場合の総額を試算します。",
+      "verticalId": "water_delivery",
+      "keyword": "ウォーターサーバー 総額 プレミアムウォーター",
+      "sourceUrls": [
+        "https://premium-water.net/price/motto/",
+        "https://premium-water.net/price/"
+      ],
+      "calculators": [],
+      "draft": {
+        "calculator": "water",
+        "offerId": "offer-premium-water-famfit2",
+        "title": "プレミアムウォーター famfit2（もっとPREMIUMプラン）",
+        "evidenceTerms": ["famfit2", "プレミアムウォーター", "PREMIUM"],
+        "months": 24,
+        "monthlyLiters": 25
+      },
+      "offerIds": []
+    }
+  ]
+}
