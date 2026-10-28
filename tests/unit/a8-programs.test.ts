@@ -227,6 +227,28 @@ describe("renderProbe", () => {
     expect(text).not.toContain("メディアID");
   });
 
+  it("masks a heading inside a program's card, even a short one: it is the program's name", () => {
+    // The third real run printed such a name: a short <h3> in a card, because headings were always shown.
+    const card = node("div", {
+      cls: ["pgCard"],
+      children: [
+        node("h3", { cls: ["pgName"], text: "秘密の名前" }),
+        node("a", { href: "/program/detail-not-partnered?programId=s0000009", text: "詳細" }),
+        node("table", { children: [node("tr", { children: [node("th", { text: "プログラムID" }), node("td", { text: "s0000009" })] })] }),
+      ],
+    });
+    const text = renderProbe(card).join("\n");
+    expect(text).not.toContain("秘密の名前");
+    expect(text).toContain("h3");
+    // Column and field labels are interface wording and stay visible.
+    expect(text).toContain("プログラムID");
+  });
+
+  it("still shows a short heading on a page that has no program in it", () => {
+    const page = node("main", { children: [node("h1", { text: "キーワード検索" })] });
+    expect(renderProbe(page).join("\n")).toContain("キーワード検索");
+  });
+
   it("replaces long digit strings in any printed text", () => {
     const text = renderProbe(node("button", { text: "No.12345678 を見る" })).join("\n");
     expect(text).not.toContain("12345678");
