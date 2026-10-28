@@ -2,11 +2,13 @@ import type { Page } from "playwright";
 import { CONSOLE_ORIGIN, safePath, withA8Session, type A8SmokeResult } from "./a8-login.js";
 import {
   DUMP_TREE,
-  READ_PROGRAM_ROWS,
   hrefShape,
   listState,
   programIdOf,
+  readRowsWhenLoaded,
   renderProbe,
+  settlePage,
+  type ListPage,
   type ListState,
   type ProbeNode,
   type RawProgramRow,
@@ -146,7 +148,7 @@ export interface InspectReport {
   outcome: "ok" | "login_failed" | "not_found" | "unrecognized";
   login?: A8SmokeResult;
   reason?: string;
-  search?: { state: ListState; results: number; matches: number };
+  search?: { state: ListState; results: number; matches: number; attempts: 1 | 2 };
   detail?: PageInspection;
   apply?: PageInspection;
   /** Masked page structure, by page. */
@@ -178,9 +180,21 @@ async function inspectPage(page: Page, keyword: string, siteName: string): Promi
 async function open(page: Page, target: string): Promise<void> {
   if (!isProgramPagePath(target)) throw new Error(`refusing to open ${hrefShape(target)}`);
   await page.goto(`${CONSOLE_ORIGIN}${target}`, { waitUntil: "domcontentloaded" });
+  await settlePage(page);
 }
 
-async function searchFor(page: Page, keyword: string): Promise<{ rows: RawProgramRow[]; noDataShown: boolean; probe: string[] }> {
+const SEARCH_FORM = "form[name=asSearchForm]";
+const SEARCH_FORM_FIELD = `${SEARCH_FORM} input[name=keywordBox]`;
+const SEARCH_FORM_BUTTON = `${SEARCH_FORM} .searchAction button[type=submit]`;
+const SECOND_SEARCH_NAVIGATION_MS = 8_000;
+
+interface SearchResult extends ListPage {
+  /** 1 when the header search was enough, 2 when the search page's own form had to be used. */
+  attempts: 1 | 2;
+  probe: string[];
+}
+
+async function searchFor(page: Page, keyword: string): Promise<SearchResult> {
   await open(page, SEARCH_TOP_PATH);
   await page.fill(KEYWORD_FIELD, keyword);
   await Promise.all([
@@ -190,16 +204,27 @@ async function searchFor(page: Page, keyword: string): Promise<{ rows: RawProgra
   if (!safePath(page.url()).startsWith("/program/search")) {
     throw new Error(`the search led to ${safePath(page.url())}`);
   }
-  const read = (await page.evaluate(READ_PROGRAM_ROWS)) as { rows: RawProgramRow[]; noDataShown: boolean };
+  let read = await readRowsWhenLoaded(page);
+  let attempts: 1 | 2 = 1;
+  if (read.rows.length === 0 && (await page.locator(SEARCH_FORM_FIELD).count()) > 0) {
+    // The header search may only open the search page; use the form on that page.
+    attempts = 2;
+    await page.fill(SEARCH_FORM_FIELD, keyword);
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: SECOND_SEARCH_NAVIGATION_MS }).catch(() => undefined),
+      page.click(SEARCH_FORM_BUTTON),
+    ]);
+    read = await readRowsWhenLoaded(page);
+  }
   const tree = (await page.evaluate(DUMP_TREE)) as ProbeNode;
-  return { ...read, probe: renderProbe(tree, { redact: [keyword] }) };
+  return { ...read, attempts, probe: renderProbe(tree, { redact: [keyword] }) };
 }
 
 async function inspectProgram(page: Page, keyword: string, siteName: string): Promise<Omit<InspectReport, "login">> {
   const search = await searchFor(page, keyword);
   const state = listState({ rows: search.rows.length, noDataShown: search.noDataShown });
   const matches = search.rows.filter((row) => row.text.includes(keyword));
-  const summary = { state, results: search.rows.length, matches: matches.length };
+  const summary = { state, results: search.rows.length, matches: matches.length, attempts: search.attempts };
   const probe: NonNullable<InspectReport["probe"]> = { search: search.probe };
   if (state === "unrecognized") return { outcome: "unrecognized", reason: "the search results page was not understood", search: summary, probe };
   const first = matches[0];
