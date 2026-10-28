@@ -172,7 +172,7 @@ export interface ProbeNode {
 const SHORT_TEXT_TAGS = new Set(["a", "li", "button"]);
 /** Tags whose text is interface wording (column headings, buttons, form labels, terms), never page data. */
 const LABEL_TAGS = new Set(["th", "dt", "button", "label", "option"]);
-/** Headings are labels too, but a long one could be a program name, so they get a shorter limit. */
+/** Headings are labels too, but one inside a program's card is its name, and a long one could be a name, so: never in a card, and a shorter limit elsewhere. */
 const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "caption", "summary", "legend"]);
 const PROBE_HEADING_MAX = 20;
 /** A select with this in its name lists the account's own sites; those names are account details. */
@@ -230,7 +230,7 @@ function describeNode(node: ProbeNode, masked: boolean, context: DescribeContext
   if (text) {
     const isLabel =
       (LABEL_TAGS.has(node.tag) && text.length <= PROBE_LABEL_MAX && !(node.tag === "option" && context.maskOptions)) ||
-      (HEADING_TAGS.has(node.tag) && text.length <= PROBE_HEADING_MAX);
+      (HEADING_TAGS.has(node.tag) && text.length <= PROBE_HEADING_MAX && !masked);
     const isShortOutsideRows = !masked && SHORT_TEXT_TAGS.has(node.tag) && text.length <= PROBE_SHORT_TEXT_MAX;
     // Long digit strings (ids, numbers) are never printed, even in a label.
     parts.push(isLabel || isShortOutsideRows ? ` "${text.replace(/\d{5,}/g, "#")}"` : ` T${text.length}${statusWordsIn(text)}`);
@@ -284,7 +284,7 @@ export const READ_PROGRAM_ROWS = `(() => {
   for (const anchor of scope.querySelectorAll('a[href*="programId="]')) {
     const match = /[?&]programId=([A-Za-z0-9]+)/.exec(anchor.getAttribute("href") || "");
     if (!match || rows.has(match[1])) continue;
-    const container = anchor.closest("tr, li, article") || (anchor.parentElement && anchor.parentElement.parentElement) || anchor;
+    const container = anchor.closest(".pgCard") || anchor.closest("tr, li, article") || (anchor.parentElement && anchor.parentElement.parentElement) || anchor;
     const hrefs = Array.from(container.querySelectorAll("a[href]")).map((a) => a.getAttribute("href") || "").slice(0, 30);
     rows.set(match[1], {
       programId: match[1],
