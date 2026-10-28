@@ -270,6 +270,29 @@ describe("completeDraftedPlan: the amounts come from the official facts, or the 
     expect(named.ok && named.plan.calculators[0]?.input.waterChargeJpy).toBe(4190);
   });
 
+  it("shows the facts it looked at when the price line has no volume it can check", () => {
+    const facts = [
+      ...COMPLETE_FACTS.filter((f) => !f.text.includes("月額")),
+      fact("ウォーターA プランP（省エネサーバー利用）の天然水の料金: 3,880円/月（税込4,190円）"),
+    ];
+
+    const result = draftOf(facts, { priceTerms: ["プランP", "省エネサーバー"] });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const water = result.issues.find((issue) => issue.startsWith("水代")) ?? "";
+    expect(water).toContain("候補");
+    expect(water).toContain("天然水の料金: 3,880円/月（税込4,190円）");
+  });
+
+  it("says when the named price line matches no fact at all", () => {
+    const result = draftOf(COMPLETE_FACTS, { priceTerms: ["存在しない語"] });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.find((issue) => issue.startsWith("水代"))).toContain("該当するFactがありません");
+  });
+
   it("lets the plan name its own terms: another plan's minimum term is not read", () => {
     const facts = [
       ...COMPLETE_FACTS.filter((f) => f.claimType !== "contract_term"),

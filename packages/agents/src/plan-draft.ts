@@ -151,6 +151,14 @@ function waterCandidate(text: string, monthlyLiters: number): WaterCandidate | u
   return undefined;
 }
 
+/** Facts a failed read looked at, shortened, so a failure says what was near (the run log is where it is read). */
+function nearMisses(tiers: readonly Tier[]): string {
+  const withYen = tiers.flat().filter((fact) => yenAmounts(fact.text).length > 0).slice(0, 3);
+  if (withYen.length === 0) return "該当するFactがありません";
+  const short = (text: string): string => (text.length > 80 ? `${text.slice(0, 80)}…` : text);
+  return `候補: ${withYen.map((fact) => `「${short(fact.text)}」`).join("")}`;
+}
+
 function readWater(tiers: readonly Tier[], monthlyLiters: number): Read<WaterCandidate> {
   for (const tier of tiers) {
     const candidates = tier.flatMap((fact) => {
@@ -205,7 +213,11 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
   const conflicting = (name: string, detail: string): void => void issues.push(`${name}: 金額が一意に決まりません（${detail}）`);
 
   const water = readWater(selected(draft.priceTerms, facts, tiers), draft.monthlyLiters);
-  if (water.kind === "none") issues.push(`${FIELD_NAME.water}: 月${draft.monthlyLiters}Lあたりの金額を示す公式Factが見つかりません`);
+  if (water.kind === "none") {
+    issues.push(
+      `${FIELD_NAME.water}: 月${draft.monthlyLiters}Lあたりの金額を示す公式Factが見つかりません（${nearMisses(selected(draft.priceTerms, facts, tiers))}）`,
+    );
+  }
   if (water.kind === "conflict") issues.push(`${FIELD_NAME.water}: ${water.detail}`);
 
   const fees = Object.fromEntries(
