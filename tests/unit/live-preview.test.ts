@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MapFetcher } from "@aff/integrations";
 import { FixtureFactExtractor } from "@aff/agents";
 import { createMemoryRepository } from "@aff/db";
-import { extractTimeoutMs, parseTemplateRevision, runLivePipeline } from "../../apps/worker/src/index.js";
+import { extractTimeoutMs, parseTemplateRevision, runLivePipeline, runPlansStatus } from "../../apps/worker/src/index.js";
 import { readFileSync } from "./helpers.js";
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -196,5 +196,63 @@ describe("extraction timeout setting", () => {
     for (const bad of ["abc", "0", "-5", "999", "1.5", "60s"]) {
       expect(() => extractTimeoutMs({ LLM_EXTRACT_TIMEOUT_MS: bad })).toThrow(/LLM_EXTRACT_TIMEOUT_MS/);
     }
+  });
+});
+
+describe("a stock of plans in the live pipeline worker", () => {
+  const policyPath = path.join(TMP, "stock-policy.yaml");
+  const plansPath = path.join(TMP, "stock-plans.json");
+  const WAITING_SLUG = "waiting-for-terms-check";
+  const WAITING_HOST = "other-company.example.org";
+  const seams = {
+    fetcher: new MapFetcher(new Map([[PAGE_URL, { body: PAGE }]])),
+    extractor: new FixtureFactExtractor(),
+  };
+
+  beforeAll(async () => {
+    await mkdir(TMP, { recursive: true });
+    const example = readFileSync(new URL("../../config/policy.live.example.yaml", import.meta.url), "utf8");
+    await writeFile(
+      policyPath,
+      example.replace("allowed_source_domains: []", "allowed_source_domains: [sim-a.example.com]"),
+      "utf8",
+    );
+    const waiting = { ...PLANS.plans[0]!, slug: WAITING_SLUG, sourceUrls: [`https://${WAITING_HOST}/price`] };
+    await writeFile(plansPath, JSON.stringify({ plans: [PLANS.plans[0], waiting] }), "utf8");
+  });
+
+  afterAll(async () => {
+    await rm(TMP, { recursive: true, force: true });
+    await rm(PREVIEW_DIR, { recursive: true, force: true });
+  });
+
+  it("holds a plan whose company is not allowed yet instead of stopping the run", async () => {
+    const result = await runLivePipeline(
+      { policyPath, outDir: ".tmp/unused", env: { ...LLM_ENV }, preview: true, ...seams },
+      plansPath,
+    );
+
+    expect(result.results.map((r) => r.slug)).toEqual([SLUG]);
+    expect(result.held).toEqual({ domain_not_allowlisted: 1 });
+  });
+
+  it("reports only counts, because the run output goes to a public log", async () => {
+    const result = await runLivePipeline(
+      { policyPath, outDir: ".tmp/unused", env: { ...LLM_ENV }, preview: true, ...seams },
+      plansPath,
+    );
+
+    const printed = JSON.stringify(result);
+    expect(printed).not.toContain(WAITING_SLUG);
+    expect(printed).not.toContain(WAITING_HOST);
+  });
+
+  it("plans-status lists what waits and why, for the owner's own machine", async () => {
+    const status = await runPlansStatus({ policyPath }, plansPath);
+
+    expect(status.runnable).toEqual([SLUG]);
+    expect(status.held).toEqual([
+      { slug: WAITING_SLUG, reason: "domain_not_allowlisted", detail: expect.stringContaining(WAITING_HOST) },
+    ]);
   });
 });
