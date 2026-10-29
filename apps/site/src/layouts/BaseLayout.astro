@@ -6,6 +6,7 @@ import "../styles/layout.css";
 import "../styles/article.css";
 import "../styles/prose.css";
 import "../styles/charts.css";
+import AnalyticsTag from "../components/AnalyticsTag.astro";
 import SiteHeader from "../components/SiteHeader.astro";
 import SiteFooter from "../components/SiteFooter.astro";
 import { SITE_NAME } from "../lib/articles";
@@ -61,6 +62,7 @@ const jsonLdText = jsonLd ? JSON.stringify(jsonLd).replace(/</g, "\\u003c") : un
     {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
     <meta name="twitter:card" content={ogImageUrl ? "summary_large_image" : "summary"} />
     {jsonLdText && <script type="application/ld+json" set:html={jsonLdText} />}
+    <AnalyticsTag />
   </head>
   <body>
     <a class="skip-link" href="#main">本文へスキップ</a>

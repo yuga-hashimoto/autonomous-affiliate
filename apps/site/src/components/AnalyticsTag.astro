@@ -1,0 +1,34 @@
+---
+import { ga4Snippet, measurementIdFrom } from "../lib/analytics";
+
+// Build-time only (like SITE_BASE_URL). No valid id -> no tag in the page.
+const measurementId = measurementIdFrom(process.env.GA4_MEASUREMENT_ID);
+const snippet = measurementId ? ga4Snippet(measurementId) : undefined;
+---
+
+{snippet && <script is:inline set:html={snippet} />}
+
+<script>
+  // Affiliate redirects are same-site (/go/...), so GA4's own outbound-click
+  // measurement never sees them: report them as affiliate_cta_click instead.
+  // window.gtag exists only when the tag is configured and the visitor allows it.
+  import { ctaClickEvent } from "../lib/analytics";
+
+  type Gtag = (command: "event", name: string, params: Record<string, string>) => void;
+
+  const report = (event: Event): void => {
+    const gtag = (window as unknown as { gtag?: Gtag }).gtag;
+    if (typeof gtag !== "function" || !(event.target instanceof Element)) return;
+    const link = event.target.closest<HTMLAnchorElement>('a[href^="/go/"]');
+    if (!link) return;
+    const ordinal = Array.from(document.querySelectorAll('a[href^="/go/"]')).indexOf(link) + 1;
+    const click = ctaClickEvent({ href: link.getAttribute("href") ?? "", pathname: location.pathname, ordinal });
+    if (click) gtag("event", click.name, { ...click.params, transport_type: "beacon" });
+  };
+
+  document.addEventListener("click", report);
+  // A middle click opens the link in a new tab without firing "click".
+  document.addEventListener("auxclick", (event) => {
+    if (event.button === 1) report(event);
+  });
+</script>

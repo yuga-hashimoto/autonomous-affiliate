@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -60,11 +60,33 @@ offerIds: []
 `;
 }
 
-async function build() {
-  await execFileAsync("pnpm", ["--filter", "site", "exec", "astro", "build"], {
-    cwd: ROOT,
-    env: { ...process.env, ARTICLES_DIR },
-  });
+const GA_DIST_DIR = path.join(ROOT, ".tmp/site-ga-dist");
+const GA_ID = "G-TEST123456";
+
+async function build(options: { outDir?: string; ga4MeasurementId?: string } = {}) {
+  // The environment is explicit so a developer's own GA4_MEASUREMENT_ID never leaks into the default build.
+  const { GA4_MEASUREMENT_ID: _inherited, ...inherited } = process.env;
+  await execFileAsync(
+    "pnpm",
+    ["--filter", "site", "exec", "astro", "build", ...(options.outDir ? ["--outDir", options.outDir] : [])],
+    {
+      cwd: ROOT,
+      env: {
+        ...inherited,
+        ARTICLES_DIR,
+        ...(options.ga4MeasurementId ? { GA4_MEASUREMENT_ID: options.ga4MeasurementId } : {}),
+      },
+    },
+  );
+}
+
+/** A page's HTML plus any bundled .js: Astro inlines small scripts into the page, larger ones go to _astro/. */
+async function pageWithScripts(distDir: string, ...page: string[]): Promise<string> {
+  const html = await readFile(path.join(distDir, ...page), "utf8");
+  const dir = path.join(distDir, "_astro");
+  const files = (await readdir(dir).catch(() => [] as string[])).filter((name) => name.endsWith(".js"));
+  const scripts = await Promise.all(files.map((name) => readFile(path.join(dir, name), "utf8")));
+  return [html, ...scripts].join("\n");
 }
 
 describe("B011 Astro site (article template, disclosures, sponsored links, build)", () => {
@@ -76,10 +98,13 @@ describe("B011 Astro site (article template, disclosures, sponsored links, build
       await writeFile(path.join(ARTICLES_DIR, `filler-${i + 1}.md`), fillerArticle(i), "utf8");
     }
     await build();
-  }, 180000);
+    await rm(GA_DIST_DIR, { recursive: true, force: true });
+    await build({ outDir: GA_DIST_DIR, ga4MeasurementId: GA_ID });
+  }, 240000);
 
   afterAll(async () => {
     await rm(ARTICLES_DIR, { recursive: true, force: true });
+    await rm(GA_DIST_DIR, { recursive: true, force: true });
     // Drop the content-layer cache so later builds see the real articles dir.
     await rm(path.join(ROOT, "apps/site/node_modules/.astro"), { recursive: true, force: true });
   });
@@ -154,6 +179,40 @@ describe("B011 Astro site (article template, disclosures, sponsored links, build
     expect(about).toContain("このサイトについて");
     expect(methodology).toContain("比較・試算の方法");
     expect(editorial).toContain("編集・広告掲載方針");
+  });
+
+  it("ships no analytics tag without a GA4 measurement id, and the privacy page says so", async () => {
+    const article = await readFile(path.join(DIST_DIR, "articles", "e2e-sim", "index.html"), "utf8");
+    const privacy = await readFile(path.join(DIST_DIR, "privacy", "index.html"), "utf8");
+    expect(article).not.toContain("googletagmanager");
+    expect(article).not.toContain("dataLayer");
+    expect(privacy).not.toContain("Google アナリティクス");
+    expect(privacy).toContain("アクセス解析ツールを使用していません");
+  });
+
+  it("adds the GA4 tag on every page when a measurement id is configured", async () => {
+    for (const page of [["index.html"], ["articles", "e2e-sim", "index.html"], ["404.html"]]) {
+      const html = await readFile(path.join(GA_DIST_DIR, ...page), "utf8");
+      expect(html, page.join("/")).toContain(GA_ID);
+      expect(html, page.join("/")).toContain("https://www.googletagmanager.com/gtag/js?id=");
+      expect(html.match(/googletagmanager\.com\/gtag\/js/g), page.join("/")).toHaveLength(1);
+    }
+    const html = await readFile(path.join(GA_DIST_DIR, "articles", "e2e-sim", "index.html"), "utf8");
+    expect(html).toContain("allow_google_signals:false");
+    // the affiliate link itself stays a plain sponsored anchor; tracking is added by a listener
+    expect(html).toContain('href="/go/offer-sim-a"');
+    expect(html).toMatch(/rel="sponsored noopener noreferrer"/);
+  });
+
+  it("bundles the affiliate click listener and documents Google Analytics on the privacy page", async () => {
+    const article = await pageWithScripts(GA_DIST_DIR, "articles", "e2e-sim", "index.html");
+    expect(article).toContain("affiliate_cta_click");
+    expect(article).toContain('a[href^="/go/"]');
+    const privacy = await readFile(path.join(GA_DIST_DIR, "privacy", "index.html"), "utf8");
+    expect(privacy).toContain("Google アナリティクス");
+    expect(privacy).toContain("Do Not Track");
+    expect(privacy).toContain("オプトアウト");
+    expect(privacy).toContain("プライバシーポリシー");
   });
 
   it("exposes robots.txt that disallows the affiliate redirect path", async () => {

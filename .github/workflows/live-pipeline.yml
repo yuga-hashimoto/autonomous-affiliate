@@ -108,6 +108,7 @@ jobs:
           pnpm exec wrangler pages deploy apps/site/dist --project-name="$CF_PAGES_PROJECT"
         env:
           SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
+          GA4_MEASUREMENT_ID: ${{ vars.GA4_MEASUREMENT_ID }}
           CF_PAGES_PROJECT: ${{ vars.CF_PAGES_PROJECT }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

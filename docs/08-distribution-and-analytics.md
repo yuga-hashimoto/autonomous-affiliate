@@ -25,6 +25,16 @@
 
 クリック時に専用の自社短縮URLで無理に追跡せず、ASP条件に合わせる。サードパーティの広告トラッキングや同意要否は個別に確認する。
 
+### 実装状況（自社サイトのGA4タグ）
+
+実装は `apps/site/src/lib/analytics.ts` と `apps/site/src/components/AnalyticsTag.astro`。ビルド時の環境変数 `GA4_MEASUREMENT_ID`（`G-XXXXXXXX`、公開される値）が**有効な形式のときだけ**タグが入る。未設定・不正なら何も出力せず、プライバシーポリシーも「アクセス解析ツールを使用していません」の文面になる（fail closed）。
+
+- `page_view`: gtag の `config` で自動送信。`scroll` など拡張計測はGA4管理画面の設定に依存し、コードからは送らない。
+- `affiliate_cta_click{page_id,offer_id,cta_id,channel}`: **実装済み**。`/go/<offerId>` へのクリック（中クリック含む）で送る。`page_id`=記事スラッグ、`offer_id`=`/go/` 直後のID、`cta_id`=ページ内の `/go/` リンクの出現順（`cta-1`, `cta-2`…）、`channel`=`site`。リンク先URLやクエリは送らない。`/go/` は同一サイト内なのでGA4標準の外部リンククリックには出ないため、カスタムイベントで補う。
+- `affiliate_cta_impression` / `template_download` / `video_referral_click`: 未実装。
+- プライバシー設定: Googleシグナルと広告パーソナライズは無効。ブラウザのDo Not TrackまたはGlobal Privacy Controlが有効な訪問者には、`gtag.js` の読み込み自体を行わない。
+- GA4で `page_id` / `offer_id` / `cta_id` / `channel` をレポートに出すには、管理画面の「カスタム定義」でイベントスコープのカスタムディメンションとして登録する（Google側の操作。登録前のイベントは集計されるが、ディメンション別には見られない）。
+
 ## KPI算式
 
 - Outbound CTR = affiliate_cta_clicks / monetizable_article_sessions

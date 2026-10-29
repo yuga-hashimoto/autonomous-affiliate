@@ -97,6 +97,9 @@ pnpm worker plans-status --policy config/policy.live.yaml --plans config/plans.l
 
 - Search Console: <https://search.google.com/search-console> → ドメインを追加 → DNS TXTレコード認証（Cloudflare DNSに追加）
 - GA4: <https://analytics.google.com/> → プロパティ作成 → Webストリームで測定ID取得
+- 測定IDをGitHubのVariable `GA4_MEASUREMENT_ID` に登録する（`G-` で始まる公開値で、秘密情報ではない）。次回の `deploy` / `live-pipeline` のサイトビルドからGA4タグが入り、プライバシーポリシーもGoogle アナリティクス使用の文面に切り替わる。未登録のあいだはタグを出さない。
+- GA4の管理画面 → カスタム定義で、イベントスコープのカスタムディメンション `page_id` / `offer_id` / `cta_id` / `channel` を登録する（紹介リンククリック `affiliate_cta_click` を案件・記事別に見るため。docs/08）。**2026-10-29に登録済み**: ディメンション名は `affiliate_page_id` / `affiliate_offer_id` / `affiliate_cta_id` / `affiliate_channel`（プロパティ「総額比較 (sougakuhikaku.com)」。GA4アカウントは既存の「Default Account for Firebase」配下）。
+- 動作確認: 本番を開き、GA4の「リアルタイム」で閲覧が出ること、記事内の紹介リンクをクリックして `affiliate_cta_click` が出ることを確認する。広告ブロッカーやDo Not Trackを有効にしたブラウザでは計測されない（仕様）。
 
 ---
 
