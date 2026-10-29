@@ -28,7 +28,9 @@ import {
   growthPlan,
   FixtureFactExtractor,
   LlmFactExtractor,
+  LlmQuoteSelector,
   type FactExtractor,
+  type QuoteSelector,
   type ArticlePlan,
   type HeldPlan,
   type HoldReason,
@@ -70,6 +72,8 @@ export interface WorkerOptions {
   fetcher?: Fetcher;
   /** Replaces the LLM fact extractor (tests). */
   extractor?: FactExtractor;
+  /** Replaces the LLM quote selector that drafts brief-only plans (tests). */
+  quoteSelector?: QuoteSelector;
   /**
    * Names a change of the article generator (for example "figures-1"). Every live
    * article of the plans is regenerated once per revision (docs/04 "既存記事更新").
@@ -375,6 +379,14 @@ export async function runLivePipeline(
   // A plan whose domain is not allowed yet is held, not an error: the stock may be
   // ahead of the owner's terms checks, and it must not stop the live articles' updates.
   const plans = await readPlans(plansPath);
+  // A plan kept as a brief takes its amounts from quotes of the official page (docs/18).
+  const quoteSelector =
+    options.quoteSelector ??
+    new LlmQuoteSelector(gateway, {
+      timeoutMs: extractTimeoutMs(env),
+      maxCostJpy: policy.limits.max_job_cost_jpy,
+      attempts: policy.limits.task_retry_attempts,
+    });
 
   const previewOnly = !policy.flags.publish_enabled;
   const livePreviewDir = join(ROOT, ".tmp/live-preview");
@@ -406,6 +418,7 @@ export async function runLivePipeline(
       logger,
       fetcher: options.fetcher ?? new HttpFetcher(),
       extractor,
+      quoteSelector,
       publisherIO: io,
       ...(heroImages ? { heroImages: heroImages.service } : {}),
       previewDir: previewOnly ? livePreviewDir : undefined,

@@ -10,9 +10,10 @@ import {
 } from "@aff/domain";
 import type { Repository } from "@aff/db";
 import { QaEngine, DraftRejectedError } from "@aff/content";
-import { createFreshnessPolicy, MapFetcher, type Fetcher } from "@aff/integrations";
+import { createFreshnessPolicy, MapFetcher, type CollectedSource, type Fetcher } from "@aff/integrations";
 import { PublisherAgent, type PublishArtifact, type PublishTarget, type PublisherIO } from "./publisher.js";
 import { checkPlanEvidence, type DerivedAmount } from "./plan-evidence.js";
+import { draftPlanFromPages, type QuoteSelector } from "./plan-quotes.js";
 import {
   buildDraftFor,
   collectPlanSources,
@@ -51,6 +52,33 @@ export interface CalculatorEntry {
   derivedAmounts?: Record<string, DerivedAmount[]>;
 }
 
+/**
+ * A brief for one compared service whose yen amounts are not typed in but read
+ * from the official facts (docs/18, plan-draft.ts). Used when `calculators` is empty.
+ */
+export interface PlanDraft {
+  calculator: "water";
+  offerId: string;
+  /** The service and plan as the article names it. */
+  title: string;
+  /** Fragments that name this service in the facts (the facts are matched by text). */
+  evidenceTerms: string[];
+  /** Comparison window; an assumption of the article, not a page fact. */
+  months: number;
+  /** Monthly volume the comparison assumes; the page's charge must be for this volume. */
+  monthlyLiters: number;
+  /**
+   * The brief's statement of which page lines are this service's water price when the
+   * page prices by plan and server rather than by the service's name (for example
+   * "もっとPREMIUM" and "省エネサーバー" for a server the page does not name in its
+   * price table). A price fact must contain every fragment. Without it the facts that
+   * name the service are read.
+   */
+  priceTerms?: string[];
+  /** Likewise for the minimum term: the facts must contain every fragment (the plan's name). */
+  planTerms?: string[];
+}
+
 export interface ArticlePlan {
   slug: string;
   title: string;
@@ -62,6 +90,8 @@ export interface ArticlePlan {
   sourceUrls: string[];
   /** One entry per compared offer; same formula family for a uniform unit. */
   calculators: CalculatorEntry[];
+  /** Fills `calculators` from the facts when it is empty (docs/18). */
+  draft?: PlanDraft;
   /** Offers referenced by this article (CTA candidates). */
   offerIds: string[];
   decisionCriteria?: { id: string; label: string }[];
@@ -74,6 +104,8 @@ export interface PipelineServices {
   /** Overrides the collector's fetcher (fixtures in dry-run). */
   fetcher?: Fetcher;
   extractor: FactExtractor;
+  /** Points at passages of a page for a plan kept as a brief (docs/18); without it such a plan is not made. */
+  quoteSelector?: QuoteSelector;
   publisherIO: PublisherIO;
   /** Supplies each published article's hero image; without it articles go out text-only. */
   heroImages?: HeroImageService;
@@ -162,6 +194,7 @@ export async function runArticlePipeline(
     }
 
     // --- Stage: research (B006/B008) ---
+    let collectedPages: CollectedSource[] | undefined;
     if (current.state === "ELIGIBILITY_CHECKED") {
       const { collected, unavailable } = await collectPlanSources(plan, {
         repo,
@@ -170,10 +203,38 @@ export async function runArticlePipeline(
         clock,
       });
       for (const url of unavailable) reasons.push(`source_unavailable:${url}`);
+      collectedPages = collected;
       await extractPlanFacts(collected, { repo, policy, extractor: services.extractor });
       trace.info("research done", { sources: collected.length });
       current = await transition(repo, current, "RESEARCHED", runId, policy.version);
     }
+
+    // --- Stage: plan drafting (docs/18) ---
+    // A plan kept as a brief gets its amounts from quotes of this cycle's official pages. Done on
+    // every run (not only right after research) so a resumed article has them too.
+    const drafted = await draftPlanFromPages(plan, {
+      repo,
+      policy,
+      clock,
+      selector: services.quoteSelector,
+      collected: collectedPages,
+      fetcher: services.fetcher,
+    });
+    if (!drafted.ok) {
+      current = await transition(repo, current, "QUARANTINED", runId, policy.version);
+      await repo.jobs.update({ ...jobRecord, state: "SUCCEEDED", lastError: "plan_draft_failed" });
+      trace.warn("plan could not be drafted from the official page", { issues: drafted.issues });
+      return {
+        itemId: item.id,
+        slug: plan.slug,
+        finalState: "QUARANTINED",
+        qaStatus: "UNKNOWN",
+        published: false,
+        publishReason: "plan_draft_failed",
+        reasons: [...reasons, ...drafted.issues],
+      };
+    }
+    plan = drafted.plan;
 
     // --- Stage: analysis (B007) ---
     if (current.state === "RESEARCHED") {

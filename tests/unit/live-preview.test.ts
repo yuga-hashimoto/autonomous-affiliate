@@ -256,3 +256,110 @@ describe("a stock of plans in the live pipeline worker", () => {
     ]);
   });
 });
+
+describe("a brief-only plan in the live pipeline worker", () => {
+  const policyPath = path.join(TMP, "brief-policy.yaml");
+  const plansPath = path.join(TMP, "brief-plans.json");
+  const WATER_URL = "https://sim-a.example.com/water-price";
+  const WATER_PAGE = `<html><head><title>ウォーターA</title></head><body>
+    <div>月12.5L×2本ご利用の場合</div><div>3,880円/月</div><div>(税込4,190円)</div><div>モデルX</div>
+    <div>採水工場より送料無料で配送いたします。</div>
+    <div>初回登録事務手数料：3,300円（税込）</div>
+    <div>モデルX</div><div>月額電気料金</div><div>通常使用時 約669円</div>
+    <div>※ 温水・冷水ともに、各600cc/日、36L/月使用時、27円/kwhとして算出。</div>
+    <div>プランP</div><div>最低利用期間：5年</div>
+  </body></html>`;
+  const QUOTES = [
+    "月12.5L×2本ご利用の場合 3,880円/月 (税込4,190円) モデルX",
+    "採水工場より送料無料で配送いたします。",
+    "初回登録事務手数料：3,300円（税込）",
+    "モデルX 月額電気料金 通常使用時 約669円",
+    "36L/月使用時、27円/kwhとして算出。",
+    "プランP 最低利用期間：5年",
+  ];
+  const selected: string[][] = [];
+
+  beforeAll(async () => {
+    await mkdir(TMP, { recursive: true });
+    const example = readFileSync(new URL("../../config/policy.live.example.yaml", import.meta.url), "utf8");
+    await writeFile(
+      policyPath,
+      example.replace("allowed_source_domains: []", "allowed_source_domains: [sim-a.example.com]"),
+      "utf8",
+    );
+    const brief = {
+      slug: "brief-only-water",
+      title: "ウォーターAの24ヶ月総額",
+      audience: "a",
+      purpose: "p",
+      verticalId: "water_delivery",
+      keyword: "k",
+      sourceUrls: [WATER_URL],
+      calculators: [],
+      draft: {
+        calculator: "water",
+        offerId: "offer-water-a",
+        title: "ウォーターA モデルX",
+        evidenceTerms: ["モデルX"],
+        priceTerms: ["モデルX"],
+        planTerms: ["プランP"],
+        months: 24,
+        monthlyLiters: 25,
+      },
+      offerIds: [],
+    };
+    await writeFile(plansPath, JSON.stringify({ plans: [brief] }), "utf8");
+  });
+
+  afterAll(async () => {
+    await rm(TMP, { recursive: true, force: true });
+    await rm(PREVIEW_DIR, { recursive: true, force: true });
+  });
+
+  it("hands the selector to the pipeline so the brief becomes an article", async () => {
+    const result = await runLivePipeline(
+      {
+        policyPath,
+        outDir: ".tmp/unused",
+        env: { ...LLM_ENV },
+        preview: true,
+        fetcher: new MapFetcher(new Map([[WATER_URL, { body: WATER_PAGE }]])),
+        extractor: new FixtureFactExtractor(),
+        quoteSelector: {
+          async select(request) {
+            selected.push([request.brief.title]);
+            return QUOTES;
+          },
+        },
+      },
+      plansPath,
+    );
+
+    expect(result.results[0]).toMatchObject({ slug: "brief-only-water", finalState: "PUBLISHED", qaStatus: "PASS" });
+    expect(selected[0]).toEqual(["ウォーターA モデルX"]);
+    const files = await readdir(path.join(PREVIEW_DIR, "content/articles"));
+    const article = await readFile(path.join(PREVIEW_DIR, "content/articles", files.find((f) => f.startsWith("brief-only-water"))!), "utf8");
+    expect(article).toContain("119,916");
+  });
+
+  it("makes no article when the selector finds no passage", async () => {
+    const result = await runLivePipeline(
+      {
+        policyPath,
+        outDir: ".tmp/unused",
+        env: { ...LLM_ENV },
+        preview: true,
+        fetcher: new MapFetcher(new Map([[WATER_URL, { body: WATER_PAGE }]])),
+        extractor: new FixtureFactExtractor(),
+        quoteSelector: {
+          async select() {
+            return [];
+          },
+        },
+      },
+      plansPath,
+    );
+
+    expect(result.results[0]).toMatchObject({ finalState: "QUARANTINED", publishReason: "plan_draft_failed" });
+  });
+});
