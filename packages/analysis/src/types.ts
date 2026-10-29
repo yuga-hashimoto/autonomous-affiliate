@@ -39,6 +39,12 @@ export interface WaterServerOfferInput {
   waterChargeJpy: Known<number>;
   shippingFeeJpy: Known<number>;
   electricityFeeJpy: Known<number>;
+  /**
+   * Monthly rental of the server itself. Absent means the plan does not account for it
+   * (plans written before this field existed: their total and formula stay as published);
+   * 0 is a free rental, UNKNOWN makes the total UNKNOWN.
+   */
+  serverRentalFeeJpy?: Known<number>;
   months: number;
   initialFeeJpy: Known<number>;
   cancellationFeeJpy: Known<number>;

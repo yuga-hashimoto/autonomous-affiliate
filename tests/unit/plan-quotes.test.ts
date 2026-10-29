@@ -94,6 +94,7 @@ const EXPECTED_INPUT = {
   electricityFeeJpy: 669,
   electricityIsEstimate: true,
   electricityBasisLiters: 36,
+  serverRentalFeeJpy: 0,
   months: 24,
   initialFeeJpy: 3300,
   cancellationFeeJpy: "UNKNOWN",
@@ -218,7 +219,7 @@ describe("draftPlanFromPages: the amounts come from quotes of the page text", ()
 
     const result = await draftPlanFromPages(planOf(), { ...env.services, collected, selector: new PatternSelector() });
 
-    expect(result.ok).toBe(true);
+    expect(result.ok ? [] : result.issues).toEqual([]);
     if (!result.ok) return;
     expect(result.plan.calculators[0]?.input).toEqual(EXPECTED_INPUT);
     const saved = await env.repo.facts.listAll();

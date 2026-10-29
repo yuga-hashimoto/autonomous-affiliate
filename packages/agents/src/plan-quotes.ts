@@ -72,13 +72,14 @@ export function verifyQuotes(quotes: readonly string[], pageText: string): { ver
 }
 
 export const QUOTE_SELECTION_TASK = `You read the text of an official price page for ONE service and plan, named in the brief. Find the passages that state the amounts listed below for that service and plan.
-Return JSON: {"quotes":[{"field":"water|shipping|electricity|electricity_basis|initial|cancellation|term","quote":"..."}]}
+Return JSON: {"quotes":[{"field":"water|shipping|electricity|electricity_basis|rental|initial|cancellation|term","quote":"..."}]}
 Rules:
 - Every quote must be copied character for character from the page text: one contiguous passage of at most 1000 characters. Never rewrite, translate, shorten inside the passage, join separate passages or correct anything.
 - A quote must contain the figure AND the words that say what it is for (the plan, the server or product, the kind of fee, the quantity). Prefer the shortest passage that does.
 - A figure that belongs to one particular server or plan (its price, its electricity cost) must be quoted from the line that names that server or plan down to the figure, even when that is long, so the quote itself shows whose figure it is. A page-wide fee (shipping, setup fee) needs no name.
 - water: the monthly water charge for the brief's monthly volume, for this plan and server (a price card whose label, figure and server name are on neighbouring lines is one passage).
 - shipping: the shipping fee. electricity: this server's monthly electricity cost. electricity_basis: the sentence saying how much monthly use the electricity estimate assumes.
+- rental: this server's monthly rental fee (サーバーレンタル料), including when the page says it is free. Quote the line that gives the rental together with this server's name; when the page lists one rental per plan side by side, quote the whole row.
 - initial: the initial registration or setup fee. cancellation: the contract termination fee. term: the minimum contract period of this plan.
 - Leave a field out when the text does not state it for this service and plan. Do not compute, convert or combine figures.`;
 
