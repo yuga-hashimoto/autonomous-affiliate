@@ -22,12 +22,16 @@ import {
 } from "@aff/llm";
 import {
   runPlan,
+  runPlanQueue,
+  splitByAllowlist,
   refreshSweep,
   growthPlan,
   FixtureFactExtractor,
   LlmFactExtractor,
   type FactExtractor,
   type ArticlePlan,
+  type HeldPlan,
+  type HoldReason,
   type PlanRunResult,
 } from "@aff/agents";
 import { AspReportImporter, HttpFetcher, MapFetcher, checkRobots, type Fetcher } from "@aff/integrations";
@@ -94,6 +98,12 @@ export interface PipelineRunResult {
   mode: "dry-run" | "live";
   /** Freshness sweep done before the plans (live runs with a database only). */
   refresh?: { updateCandidates: string[]; revoked: string[] };
+  /**
+   * Plans that waited this run, counted by reason. Only counts: the run output goes
+   * to a public log, and the plans themselves (slugs, companies) are private.
+   * `plans-status` lists them on the owner's machine.
+   */
+  held?: Partial<Record<HoldReason, number>>;
   results: {
     slug: string;
     finalState: string;
@@ -307,17 +317,21 @@ export async function runDryRunPipeline(options: WorkerOptions): Promise<Pipelin
     },
   };
 
-  const results = await runPlans((plansFixture as PlansFile).plans, {
-    repo,
-    policy,
-    logger,
-    fetcher,
-    extractor: new FixtureFactExtractor(),
-    publisherIO: io,
-    previewDir,
-    clock,
-  });
-  return { mode: "dry-run", results, llmCostJpy: 0 };
+  const { results, held } = await runPlans(
+    (plansFixture as PlansFile).plans,
+    {
+      repo,
+      policy,
+      logger,
+      fetcher,
+      extractor: new FixtureFactExtractor(),
+      publisherIO: io,
+      previewDir,
+      clock,
+    },
+    { allowedDomains: policy.security.allowed_source_domains },
+  );
+  return { mode: "dry-run", results, ...(held.length > 0 ? { held: countHeld(held) } : {}), llmCostJpy: 0 };
 }
 
 /**
@@ -358,19 +372,9 @@ export async function runLivePipeline(
       attempts: policy.limits.task_retry_attempts,
     });
 
-  const plansRaw = JSON.parse(await readFile(resolveInputPath(plansPath), "utf8")) as PlansFile;
-  if (!Array.isArray(plansRaw.plans) || plansRaw.plans.length === 0) {
-    throw new Error(`plans file has no plans: ${plansPath}`);
-  }
-  for (const url of plansRaw.plans.flatMap((p) => p.sourceUrls)) {
-    const host = new URL(url).hostname.toLowerCase();
-    const allowed = policy.security.allowed_source_domains.some(
-      (d) => host === d.toLowerCase() || host.endsWith(`.${d.toLowerCase()}`),
-    );
-    if (!allowed) {
-      throw new Error(`plan source ${url} is not in the policy allowlist; run check-robots and update the policy first`);
-    }
-  }
+  // A plan whose domain is not allowed yet is held, not an error: the stock may be
+  // ahead of the owner's terms checks, and it must not stop the live articles' updates.
+  const plans = await readPlans(plansPath);
 
   const previewOnly = !policy.flags.publish_enabled;
   const livePreviewDir = join(ROOT, ".tmp/live-preview");
@@ -394,8 +398,8 @@ export async function runLivePipeline(
   const spendBefore = await repo.spend.sumMonth(dayKeyInTz(clock()).slice(0, 7));
   // Expired facts turn a live article into UPDATE_CANDIDATE; the plan loop below regenerates it.
   const refresh = options.preview ? undefined : await refreshSweep(repo, policy, clock());
-  const results = await runPlans(
-    plansRaw.plans,
+  const { results, held } = await runPlans(
+    plans,
     {
       repo,
       policy,
@@ -407,7 +411,11 @@ export async function runLivePipeline(
       previewDir: previewOnly ? livePreviewDir : undefined,
       clock,
     },
-    { templateRevision, previewUpdate: options.previewUpdate === true },
+    {
+      allowedDomains: policy.security.allowed_source_domains,
+      templateRevision,
+      previewUpdate: options.previewUpdate === true,
+    },
   );
   // Image spend is stored as it happens; the LLM spend below is what the ledger added on top.
   const llmCostJpy =
@@ -423,7 +431,43 @@ export async function runLivePipeline(
       estimated: true,
     });
   }
-  return { mode: "live", ...(refresh ? { refresh } : {}), results, llmCostJpy: Math.max(llmCostJpy, ledgerDelta) };
+  return {
+    mode: "live",
+    ...(refresh ? { refresh } : {}),
+    results,
+    held: countHeld(held),
+    llmCostJpy: Math.max(llmCostJpy, ledgerDelta),
+  };
+}
+
+async function readPlans(plansPath: string): Promise<ArticlePlan[]> {
+  const raw = JSON.parse(await readFile(resolveInputPath(plansPath), "utf8")) as PlansFile;
+  if (!Array.isArray(raw.plans) || raw.plans.length === 0) {
+    throw new Error(`plans file has no plans: ${plansPath}`);
+  }
+  return raw.plans;
+}
+
+function countHeld(held: readonly HeldPlan[]): NonNullable<PipelineRunResult["held"]> {
+  return held.reduce<NonNullable<PipelineRunResult["held"]>>(
+    (counts, { reason }) => ({ ...counts, [reason]: (counts[reason] ?? 0) + 1 }),
+    {},
+  );
+}
+
+/**
+ * Which plans of the stock can run with the current allowlist and which wait for
+ * a domain, with names. No network, no database and no secrets: run it on the
+ * machine that holds the plans file. (The daily cap is not shown: it depends on
+ * what was published today.)
+ */
+export async function runPlansStatus(
+  options: Pick<WorkerOptions, "policyPath">,
+  plansPath: string,
+): Promise<{ runnable: string[]; held: HeldPlan[] }> {
+  const policy = parsePolicyText(await readFile(resolveInputPath(options.policyPath), "utf8"));
+  const { runnable, held } = splitByAllowlist(await readPlans(plansPath), policy.security.allowed_source_domains);
+  return { runnable: runnable.map((plan) => plan.slug), held };
 }
 
 async function createLedger(
@@ -464,21 +508,22 @@ function toRunResult(outcome: PlanRunResult): PipelineRunResult["results"][numbe
 async function runPlans(
   plans: ArticlePlan[],
   services: Parameters<typeof runPlan>[1],
-  options: { templateRevision?: string; previewUpdate?: boolean } = {},
-): Promise<PipelineRunResult["results"]> {
-  const results: PipelineRunResult["results"] = [];
-  for (const plan of plans) {
-    const outcome = await runPlan(plan, services, { templateRevision: options.templateRevision });
-    results.push(toRunResult(outcome));
-    if (options.previewUpdate && outcome.published) {
-      // The preview run left the article "published" in memory; regenerate it as an update would.
-      const update = await runPlan(plan, services, {
-        templateRevision: options.templateRevision ?? "preview-update",
-      });
-      results.push(toRunResult(update));
-    }
-  }
-  return results;
+  options: { allowedDomains: readonly string[]; templateRevision?: string; previewUpdate?: boolean },
+): Promise<{ results: PipelineRunResult["results"]; held: HeldPlan[] }> {
+  const queue = await runPlanQueue(plans, services, {
+    allowedDomains: options.allowedDomains,
+    templateRevision: options.templateRevision,
+    // The preview run left the article "published" in memory; regenerate it as an update would.
+    ...(options.previewUpdate
+      ? {
+          afterPlan: async (plan: ArticlePlan, outcome: PlanRunResult) =>
+            outcome.published
+              ? [await runPlan(plan, services, { templateRevision: options.templateRevision ?? "preview-update" })]
+              : [],
+        }
+      : {}),
+  });
+  return { results: queue.results.map(toRunResult), held: queue.held };
 }
 
 async function buildFixtureFetcher(): Promise<MapFetcher> {
@@ -678,6 +723,10 @@ if (isMain()) {
         ? await runLivePipeline(options, values.plans ?? "config/plans.live.json")
         : await runDryRunPipeline(options);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    } else if (command === "plans-status") {
+      process.stdout.write(
+        `${JSON.stringify(await runPlansStatus(options, values.plans ?? "config/plans.live.json"), null, 2)}\n`,
+      );
     } else if (command === "import-offers") {
       if (!arg) throw new Error("usage: import-offers <registry.json>");
       process.stdout.write(`${JSON.stringify(await importOffers(options, arg), null, 2)}\n`);

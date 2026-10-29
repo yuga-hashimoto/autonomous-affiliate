@@ -77,6 +77,15 @@ function heroFrontmatter(hero: HeroImage | undefined): string[] {
  */
 export type PublishKind = "new" | "update";
 
+/**
+ * True once the day's cap of new articles (`limits.new_articles_per_day`) is used.
+ * The publisher refuses a first publication with it, and the plan queue asks the
+ * same question first so that a plan the cap would turn away is not researched.
+ */
+export async function newArticleCapReached(repo: Repository, policy: PolicyConfig, now: Date): Promise<boolean> {
+  return (await repo.publications.countOnDay(dayKeyInTz(now))) >= policy.limits.new_articles_per_day;
+}
+
 export interface PublisherDeps {
   repo: Repository;
   policy: PolicyConfig;
@@ -201,9 +210,7 @@ export class PublisherAgent {
       }
 
       if (target.destination !== "preview" && kind === "new") {
-        const dayKey = dayKeyInTz(clock());
-        const todays = await this.deps.repo.publications.countOnDay(dayKey);
-        if (todays >= this.deps.policy.limits.new_articles_per_day) {
+        if (await newArticleCapReached(this.deps.repo, this.deps.policy, clock())) {
           return { published: false, reason: "daily_limit" };
         }
       }

@@ -88,6 +88,9 @@ jobs:
               echo
               echo "Stale articles found by the sweep: $(jq -r '(.refresh.updateCandidates // []) | join(", ") | if . == "" then "none" else . end' result.json)"
               echo
+              # Counts only: this log is public and the plans are private. `plans-status` names them locally.
+              echo "Plans waiting (by reason): $(jq -r '(.held // {}) | to_entries | map("\(.key) \(.value)") | join(", ") | if . == "" then "none" else . end' result.json)"
+              echo
               echo "| article | action | update | state | QA | written |"
               echo "| --- | --- | --- | --- | --- | --- |"
               jq -r '.results[] | "| \(.slug) | \(.action) | \(.update.outcome // "-") | \(.finalState) | \(.qaStatus) | \(.published) |"' result.json
