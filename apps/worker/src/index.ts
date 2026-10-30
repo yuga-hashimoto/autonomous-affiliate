@@ -54,6 +54,7 @@ import { runA8LinkProbe } from "./a8-linkpage.js";
 import { runA8LoginSmoke } from "./a8-login.js";
 import { runA8Programs } from "./a8-programs.js";
 import { runA8SubmitUrls } from "./a8-submit.js";
+import { runA8Scout } from "./a8-scout.js";
 import { runA8Sync } from "./a8-sync.js";
 import { exportGoOffers } from "./go-offers.js";
 import { createHeroImageService, runImageSmoke } from "./hero-image.js";
@@ -786,8 +787,8 @@ if (isMain()) {
   if (values.discover !== undefined && !values.live) {
     throw new Error("--discover only applies to a live run (use it with --live)");
   }
-  if (values["a8-programs"] !== undefined && !values.live && command !== "a8-sync" && command !== "a8-submit-urls") {
-    throw new Error("--a8-programs only applies to a live run, a8-sync or a8-submit-urls");
+  if (values["a8-programs"] !== undefined && !values.live && command !== "a8-sync" && command !== "a8-submit-urls" && command !== "a8-scout") {
+    throw new Error("--a8-programs only applies to a live run, a8-sync, a8-submit-urls or a8-scout");
   }
   if (values["template-revision"] !== undefined && !values.live) {
     throw new Error("--template-revision only applies to a live run (use it with --live)");
@@ -871,6 +872,17 @@ if (isMain()) {
         clock: () => new Date(),
       });
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      if (report.outcome !== "ok") process.exit(1);
+    } else if (command === "a8-scout") {
+      const config = parseA8ProgramsFile(
+        await readFile(resolveInputPath(values["a8-programs"] ?? "config/a8-programs.json"), "utf8"),
+      );
+      const { probe, ...report } = await runA8Scout(
+        options.env ?? process.env,
+        config.brands.map((brand) => brand.keyword),
+      );
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      if (probe) process.stdout.write(`--- detail page: structure (content masked) ---\n${probe.join("\n")}\n`);
       if (report.outcome !== "ok") process.exit(1);
     } else if (command === "a8-submit-urls") {
       const report = await runA8SubmitUrls(options.env ?? process.env, {
