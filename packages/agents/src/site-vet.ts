@@ -15,7 +15,8 @@ import { registrableHost } from "./site-host.js";
  */
 
 const TERMS_LINK = /利用規約|ご利用規約|利用条件|サイトポリシー|サイトのご利用|ご利用にあたって|Terms/i;
-const PARTNER_LINK = /アフィリエイト|パートナー|提携|広告掲載/;
+/** "提携" alone is too loose (partner hospitals, partner shops): only wording that is about advertising partners. */
+const PARTNER_LINK = /アフィリエイト|パートナー募集|パートナープログラム|広告掲載|提携者|アフィリエイター/;
 const PRICE_LINK = /料金|価格|プラン|ラインナップ|商品|サーバー|機種|ご利用料金/;
 const NOT_PRICE_LINK = /規約|プライバシー|個人情報|会社|採用|お問い合わせ|ログイン|アフィリエイト|パートナー|特定商取引|サイトマップ/;
 const MAX_PRICE_PAGES = 3;
@@ -23,7 +24,7 @@ const MAX_RULE_PAGES = 2;
 const FETCH_TIMEOUT_MS = 15_000;
 
 /** Reasons that say "not now" rather than "not this site": a caller may look again soon. */
-export const TRANSIENT_REASONS: ReadonlySet<string> = new Set(["site_unreachable", "no_lister", "listing_failed"]);
+export const TRANSIENT_REASONS: ReadonlySet<string> = new Set(["site_unreachable", "no_lister", "listing_failed", "page_unreadable"]);
 
 export interface VetCandidate {
   /** The advertiser's name as the console shows it. */

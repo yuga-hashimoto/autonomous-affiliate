@@ -69,7 +69,7 @@ export interface ReadCandidate {
 }
 
 /** A page with less text than this was probably not read. */
-const READABLE_CHARS = 300;
+export const READABLE_CHARS = 300;
 
 export interface ScoutConsole {
   search(keyword: string): Promise<{ state: ListState; rows: RawProgramRow[] }>;

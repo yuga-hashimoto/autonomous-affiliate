@@ -143,6 +143,8 @@ export interface SyncReport {
     candidates: number;
     read: number;
     registered: Record<string, number>;
+    /** Why candidates were refused today, by reason: no names or sites. */
+    refused: Record<string, number>;
     advanced: Record<string, number>;
     terms: Record<string, number>;
     failed?: boolean;
@@ -232,6 +234,7 @@ export async function runA8Sync(env: NodeJS.ProcessEnv, deps: SyncDeps): Promise
   };
   if (deps.scout) {
     const advanced = await advanceScouted(repo, scouted, labelOf, clock());
+    const since = clock().toISOString();
     const registered = value.read
       ? await registerCandidates(value.read, {
           repo,
@@ -242,10 +245,14 @@ export async function runA8Sync(env: NodeJS.ProcessEnv, deps: SyncDeps): Promise
           maxRegistered: deps.scout.maxRegistered,
         })
       : {};
+    const refused = tally(
+      (await repo.scout.list()).filter((brand) => brand.state === "rejected" && brand.checkedAt >= since).flatMap((brand) => brand.reasons),
+    );
     report.scout = {
       candidates: value.candidates,
       read: value.read?.length ?? 0,
       registered,
+      refused,
       advanced,
       terms: renewed,
       ...(value.scoutFailed ? { failed: true } : {}),

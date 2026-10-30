@@ -85,6 +85,14 @@ describe("registerCandidates", () => {
     expect((await repo.scout.get("s0002"))?.reasons).toEqual(["terms_ban_automation"]);
   });
 
+  it("does not judge a page that came back almost empty", async () => {
+    const { repo, deps, vetted } = setup();
+    const empty = { ...passed("s0001", "A社", "a-site.com"), signals: { chars: 20, prohibitions: 0, topics: [] } };
+    expect(await registerCandidates([empty], deps)).toEqual({ retry_later: 1 });
+    expect(vetted).toEqual([]);
+    expect((await repo.scout.get("s0001"))?.reasons).toEqual(["page_unreadable"]);
+  });
+
   it("does not take a slug that a brand already has", async () => {
     const { repo, deps, vetted } = setup();
     const counts = await registerCandidates([passed("s0001", "プレミアム", "premium-water.com")], deps);

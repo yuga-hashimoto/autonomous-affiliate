@@ -1,7 +1,7 @@
 import type { Repository, ScoutedBrand } from "@aff/db";
 import type { Fetcher } from "@aff/integrations";
 import { TRANSIENT_REASONS, rereadTerms, slugForHost, type TermsState, type VetCandidate, type VetResult } from "@aff/agents";
-import type { ReadCandidate } from "./a8-scout.js";
+import { READABLE_CHARS, type ReadCandidate } from "./a8-scout.js";
 
 /**
  * Turns what the scouting read into records (docs/21): a candidate whose program rules and site pass is
@@ -53,6 +53,11 @@ export async function registerCandidates(read: readonly ReadCandidate[], deps: R
 
   for (const entry of read) {
     const { candidate, gate, site } = entry;
+    // A page that came back almost empty was not read (the console draws its pages late): look again tomorrow, do not judge it.
+    if (entry.signals.chars < READABLE_CHARS) {
+      labels.push(await refuse(entry, ["page_unreadable"]));
+      continue;
+    }
     if (!gate.ok) {
       labels.push(await refuse(entry, gate.reasons));
       continue;
