@@ -73,6 +73,70 @@ export const DUMP_CHANGES_OR_MAIN = `({
   })()`)},
 })`;
 
+const URL_FORM_BUTTON = "form:has(textarea) button[type=submit]";
+const SEARCH_FIELD = "#searchUrl";
+const SEARCH_BUTTON = ".searchPgBox button[type=submit]";
+const CHUNK_SIZE = 50;
+const MAX_URL_LENGTH = 2_000;
+const SEARCH_NAVIGATION_MS = 15_000;
+const PLAIN_HTTPS_URL = /^https:\/\/[^\s"'<>]+$/;
+
+export interface SubmitInPageResult {
+  submitted: number;
+  /** URLs that the page's own list of submitted URLs showed after the submission. */
+  verified: number;
+  /** Dialogs the page raised and the form accepted: type and message length only. */
+  dialogs: { type: string; length: number }[];
+}
+
+/**
+ * On a program's open URL-management page: submits the URLs (one per line, in chunks), then looks
+ * each one up in the page's own list to see that it was taken. Submitting a URL again only renews its
+ * date, so running this every day is safe. The caller owns the page; nothing else on it is pressed.
+ */
+export async function submitUrlsInPage(page: Page, urls: readonly string[]): Promise<SubmitInPageResult> {
+  if (urls.length === 0) throw new Error("no URLs to submit");
+  if (urls.some((url) => url.length > MAX_URL_LENGTH || !PLAIN_HTTPS_URL.test(url))) {
+    throw new Error("a URL is not a plain https URL");
+  }
+  const dialogs: SubmitInPageResult["dialogs"] = [];
+  page.on("dialog", (dialog) => {
+    dialogs.push({ type: dialog.type(), length: dialog.message().length });
+    void dialog.accept().catch(() => undefined);
+  });
+  if ((await page.locator("textarea").count()) !== 1 || (await page.locator(URL_FORM_BUTTON).count()) !== 1) {
+    throw new Error("the URL form was not found");
+  }
+
+  for (let start = 0; start < urls.length; start += CHUNK_SIZE) {
+    await page.locator("textarea").fill(urls.slice(start, start + CHUNK_SIZE).join("\n"));
+    await page.locator(URL_FORM_BUTTON).click();
+    await settlePage(page);
+  }
+
+  let verified = 0;
+  for (const url of urls) {
+    await page.fill(SEARCH_FIELD, url);
+    const navigation = page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: SEARCH_NAVIGATION_MS }).catch(() => undefined);
+    await page.click(SEARCH_BUTTON);
+    await navigation;
+    await settlePage(page);
+    if ((await page.innerText("body")).includes(url) && !(await page.locator(".notExist").isVisible())) verified += 1;
+  }
+  return { submitted: urls.length, verified, dialogs };
+}
+
+/** Clicks the card's ad-URL button and returns the window it opens, if it opens one. */
+export async function openAdUrlManager(page: Page, keyword: string): Promise<Page | undefined> {
+  const button = adUrlButtonLocator(page, keyword);
+  if ((await button.count()) !== 1) return undefined;
+  const [popup] = await Promise.all([page.waitForEvent("popup", { timeout: POPUP_WAIT_MS }).catch(() => undefined), button.click()]);
+  if (!popup) return undefined;
+  await popup.waitForLoadState("domcontentloaded").catch(() => undefined);
+  await settlePage(popup);
+  return safeOrigin(popup.url()) === CONSOLE_ORIGIN ? popup : undefined;
+}
+
 export interface AdUrlProbeReport {
   outcome: "ok" | "login_failed" | "not_found" | "unrecognized";
   login?: A8SmokeResult;

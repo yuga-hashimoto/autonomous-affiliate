@@ -53,6 +53,7 @@ import { runA8Inspect } from "./a8-inspect.js";
 import { runA8LinkProbe } from "./a8-linkpage.js";
 import { runA8LoginSmoke } from "./a8-login.js";
 import { runA8Programs } from "./a8-programs.js";
+import { runA8SubmitUrls } from "./a8-submit.js";
 import { runA8Sync } from "./a8-sync.js";
 import { exportGoOffers } from "./go-offers.js";
 import { createHeroImageService, runImageSmoke } from "./hero-image.js";
@@ -765,6 +766,7 @@ if (isMain()) {
       plans: { type: "string" },
       discover: { type: "string" },
       "a8-programs": { type: "string" },
+      dist: { type: "string" },
       live: { type: "boolean", default: false },
       preview: { type: "boolean", default: false },
       "template-revision": { type: "string" },
@@ -784,8 +786,8 @@ if (isMain()) {
   if (values.discover !== undefined && !values.live) {
     throw new Error("--discover only applies to a live run (use it with --live)");
   }
-  if (values["a8-programs"] !== undefined && !values.live && command !== "a8-sync") {
-    throw new Error("--a8-programs only applies to a live run or a8-sync");
+  if (values["a8-programs"] !== undefined && !values.live && command !== "a8-sync" && command !== "a8-submit-urls") {
+    throw new Error("--a8-programs only applies to a live run, a8-sync or a8-submit-urls");
   }
   if (values["template-revision"] !== undefined && !values.live) {
     throw new Error("--template-revision only applies to a live run (use it with --live)");
@@ -870,6 +872,15 @@ if (isMain()) {
       });
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       if (report.outcome !== "ok") process.exit(1);
+    } else if (command === "a8-submit-urls") {
+      const report = await runA8SubmitUrls(options.env ?? process.env, {
+        config: parseA8ProgramsFile(
+          await readFile(resolveInputPath(values["a8-programs"] ?? "config/a8-programs.json"), "utf8"),
+        ),
+        distDir: resolveInputPath(values.dist ?? "apps/site/dist"),
+      });
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      if (report.outcome === "login_failed") process.exit(1);
     } else if (command === "export-go-offers") {
       const report = await exportGoOffers(
         await loadRepository(options, { requirePg: true }),
