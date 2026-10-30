@@ -26,10 +26,31 @@ export function goOffersFile(resolved: Readonly<Record<string, string>>): { file
   return { file: { offers }, skipped };
 }
 
-/** Writes the registry for the offers that may be monetized now. Returns counts only. */
-export async function exportGoOffers(repo: Repository, outPath: string): Promise<{ offers: number; skipped: number }> {
+/**
+ * Cloudflare Pages `_redirects`: one temporary redirect per offer. The host then answers /go/<offer>
+ * with a redirect straight away; the built page of the same path (a meta refresh) is only the fallback.
+ */
+export function redirectsFile(file: GoOffersFile): string {
+  return Object.entries(file.offers)
+    .map(([offerId, url]) => `/go/${offerId} ${url} 302\n`)
+    .join("");
+}
+
+/**
+ * Writes the registry (and, when a path is given, the redirects file) for the offers that may be
+ * monetized now. Returns counts only.
+ */
+export async function exportGoOffers(
+  repo: Repository,
+  outPath: string,
+  redirectsPath?: string,
+): Promise<{ offers: number; skipped: number }> {
   const { file, skipped } = goOffersFile(await repo.offers.listOfferTrackingUrls());
   await mkdir(dirname(outPath), { recursive: true });
   await writeFile(outPath, `${JSON.stringify(file, null, 2)}\n`, "utf8");
+  if (redirectsPath !== undefined) {
+    await mkdir(dirname(redirectsPath), { recursive: true });
+    await writeFile(redirectsPath, redirectsFile(file), "utf8");
+  }
   return { offers: Object.keys(file.offers).length, skipped };
 }

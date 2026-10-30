@@ -27,7 +27,10 @@ async function loadRegistry(): Promise<GoRegistry> {
 }
 
 /**
- * Affiliate redirects, one prerendered endpoint per APPROVED offer. The
+ * Affiliate redirects, one prerendered endpoint per APPROVED offer. The file name ends in .html on
+ * purpose: the page is written as go/<offer>.html, which the host serves as a web page at /go/<offer>
+ * (a file with no extension is served as a download). The host's own redirect rule from
+ * _redirects, written at build time next to the registry, answers first where it applies. The
  * tracking URL comes from build-time secrets only; unregistered offers 404 —
  * unapproved offers cannot leak monetized links.
  */

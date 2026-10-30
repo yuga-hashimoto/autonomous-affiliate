@@ -272,10 +272,12 @@ describe("affiliate redirects written for a build (docs/20)", () => {
     await writeFile(GENERATED, JSON.stringify({ offers: { "offer-e2e-link": LINK } }), "utf8");
     await build({ outDir: OUT });
 
-    const page = await readFile(path.join(OUT, "go", "offer-e2e-link"), "utf8");
+    // A page with an .html extension, so the host serves it as a web page (a file with no extension
+    // is served as a download), at /go/offer-e2e-link.
+    const page = await readFile(path.join(OUT, "go", "offer-e2e-link.html"), "utf8");
     expect(page).toContain(LINK);
     // Only registered offers have a page: the placeholder adds none.
-    expect(await readdir(path.join(OUT, "go"))).toEqual(["offer-e2e-link"]);
+    expect(await readdir(path.join(OUT, "go"))).toEqual(["offer-e2e-link.html"]);
     expect(JSON.parse(await readFile(path.join(ROOT, "content/go-offers.json"), "utf8")).offers).toEqual({});
   }, 240_000);
 });

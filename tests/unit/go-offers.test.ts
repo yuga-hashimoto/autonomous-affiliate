@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { createMemoryRepository } from "@aff/db";
-import { exportGoOffers, goOffersFile } from "../../apps/worker/src/go-offers.js";
+import { exportGoOffers, goOffersFile, redirectsFile } from "../../apps/worker/src/go-offers.js";
 
 const GOOD = "https://px.a8.net/svt/ejp?a8mat=3ABCDE+1FGHIJ+2KLMNO+PQRST";
 
@@ -23,6 +23,18 @@ describe("goOffersFile", () => {
   });
 });
 
+describe("redirectsFile", () => {
+  it("makes one temporary redirect per offer, so the host answers with a redirect and no page", () => {
+    expect(redirectsFile({ offers: { "offer-a": GOOD, "offer-b": GOOD.replace("3ABCDE", "3ZZZZZ") } })).toBe(
+      `/go/offer-a ${GOOD} 302\n/go/offer-b ${GOOD.replace("3ABCDE", "3ZZZZZ")} 302\n`,
+    );
+  });
+
+  it("is empty when there are no offers", () => {
+    expect(redirectsFile({ offers: {} })).toBe("");
+  });
+});
+
 describe("exportGoOffers", () => {
   const dirs: string[] = [];
   afterAll(async () => {
@@ -39,11 +51,13 @@ describe("exportGoOffers", () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "go-offers-"));
     dirs.push(dir);
     const out = path.join(dir, "go-offers.json");
+    const redirects = path.join(dir, "public", "_redirects");
 
-    const report = await exportGoOffers(repo, out);
+    const report = await exportGoOffers(repo, out, redirects);
 
     expect(report).toEqual({ offers: 1, skipped: 0 });
     expect(JSON.parse(await readFile(out, "utf8"))).toEqual({ offers: { "offer-on": GOOD } });
+    expect(await readFile(redirects, "utf8")).toBe(`/go/offer-on ${GOOD} 302\n`);
     expect(JSON.stringify(report)).not.toContain("px.a8.net");
   });
 

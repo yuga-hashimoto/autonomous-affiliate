@@ -66,7 +66,7 @@ offerのidは `offer-<brandSlug>-<サービス名>`（`discovery` が作る計�
 - 保管: `affiliate_programs.tracking_url`（マイグレーション002）。`AffiliateProgram`・`AffiliateOffer`・トレース・下書きの型には載せない。取り出すのは `listOfferTrackingUrls`（使えるofferだけ）。
 - 書き出し: `export-go-offers` が追跡URLの形に完全一致するものだけを `content/go-offers.generated.json` に書く（それ以外は捨てて件数に数える）。コミットされる `content/go-offers.json` は空の雛形のままで、テストが空であることを保つ。
 - ログ: `a8-sync` と `export-go-offers` は件数だけを出す。ブラウザのエラーは `publicErrorLine`（先頭1行、秘密情報・リンクのクエリ・6桁以上の数字を伏せる）を通る。
-- サイトの `/go/` は静的ページ（meta refresh）。公開サイトのHTMLに最終リンクは現れる（広告リンクの性質）。
+- 配信: `export-go-offers` は `apps/site/public/_redirects`（gitignore）も書く。Cloudflare Pagesは `/go/<offer>` に302で即応答する。サイトが出す `go/<offer>.html`（meta refreshの1ページ）はその代わりの保険。**拡張子の無いファイルは `application/octet-stream` で配信され、ブラウザがダウンロードしてしまう**（2026-10-30の初回の本番で見つけた不具合）ため、エンドポイントのファイル名を `[offerId].html.ts` にしてある。公開サイトのHTMLや応答に最終リンクは現れる（広告リンクの性質）。
 
 ## 止まる条件（回避しない）
 

@@ -874,6 +874,8 @@ if (isMain()) {
       const report = await exportGoOffers(
         await loadRepository(options, { requirePg: true }),
         resolveInputPath(arg ?? "content/go-offers.generated.json"),
+        // Copied into the site's output as it is (public/): the host's redirect rules for /go/.
+        resolveInputPath("apps/site/public/_redirects"),
       );
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     } else if (command === "a8-adurl-probe") {
