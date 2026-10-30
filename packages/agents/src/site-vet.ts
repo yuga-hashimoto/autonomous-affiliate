@@ -14,7 +14,7 @@ import { registrableHost } from "./site-host.js";
  * answer is a "no", and no link to another site is ever followed.
  */
 
-const TERMS_LINK = /利用規約|ご利用規約|利用条件|サイトポリシー|サイトのご利用|ご利用にあたって|Terms/i;
+const TERMS_LINK = /利用規約|ご利用規約|利用条件|サイトポリシー|サイトのご利用|サイトご利用|ご利用にあたって|このサイトについて|サイトについて|ご利用上の注意|利用上の注意|免責事項|Terms/i;
 /** "提携" alone is too loose (partner hospitals, partner shops): only wording that is about advertising partners. */
 const PARTNER_LINK = /アフィリエイト|パートナー募集|パートナープログラム|広告掲載|提携者|アフィリエイター/;
 const PRICE_LINK = /料金|価格|プラン|ラインナップ|商品|サーバー|機種|ご利用料金/;
