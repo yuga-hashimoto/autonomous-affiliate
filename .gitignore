@@ -18,3 +18,4 @@ config/offers.live.json
 config/plans.live.json
 config/policy.live.yaml
 content/go-offers.generated.json
+apps/site/public/_redirects
