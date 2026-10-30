@@ -44,18 +44,20 @@ function waterConditions(input: WaterServerOfferInput): { conditions: CalcCondit
 }
 
 /**
- * Water server running cost: (water + shipping + electricity) × months +
- * initial fee. Cancellation fee stays out of the total (condition only).
+ * Water server running cost: (water + shipping + electricity [+ server rental]) ×
+ * months + initial fee. Cancellation fee stays out of the total (condition only).
  */
 export function calculateWaterServerCost(input: WaterServerOfferInput): TotalCostCalculation {
   const unknowns: string[] = [];
   const breakdown: TotalCostCalculation["breakdown"] = [];
   let total = 0;
 
+  const rental = input.serverRentalFeeJpy;
   const components: { key: string; label: string; value: Known<number> }[] = [
     { key: "waterChargeJpy", label: "水代", value: input.waterChargeJpy },
     { key: "shippingFeeJpy", label: "配送料", value: input.shippingFeeJpy },
     { key: "electricityFeeJpy", label: "電気代", value: input.electricityFeeJpy },
+    ...(rental !== undefined ? [{ key: "serverRentalFeeJpy", label: "サーバーレンタル料", value: rental }] : []),
   ];
   for (const c of components) {
     if (c.value === "UNKNOWN") {
@@ -88,7 +90,9 @@ export function calculateWaterServerCost(input: WaterServerOfferInput): TotalCos
     offerId: input.offerId,
     title: input.title,
     formulaVersion: FORMULA_VERSION,
-    formula: "totalJpy = (waterChargeJpy + shippingFeeJpy + electricityFeeJpy) * months + initialFeeJpy",
+    formula: rental !== undefined
+      ?"totalJpy = (waterChargeJpy + shippingFeeJpy + electricityFeeJpy + serverRentalFeeJpy) * months + initialFeeJpy"
+      : "totalJpy = (waterChargeJpy + shippingFeeJpy + electricityFeeJpy) * months + initialFeeJpy",
     comparisonMonths: input.months,
     assumptions: [
       `比較期間は${monthsLabel(input.months)}`,

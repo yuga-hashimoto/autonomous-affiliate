@@ -24,6 +24,7 @@ const UNKNOWN_INPUT_LABELS: Readonly<Record<string, string>> = {
   waterChargeJpy: "水代",
   shippingFeeJpy: "配送料",
   electricityFeeJpy: "電気代",
+  serverRentalFeeJpy: "サーバーレンタル料",
   assessedJpy: "査定額",
   outboundShippingJpy: "発送時の送料",
   returnShippingJpy: "返送料",

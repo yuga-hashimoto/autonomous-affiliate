@@ -64,6 +64,8 @@ const FEE_PATTERNS = {
   initial: { label: /(?:初回|登録|初期|契約)[^。、:：]{0,8}(?:手数料|費用)/g, skip: /設置/ },
   // The contract termination fee, not any sentence that says 解約 (a pause ends in 強制解約).
   cancellation: { label: /契約解除料|解約金|解約料|違約金|解除料/g },
+  // The server's own monthly rental ("サーバーレンタル料 無料"); "レンタル無料" without 料 names no figure.
+  rental: { label: /レンタル(?:料|費用)/g },
 } as const satisfies Record<string, { label: RegExp; skip?: RegExp }>;
 type FeeKey = keyof typeof FEE_PATTERNS;
 const FEE_KEYS = Object.keys(FEE_PATTERNS) as FeeKey[];
@@ -82,12 +84,22 @@ function feeKeysOf(text: string): FeeKey[] {
 const MAX_CLAUSE_CHARS = 80;
 
 /**
+ * Labels of the other things a price card or comparison row carries (the water charge,
+ * the minimum term). A fee's figure ends where one of them begins: after "レンタル料 無料"
+ * comes "天然水の料金 3,880円", which is the water charge, not the rental.
+ */
+const FIELD_LABELS = /天然水の料金|水の料金|お水の料金|お水代|水代|最低利用期間|最低契約期間|契約期間/g;
+
+/**
  * The words after each mention of the fee, up to the end of the sentence, a "※" note,
- * a surcharge, the next fee's name or 80 characters.
+ * a surcharge, the next fee's or field's name or 80 characters.
  */
 function clausesOf(text: string, key: FeeKey): string[] {
   const t = norm(text);
-  const starts = FEE_KEYS.flatMap((other) => labelHits(t, other).map((hit) => hit.index));
+  const starts = [
+    ...FEE_KEYS.flatMap((other) => labelHits(t, other).map((hit) => hit.index)),
+    ...[...t.matchAll(FIELD_LABELS)].map((hit) => hit.index),
+  ];
   return labelHits(t, key).map((hit) => {
     const from = hit.index;
     const after = from + hit[0].length;
@@ -95,6 +107,16 @@ function clausesOf(text: string, key: FeeKey): string[] {
     const ends = [t.length, from + MAX_CLAUSE_CHARS, ...starts.filter((start) => start > from), ...(stop >= 0 ? [after + stop] : [])];
     return t.slice(from, Math.min(...ends));
   });
+}
+
+/**
+ * The text without the server rental's own words. A price card carries the rental
+ * ("サーバーレンタル料 無料") beside the water charge and the term; with the rental's
+ * words taken out, the rest can still be read for those.
+ */
+function withoutRental(text: string): string {
+  const t = norm(text);
+  return clausesOf(t, "rental").reduce((rest, clause) => rest.replace(clause, " "), t);
 }
 
 /** An eco-mode figure in brackets is another way of using the product, not the figure. */
@@ -174,7 +196,7 @@ const sameLiters = (a: number, b: number): boolean => Math.abs(a - b) < 1e-9;
 
 /** The monthly charge a fact states for `monthlyLiters`: a set price (12.5L×2本) or a bottle price scaled up. */
 function waterCandidate(text: string, monthlyLiters: number): WaterCandidate | undefined {
-  const t = norm(text);
+  const t = withoutRental(text);
   if (feeKeysOf(t).length > 0) return undefined;
   const amounts = yenAmounts(t);
   if (amounts.length !== 1) return undefined;
@@ -211,7 +233,7 @@ function readWater(tiers: readonly Tier[], monthlyLiters: number): Read<WaterCan
 function readTermMonths(tiers: readonly Tier[]): Read<number> {
   for (const tier of tiers) {
     const months = tier.flatMap((fact) => {
-      const t = norm(fact.text);
+      const t = withoutRental(fact.text);
       if (feeKeysOf(t).length > 0 || !/最低利用期間|最低契約期間|契約期間/.test(t)) return [];
       // A row that lists several plans ("3年 5年") does not say which belongs to this one.
       const terms = [...new Set([...t.matchAll(/(\d+)\s*(年|ヶ月|か月|カ月)/g)].map((m) => Number(m[1]) * (m[2] === "年" ? 12 : 1)))];
@@ -230,6 +252,7 @@ const FIELD_NAME: Record<FeeKey | "water" | "term", string> = {
   electricity: "電気代",
   initial: "初回費用",
   cancellation: "解約金",
+  rental: "サーバーレンタル料",
   water: "水代",
   term: "最低利用期間",
 };
@@ -238,8 +261,9 @@ type DraftEntry = { ok: true; entry: CalculatorEntry } | { ok: false; issues: st
 
 /**
  * Builds the water calculator entry. Required: the monthly charge for the stated
- * volume, shipping, electricity and the initial fee (an unknown one makes the
- * total UNKNOWN, which QA refuses). Optional: the cancellation fee (UNKNOWN is
+ * volume, shipping, electricity, the server rental and the initial fee (an unknown
+ * one makes the total UNKNOWN, which QA refuses; a rental left out would make the
+ * total look lower than it is). Optional: the cancellation fee (UNKNOWN is
  * shown to readers) and the minimum term (left out when no fact states it).
  */
 export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSourceIds: ReadonlySet<string>): DraftEntry {
@@ -257,9 +281,9 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
   if (water.kind === "conflict") issues.push(`${FIELD_NAME.water}: ${water.detail}`);
 
   const fees = Object.fromEntries(
-    (["shipping", "electricity", "initial", "cancellation"] as const).map((key) => [key, readFee(key, tiers)]),
+    (["shipping", "electricity", "initial", "rental", "cancellation"] as const).map((key) => [key, readFee(key, tiers)]),
   ) as Record<FeeKey, Read<{ amount: number; facts: Fact[]; clauses: string[] }>>;
-  for (const key of ["shipping", "electricity", "initial"] as const) {
+  for (const key of ["shipping", "electricity", "rental", "initial"] as const) {
     const read = fees[key];
     if (read.kind === "none") missing(FIELD_NAME[key]);
     if (read.kind === "conflict") conflicting(FIELD_NAME[key], read.detail);
@@ -269,7 +293,14 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
   const term = readTermMonths(selected(draft.planTerms, facts, tiers));
   if (term.kind === "conflict") conflicting(FIELD_NAME.term, term.detail);
 
-  if (issues.length > 0 || water.kind !== "value" || fees.shipping.kind !== "value" || fees.electricity.kind !== "value" || fees.initial.kind !== "value") {
+  if (
+    issues.length > 0 ||
+    water.kind !== "value" ||
+    fees.shipping.kind !== "value" ||
+    fees.electricity.kind !== "value" ||
+    fees.rental.kind !== "value" ||
+    fees.initial.kind !== "value"
+  ) {
     return { ok: false, issues };
   }
 
@@ -282,6 +313,7 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
     waterChargeJpy: water.value.monthlyJpy,
     shippingFeeJpy: fees.shipping.value.amount,
     electricityFeeJpy: fees.electricity.value.amount,
+    serverRentalFeeJpy: fees.rental.value.amount,
     months: draft.months,
     initialFeeJpy: fees.initial.value.amount,
     cancellationFeeJpy: fees.cancellation.kind === "value" ? fees.cancellation.value.amount : "UNKNOWN",
