@@ -1,3 +1,4 @@
+import { registrableHost, restrictionReasons, slugForHost } from "@aff/agents";
 import { classifyProgramStatus, programIdOf, verticalOf, type RawProgramRow } from "./a8-programs.js";
 import { rowMatchesKeyword } from "./a8-sync.js";
 import { isNotPartneredDetail } from "./a8-apply.js";
@@ -58,18 +59,6 @@ export function candidatesFromRows(
 
 // ---- the program's own rules ----
 
-const SENTENCE_END = /[。\n]/;
-const PROHIBITION = /(禁止|不可|NG|ＮＧ|ご遠慮|お断り|できません|認めて(い)?ません|不許可|不承認)/;
-/** What a comparison article does; a rule against any of it makes the program unusable for one. */
-const RESTRICTED_TOPICS: readonly (readonly [string, RegExp])[] = [
-  ["comparison", /比較/],
-  ["ranking", /ランキング|最安/],
-  ["price", /価格|料金|金額|費用/],
-];
-/** A rule about buying search ads is not a rule about the page. */
-const SEARCH_AD_RULE = /リスティング|PPC|検索連動|入札|出稿|キーワード/;
-const OVER = /プログラム終了|掲載終了|提携終了|募集終了|停止中/;
-
 export interface ProgramGate {
   ok: boolean;
   reasons: string[];
@@ -77,40 +66,13 @@ export interface ProgramGate {
 
 /** Whether the program's rules, as the console shows them, leave room for an article that compares prices. */
 export function programGate(detailText: string): ProgramGate {
-  const reasons = new Set<string>();
-  if (OVER.test(detailText)) reasons.add("program_over");
-  for (const sentence of detailText.split(SENTENCE_END)) {
-    if (!PROHIBITION.test(sentence) || SEARCH_AD_RULE.test(sentence)) continue;
-    for (const [topic, pattern] of RESTRICTED_TOPICS) if (pattern.test(sentence)) reasons.add(`restricted_${topic}`);
-  }
-  return { ok: reasons.size === 0, reasons: [...reasons] };
+  const reasons = restrictionReasons(detailText);
+  return { ok: reasons.length === 0, reasons };
 }
 
 // ---- the advertiser's site ----
 
-const TWO_PART_SUFFIXES = new Set(["co.jp", "or.jp", "ne.jp", "ac.jp", "go.jp", "ed.jp", "gr.jp", "ad.jp", "lg.jp", "com.au", "co.uk"]);
-const HOST_LABEL = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
-
-/** The site's own name: the host without `www.` and subdomains. Nothing for an IP address or a single-label name. */
-export function registrableHost(host: string): string | undefined {
-  const labels = host.trim().toLowerCase().replace(/\.$/, "").split(".");
-  if (labels.length < 2 || !labels.every((label) => HOST_LABEL.test(label))) return undefined;
-  if (labels.every((label) => /^\d+$/.test(label))) return undefined;
-  const lastTwo = labels.slice(-2).join(".");
-  const take = TWO_PART_SUFFIXES.has(lastTwo) ? 3 : 2;
-  return labels.slice(-take).join(".");
-}
-
-const SLUG_MAX = 32;
-
-/** A short ascii slug from the site's name (`cosmo-water.com` -> `cosmo-water`). */
-export function slugForHost(registrable: string): string | undefined {
-  const labels = registrable.split(".");
-  const take = TWO_PART_SUFFIXES.has(labels.slice(-2).join(".")) ? 2 : 1;
-  const name = labels.slice(0, labels.length - take).at(-1);
-  if (!name || name.startsWith("xn--") || name.length > SLUG_MAX) return undefined;
-  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) ? name : undefined;
-}
+export { registrableHost, slugForHost };
 
 /** Addresses on a page that are not the advertiser's: the ASP itself and the usual social and media sites. */
 const NOT_THE_ADVERTISER = [

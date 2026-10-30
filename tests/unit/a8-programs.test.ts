@@ -333,3 +333,23 @@ describe("renderProbe", () => {
     expect(renderProbe(wide).length).toBeLessThanOrEqual(601);
   });
 });
+
+describe("renderProbe strict mode", () => {
+  const node = (tag: string, text: string, children: ProbeNode[] = [], cls: string[] = []): ProbeNode => ({ tag, cls, text, children });
+
+  it("prints interface wording and masks links, items and headings", () => {
+    const tree = node("main", "", [
+      node("h3", "広告主の名前"),
+      node("th", "成果条件"),
+      node("button", "提携申請をする"),
+      node("ul", "", [node("li", "秘密の語"), { ...node("a", "アクアなんとか"), href: "/program/search/keyword?keywords=x" }]),
+    ]);
+    const lines = renderProbe(tree, { strict: true }).join("\n");
+    expect(lines).toContain('th "成果条件"');
+    expect(lines).toContain('button "提携申請をする"');
+    expect(lines).not.toContain("広告主の名前");
+    expect(lines).not.toContain("秘密の語");
+    expect(lines).not.toContain("アクアなんとか");
+    expect(renderProbe(tree).join("\n")).toContain("アクアなんとか");
+  });
+});

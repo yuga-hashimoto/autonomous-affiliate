@@ -70,6 +70,7 @@ describe("readCandidates and summarize", () => {
       joined: 0,
       read: 3,
       passed: 2,
+      signals: { readable: 0, withProhibition: 1, mentions: { comparison: 2 } },
       rejected: { restricted_comparison: 1 },
       sites: { labeled_link: 1, none: 1 },
     });

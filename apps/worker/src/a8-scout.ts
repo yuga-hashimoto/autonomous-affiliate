@@ -1,4 +1,5 @@
 import type { Page } from "playwright";
+import { ruleSignals } from "@aff/agents";
 import { withA8Session, type A8SmokeResult } from "./a8-login.js";
 import { openProgramPage, searchFor } from "./a8-inspect.js";
 import {
@@ -63,7 +64,12 @@ export interface ReadCandidate {
   candidate: ScoutCandidate;
   gate: ProgramGate;
   site: SiteHost;
+  /** What the page was about, as counts: whether the rules had anything to find. */
+  signals: { chars: number; prohibitions: number; topics: string[] };
 }
+
+/** A page with less text than this was probably not read. */
+const READABLE_CHARS = 300;
 
 export interface ScoutConsole {
   search(keyword: string): Promise<{ state: ListState; rows: RawProgramRow[] }>;
@@ -82,6 +88,8 @@ export interface ScoutReport {
   /** Detail pages read (the rest wait for another run). */
   read?: number;
   passed?: number;
+  /** Detail pages that had text (`readable`), mentioned a rule against something (`withProhibition`), and the topics they mention (`mentions`). */
+  signals?: { readable: number; withProhibition: number; mentions: Record<string, number> };
   /** Rejected candidates by reason: no names. */
   rejected?: Record<string, number>;
   /** Passed candidates by how their site was found. */
@@ -96,6 +104,7 @@ const tally = (labels: readonly string[]): Record<string, number> =>
 export async function gatherCandidates(
   console: ScoutConsole,
   configuredKeywords: readonly string[],
+  skipProgramIds: ReadonlySet<string> = new Set(),
 ): Promise<{ searches: number; cards: number; candidates: ScoutCandidate[]; unrecognized: boolean }> {
   const cards = new Map<string, RawProgramRow>();
   const candidates = new Map<string, ScoutCandidate>();
@@ -108,7 +117,7 @@ export async function gatherCandidates(
       if (found.state === "unrecognized") unrecognized = true;
       for (const row of found.rows) if (!cards.has(row.programId)) cards.set(row.programId, row);
       for (const candidate of candidatesFromRows(found.rows, verticalId, configuredKeywords)) {
-        if (!candidates.has(candidate.programId)) candidates.set(candidate.programId, candidate);
+        if (!candidates.has(candidate.programId) && !skipProgramIds.has(candidate.programId)) candidates.set(candidate.programId, candidate);
       }
     }
   }
@@ -120,7 +129,13 @@ export async function readCandidates(console: ScoutConsole, candidates: readonly
   const read: ReadCandidate[] = [];
   for (const candidate of candidates.slice(0, MAX_DETAIL_READS)) {
     const page = await console.detail(candidate);
-    read.push({ candidate, gate: programGate(page.text), site: siteHostFromDetail(page) });
+    const signals = ruleSignals(page.text);
+    read.push({
+      candidate,
+      gate: programGate(page.text),
+      site: siteHostFromDetail(page),
+      signals: { chars: page.text.length, ...signals },
+    });
   }
   return read;
 }
@@ -137,12 +152,17 @@ export function summarize(
     joined: gathered.candidates.filter((candidate) => candidate.joined).length,
     read: read.length,
     passed: passed.length,
+    signals: {
+      readable: read.filter((entry) => entry.signals.chars >= READABLE_CHARS).length,
+      withProhibition: read.filter((entry) => entry.signals.prohibitions > 0).length,
+      mentions: tally(read.flatMap((entry) => entry.signals.topics)),
+    },
     rejected: tally(read.flatMap((entry) => entry.gate.reasons)),
     sites: tally(passed.map((entry) => entry.site.via)),
   };
 }
 
-function consoleOver(page: Page): ScoutConsole {
+export function scoutConsoleOver(page: Page): ScoutConsole {
   return {
     async search(keyword) {
       const found = await searchFor(page, keyword);
@@ -161,7 +181,7 @@ export async function runA8Scout(
   configuredKeywords: readonly string[],
 ): Promise<ScoutReport> {
   const { login, value } = await withA8Session(env, async (page) => {
-    const console = consoleOver(page);
+    const console = scoutConsoleOver(page);
     const gathered = await gatherCandidates(console, configuredKeywords);
     if (gathered.unrecognized) return { gathered, read: [] as ReadCandidate[], probe: undefined as string[] | undefined };
     const read = await readCandidates(console, gathered.candidates);
@@ -170,7 +190,7 @@ export async function runA8Scout(
     let probe: string[] | undefined;
     if (env.A8_PROBE === "1" && first) {
       await openProgramPage(page, first.detailPath);
-      probe = renderProbe((await page.evaluate(DUMP_TREE)) as ProbeNode, { redact: [first.name] });
+      probe = renderProbe((await page.evaluate(DUMP_TREE)) as ProbeNode, { redact: [first.name], strict: true });
     }
     return { gathered, read, probe };
   });

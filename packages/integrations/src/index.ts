@@ -1,3 +1,4 @@
+export * from "./html-links.js";
 export * from "./fetcher.js";
 export * from "./openrouter-image.js";
 export * from "./html-text.js";

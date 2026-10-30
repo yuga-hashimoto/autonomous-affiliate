@@ -33,6 +33,8 @@ import type {
   OfferRepository,
   Repository,
   SerpRepository,
+  ScoutRepository,
+  ScoutedBrand,
   SourceRepository,
   SpendRepository,
 } from "./repository.js";
@@ -466,6 +468,23 @@ class MemorySerpRepository implements SerpRepository {
   }
 }
 
+class MemoryScoutRepository implements ScoutRepository {
+  private readonly brands = new Map<string, ScoutedBrand>();
+
+  async get(programId: string): Promise<ScoutedBrand | undefined> {
+    const found = this.brands.get(programId);
+    return found ? structuredClone(found) : undefined;
+  }
+
+  async list(): Promise<ScoutedBrand[]> {
+    return [...this.brands.values()].map((brand) => structuredClone(brand)).sort((a, b) => a.programId.localeCompare(b.programId));
+  }
+
+  async upsert(brand: ScoutedBrand): Promise<void> {
+    this.brands.set(brand.programId, structuredClone(brand));
+  }
+}
+
 export function createMemoryRepository(): Repository {
   return {
     jobs: new MemoryJobRunRepository(),
@@ -480,5 +499,6 @@ export function createMemoryRepository(): Repository {
     audit: new MemoryAuditRepository(),
     serp: new MemorySerpRepository(),
     publications: new MemoryPublicationRepository(),
+    scout: new MemoryScoutRepository(),
   };
 }

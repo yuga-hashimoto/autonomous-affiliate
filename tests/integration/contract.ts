@@ -165,6 +165,37 @@ export function repositoryContract(
       expect(await repo.offers.hasProgramTrackingUrl("trk-prog")).toBe(false);
     });
 
+    it("scouted advertisers are stored by program and replaced on the same program", async () => {
+      const repo = await makeRepo();
+      expect(await repo.scout.list()).toEqual([]);
+      expect(await repo.scout.get("s0001")).toBeUndefined();
+      const brand = {
+        programId: "s0001",
+        brandSlug: "brand-a",
+        state: "vetted" as const,
+        keyword: "ブランドA",
+        host: "brand-a.com",
+        brandName: "ブランドA",
+        termsUrl: "https://brand-a.com/affiliate/",
+        termsSha256: "a".repeat(64),
+        listUrls: ["https://brand-a.com/price/"],
+        sourceUrls: ["https://brand-a.com/price/"],
+        reasons: [],
+        checkedAt: "2026-10-30T00:00:00.000Z",
+      };
+      await repo.scout.upsert(brand);
+      await repo.scout.upsert({ ...brand, programId: "s0002", brandSlug: "brand-b", state: "rejected", reasons: ["robots_disallow"], listUrls: [], sourceUrls: [] });
+      expect(await repo.scout.get("s0001")).toEqual(brand);
+      await repo.scout.upsert({ ...brand, state: "active" });
+      const all = await repo.scout.list();
+      expect(all.map((entry) => [entry.programId, entry.state])).toEqual([
+        ["s0001", "active"],
+        ["s0002", "rejected"],
+      ]);
+      expect(all[1]?.reasons).toEqual(["robots_disallow"]);
+      expect(all[1]?.termsUrl).toBe("https://brand-a.com/affiliate/");
+    });
+
     it("spend accumulates per day+category+provider+source and sums by month", async () => {
       const repo = await makeRepo();
       await repo.spend.recordSpend({
