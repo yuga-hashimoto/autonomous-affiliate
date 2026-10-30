@@ -1,0 +1,47 @@
+name: a8-scout
+
+# Manual, read-only: logs in to the A8 console, searches for advertisers of the verticals the content
+# path can write about (docs/21) and reads the detail page of those the daily run does not cover.
+# It applies to nothing and stores nothing.
+#
+# The repository and this log are public and A8's terms forbid publishing member-only details
+# (program names, conditions, rewards). So the output is counts: searches, cards, candidates, how
+# many passed the rules and why the others did not, and how each passed program's site was found.
+# `structure` prints the first detail page's structure with all content masked.
+on:
+  workflow_dispatch:
+    inputs:
+      structure:
+        description: Also print the first detail page's structure (content masked)
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+# Shares the group with the other A8 workflows: never two logins at once.
+concurrency:
+  group: a8-login
+  cancel-in-progress: false
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: a8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Look for new advertisers
+        run: pnpm tsx apps/worker/src/index.ts a8-scout --a8-programs config/a8-programs.json
+        env:
+          A8_BROWSER_CHANNEL: chrome
+          A8_PROBE: ${{ inputs.structure && '1' || '0' }}
+          A8_LOGIN_ID: ${{ secrets.A8_LOGIN_ID }}
+          A8_LOGIN_PASSWORD: ${{ secrets.A8_LOGIN_PASSWORD }}
