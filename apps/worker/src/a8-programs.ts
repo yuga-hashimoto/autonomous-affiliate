@@ -211,6 +211,7 @@ const LABEL_TAGS = new Set(["th", "dt", "button", "label", "option"]);
 /** Headings are labels too, but one inside a program's card is its name, and a long one could be a name, so: never in a card, and a shorter limit elsewhere. */
 const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "caption", "summary", "legend"]);
 const PROBE_HEADING_MAX = 20;
+const PROBE_AREA_TEXT_MAX = 80;
 /** A select with this in its name lists the account's own sites; those names are account details. */
 const SITE_SELECT = /site/i;
 /** The only words printed from masked text, so a status vocabulary can be learned. */
@@ -249,6 +250,8 @@ function statusWordsIn(text: string): string {
 interface DescribeContext {
   /** Inside a select of the account's sites: option text is not printed. */
   maskOptions: boolean;
+  /** Inside an area the caller knows to hold interface wording (hints, tab names): its text is printed. */
+  labelArea: boolean;
 }
 
 function describeNode(node: ProbeNode, masked: boolean, context: DescribeContext): string {
@@ -266,7 +269,8 @@ function describeNode(node: ProbeNode, masked: boolean, context: DescribeContext
   if (text) {
     const isLabel =
       (LABEL_TAGS.has(node.tag) && text.length <= PROBE_LABEL_MAX && !(node.tag === "option" && context.maskOptions)) ||
-      (HEADING_TAGS.has(node.tag) && text.length <= PROBE_HEADING_MAX && !masked);
+      (HEADING_TAGS.has(node.tag) && text.length <= PROBE_HEADING_MAX && !masked) ||
+      (context.labelArea && text.length <= PROBE_AREA_TEXT_MAX);
     const isShortOutsideRows = !masked && SHORT_TEXT_TAGS.has(node.tag) && text.length <= PROBE_SHORT_TEXT_MAX;
     // Long digit strings (ids, numbers) are never printed, even in a label.
     parts.push(isLabel || isShortOutsideRows ? ` "${text.replace(/\d{5,}/g, "#")}"` : ` T${text.length}${statusWordsIn(text)}`);
@@ -277,6 +281,11 @@ function describeNode(node: ProbeNode, masked: boolean, context: DescribeContext
 export interface RenderProbeOptions {
   /** Terms that must not appear in the output, such as the program name searched for. */
   redact?: readonly string[];
+  /**
+   * Class names of containers that hold interface wording only (form hints, tab names). The text under
+   * them is printed (short, long digit strings still masked); everything else stays masked.
+   */
+  labelAreas?: readonly string[];
 }
 
 function redactTerms(line: string, terms: readonly string[]): string {
@@ -298,17 +307,19 @@ export function renderProbe(root: ProbeNode, options: RenderProbeOptions = {}): 
   const lines: string[] = [];
   let truncated = false;
 
-  const visit = (node: ProbeNode, depth: number, insideRow: boolean, maskOptions: boolean): void => {
+  const areas = options.labelAreas ?? [];
+  const visit = (node: ProbeNode, depth: number, insideRow: boolean, maskOptions: boolean, inArea: boolean): void => {
     if (lines.length >= PROBE_MAX_LINES) {
       truncated = true;
       return;
     }
     const masked = insideRow || node.tag === "td" || memo.get(node)?.size === 1;
     const siteSelect = maskOptions || (node.tag === "select" && SITE_SELECT.test(node.name ?? ""));
-    lines.push(`${"  ".repeat(Math.min(depth, 12))}${redactTerms(describeNode(node, masked, { maskOptions: siteSelect }), terms)}`);
-    for (const child of node.children) visit(child, depth + 1, masked, siteSelect);
+    const labelArea = inArea || node.cls.some((name) => areas.includes(name));
+    lines.push(`${"  ".repeat(Math.min(depth, 12))}${redactTerms(describeNode(node, masked, { maskOptions: siteSelect, labelArea }), terms)}`);
+    for (const child of node.children) visit(child, depth + 1, masked, siteSelect, labelArea);
   };
-  visit(root, 0, false, false);
+  visit(root, 0, false, false, false);
   if (truncated) lines.push("…(truncated)");
   return lines;
 }

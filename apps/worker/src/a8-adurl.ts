@@ -82,7 +82,13 @@ export interface AdUrlProbeReport {
   after?: { page: string; navigated: boolean; popup: boolean; changed: number };
   /** Masked structure of the dialog or page the button opened. */
   probe?: string[];
+  /** The same after the page's second tab is opened (a tab switch only; nothing in it is pressed or filled). */
+  secondTab?: string[];
 }
+
+/** Containers of the management page that hold interface wording only: form hints, tab names, headings, the "none yet" notice. */
+const LABEL_AREAS = ["annotationList", "tab", "tabOn", "tabOff", "notExist", "h1", "h2"];
+const SECOND_TAB = "ul.tab a.tabOff";
 
 /** Logs in and opens the ad-URL management of the joined program that mentions the keyword. Changes nothing. */
 export async function runA8AdUrlProbe(env: NodeJS.ProcessEnv): Promise<AdUrlProbeReport> {
@@ -111,12 +117,22 @@ export async function runA8AdUrlProbe(env: NodeJS.ProcessEnv): Promise<AdUrlProb
       return { outcome: "unrecognized", reason: "the button opened a page outside the console", partnered, after: { page: hrefShape(popup.url()), navigated: false, popup: true, changed: 0 } };
     }
     const { changed, tree } = (await target.evaluate(DUMP_CHANGES_OR_MAIN)) as { changed: number; tree: ProbeNode };
-    return {
+    const render = (root: ProbeNode): string[] => renderProbe(root, { redact: [keyword, siteName], labelAreas: LABEL_AREAS });
+    const report: AdUrlProbeReport = {
       outcome: "ok",
       partnered,
       after: { page: hrefShape(target.url()), navigated: target.url() !== before, popup: popup !== undefined, changed },
-      probe: renderProbe(tree, { redact: [keyword, siteName] }),
+      probe: render(tree),
     };
+    // The other tab is only looked at: opening it switches the view and sends nothing.
+    const tab = target.locator(SECOND_TAB);
+    if ((await tab.count()) === 1) {
+      await target.evaluate(MARK_SEEN);
+      await tab.click();
+      await settlePage(target);
+      report.secondTab = render(((await target.evaluate(DUMP_CHANGES_OR_MAIN)) as { tree: ProbeNode }).tree);
+    }
+    return report;
   });
   return value ? value : { outcome: "login_failed", login };
 }
