@@ -24,7 +24,7 @@ const MAX_RULE_PAGES = 2;
 const FETCH_TIMEOUT_MS = 15_000;
 
 /** Reasons that say "not now" rather than "not this site": a caller may look again soon. */
-export const TRANSIENT_REASONS: ReadonlySet<string> = new Set(["site_unreachable", "no_lister", "listing_failed", "page_unreadable"]);
+export const TRANSIENT_REASONS: ReadonlySet<string> = new Set(["site_unreachable", "no_lister", "listing_failed", "page_unreadable", "vet_timeout"]);
 
 export interface VetCandidate {
   /** The advertiser's name as the console shows it. */

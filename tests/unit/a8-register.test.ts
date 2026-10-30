@@ -85,6 +85,14 @@ describe("registerCandidates", () => {
     expect((await repo.scout.get("s0002"))?.reasons).toEqual(["terms_ban_automation"]);
   });
 
+  it("gives up on a site that takes too long, to look again tomorrow, and on one that throws", async () => {
+    const { repo, deps } = setup((candidate) => (candidate.host === "slow.com" ? new Promise<VetResult>(() => undefined) : Promise.reject(new Error("boom"))));
+    const counts = await registerCandidates([passed("s0001", "A社", "slow.com"), passed("s0002", "B社", "broken.com")], { ...deps, vetTimeoutMs: 20 });
+    expect(counts).toEqual({ retry_later: 2 });
+    expect((await repo.scout.get("s0001"))?.reasons).toEqual(["vet_timeout"]);
+    expect((await repo.scout.get("s0002"))?.reasons).toEqual(["site_unreachable"]);
+  });
+
   it("does not judge a page that came back almost empty", async () => {
     const { repo, deps, vetted } = setup();
     const empty = { ...passed("s0001", "A社", "a-site.com"), signals: { chars: 20, prohibitions: 0, topics: [] } };

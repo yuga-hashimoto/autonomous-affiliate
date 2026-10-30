@@ -20,6 +20,24 @@ export interface RegisterDeps {
   maxVets: number;
   /** Advertisers in use (registered or joined) at the most. */
   maxRegistered: number;
+  /** Time allowed for looking at one site; the model reads several pages, and a slow day must not eat the run. */
+  vetTimeoutMs?: number;
+}
+
+export const DEFAULT_VET_TIMEOUT_MS = 240_000;
+
+async function vetWithin(vet: RegisterDeps["vet"], candidate: VetCandidate, timeoutMs: number): Promise<VetResult> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<VetResult>((resolve) => {
+    timer = setTimeout(() => resolve({ ok: false, reasons: ["vet_timeout"] }), timeoutMs);
+  });
+  try {
+    return await Promise.race([vet(candidate), timeout]);
+  } catch {
+    return { ok: false, reasons: ["site_unreachable"] };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const tally = (labels: readonly string[]): Record<string, number> =>
@@ -80,7 +98,7 @@ export async function registerCandidates(read: readonly ReadCandidate[], deps: R
       continue;
     }
     vets += 1;
-    const result = await deps.vet({ name: candidate.name, host: site.host, brandSlug });
+    const result = await vetWithin(deps.vet, { name: candidate.name, host: site.host, brandSlug }, deps.vetTimeoutMs ?? DEFAULT_VET_TIMEOUT_MS);
     if (!result.ok) {
       labels.push(await refuse(entry, result.reasons));
       continue;

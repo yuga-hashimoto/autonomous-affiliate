@@ -28,7 +28,7 @@ jobs:
   live:
     if: ${{ vars.LIVE_AUTOMATION_ENABLED == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 50
     # The A8 console login (docs/20) lives in this environment (main branch only). Only the
     # "Keep the A8 programs in step" step names those secrets.
     environment: a8
@@ -72,6 +72,7 @@ jobs:
           printf '%s' "$LIVE_POLICY_YAML" > config/policy.live.yaml
           printf '%s' "$LIVE_PLANS_JSON" > config/plans.live.json
       - name: Keep the A8 programs in step (joins, ad links; counts only in this public log)
+        timeout-minutes: 15
         # A failed sync never stops the articles: offers whose program cannot be confirmed
         # are switched off by the pipeline and the articles go out without a link.
         continue-on-error: true
