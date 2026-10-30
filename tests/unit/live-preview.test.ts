@@ -363,3 +363,136 @@ describe("a brief-only plan in the live pipeline worker", () => {
     expect(result.results[0]).toMatchObject({ finalState: "QUARANTINED", publishReason: "plan_draft_failed" });
   });
 });
+
+describe("discovered plans in the live pipeline worker", () => {
+  const policyPath = path.join(TMP, "discover-policy.yaml");
+  const plansPath = path.join(TMP, "discover-plans.json");
+  const discoverPath = path.join(TMP, "discover.json");
+  const LIST_URL = "https://sim-a.example.com/water-price";
+  const LIST_PAGE = `<html><head><title>ウォーターA</title></head><body>
+    <div>選べるウォーターサーバー</div><div>モデルX</div><div>モデルY</div>
+    <div>月12.5L×2本ご利用の場合</div><div>3,880円/月</div><div>(税込4,190円)</div><div>サーバーレンタル料</div><div>無料</div><div>モデルX</div>
+    <div>採水工場より送料無料で配送いたします。</div>
+    <div>初回登録事務手数料：3,300円（税込）</div>
+    <div>モデルX</div><div>月額電気料金</div><div>通常使用時 約669円</div>
+    <div>※ 温水・冷水ともに、各600cc/日、36L/月使用時、27円/kwhとして算出。</div>
+    <div>プランP</div><div>最低利用期間：5年</div>
+    <div>モデルY</div>
+  </body></html>`;
+  const QUOTES = [
+    "月12.5L×2本ご利用の場合 3,880円/月 (税込4,190円) サーバーレンタル料 無料 モデルX",
+    "採水工場より送料無料で配送いたします。",
+    "初回登録事務手数料：3,300円（税込）",
+    "モデルX 月額電気料金 通常使用時 約669円",
+    "36L/月使用時、27円/kwhとして算出。",
+    "プランP 最低利用期間：5年",
+  ];
+  const source = {
+    verticalId: "water_delivery",
+    brandSlug: "water-a",
+    brandName: "ウォーターA",
+    planName: "プランP",
+    listUrls: [LIST_URL],
+  };
+  const listed: string[][] = [];
+  const seams = {
+    fetcher: new MapFetcher(new Map([[LIST_URL, { body: LIST_PAGE }]])),
+    extractor: new FixtureFactExtractor(),
+    quoteSelector: {
+      async select() {
+        return QUOTES;
+      },
+    },
+    planLister: {
+      async list(request: { brand: string; window: string }) {
+        listed.push([request.brand]);
+        return ["モデルX", "モデルY"];
+      },
+    },
+  };
+
+  beforeAll(async () => {
+    await mkdir(TMP, { recursive: true });
+    await rm(PREVIEW_DIR, { recursive: true, force: true });
+    const example = readFileSync(new URL("../../config/policy.live.example.yaml", import.meta.url), "utf8");
+    await writeFile(
+      policyPath,
+      example.replace("allowed_source_domains: []", "allowed_source_domains: [sim-a.example.com]"),
+      "utf8",
+    );
+    await writeFile(plansPath, JSON.stringify({ plans: [] }), "utf8");
+    await writeFile(discoverPath, JSON.stringify({ sources: [source] }), "utf8");
+  });
+
+  afterAll(async () => {
+    await rm(TMP, { recursive: true, force: true });
+    await rm(PREVIEW_DIR, { recursive: true, force: true });
+  });
+
+  it("makes plans from the page with no plan written by hand, and a server that cannot be drafted stops alone", async () => {
+    const result = await runLivePipeline(
+      { policyPath, outDir: ".tmp/unused", env: { ...LLM_ENV }, preview: true, discoverPath, ...seams },
+      plansPath,
+    );
+
+    expect(listed[0]).toEqual(["ウォーターA"]);
+    expect(result.discovery).toEqual({ sources: 1, found: 2, skipped: {} });
+    expect(result.results).toHaveLength(2);
+    const published = result.results.filter((r) => r.finalState === "PUBLISHED");
+    const stopped = result.results.filter((r) => r.finalState === "QUARANTINED");
+    expect(published).toHaveLength(1);
+    expect(published[0]).toMatchObject({ qaStatus: "PASS", slug: expect.stringMatching(/^water-a-.*-24month$/) });
+    expect(stopped).toHaveLength(1);
+    expect(stopped[0]).toMatchObject({ publishReason: "plan_draft_failed" });
+    const article = await readFile(path.join(PREVIEW_DIR, "content/articles", `${published[0]!.slug}.ja-JP.md`), "utf8");
+    expect(article).toContain("119,916");
+  });
+
+  it("does not need a plans file with plans when pages are discovered, but still needs one without discovery", async () => {
+    await expect(
+      runLivePipeline({ policyPath, outDir: ".tmp/unused", env: { ...LLM_ENV }, preview: true, ...seams }, plansPath),
+    ).rejects.toThrow(/no plans/);
+  });
+
+  it("stops before fetching anything when the discovery file is bad", async () => {
+    const bad = path.join(TMP, "bad-discover.json");
+    await writeFile(bad, JSON.stringify({ sources: [{ ...source, brandSlug: "Bad Slug" }] }), "utf8");
+    await expect(
+      runLivePipeline({ policyPath, outDir: ".tmp/unused", env: { ...LLM_ENV }, preview: true, discoverPath: bad, ...seams }, plansPath),
+    ).rejects.toThrow(/discovery file invalid/);
+  });
+
+  it("counts a source whose company is not allowed yet, and reads none of its pages", async () => {
+    const other = path.join(TMP, "other-discover.json");
+    await writeFile(
+      other,
+      JSON.stringify({ sources: [{ ...source, listUrls: ["https://other-company.example.org/price"] }] }),
+      "utf8",
+    );
+    const written = path.join(TMP, "written-plans.json");
+    await writeFile(written, JSON.stringify(PLANS), "utf8");
+    const fetched: string[] = [];
+    const result = await runLivePipeline(
+      {
+        policyPath,
+        outDir: ".tmp/unused",
+        env: { ...LLM_ENV },
+        preview: true,
+        discoverPath: other,
+        ...seams,
+        fetcher: {
+          async fetch(url) {
+            fetched.push(url);
+            return { status: 200, body: PAGE, contentType: "text/html", finalUrl: url };
+          },
+        },
+      },
+      written,
+    );
+
+    expect(result.discovery).toEqual({ sources: 1, found: 0, skipped: { domain_not_allowlisted: 1 } });
+    expect(result.results.map((r) => r.slug)).toEqual([SLUG]);
+    expect(fetched.every((url) => url === PAGE_URL)).toBe(true);
+    expect(JSON.stringify(result)).not.toContain("other-company");
+  });
+});

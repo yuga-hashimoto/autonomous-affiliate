@@ -28,8 +28,14 @@ import {
   growthPlan,
   FixtureFactExtractor,
   LlmFactExtractor,
+  LlmPlanLister,
   LlmQuoteSelector,
+  discoverPlans,
+  mergeDiscovered,
+  parseDiscoveryFile,
+  type DiscoverySummary,
   type FactExtractor,
+  type PlanLister,
   type QuoteSelector,
   type ArticlePlan,
   type HeldPlan,
@@ -74,6 +80,13 @@ export interface WorkerOptions {
   extractor?: FactExtractor;
   /** Replaces the LLM quote selector that drafts brief-only plans (tests). */
   quoteSelector?: QuoteSelector;
+  /** Replaces the LLM that names the services on a discovery source's page (tests). */
+  planLister?: PlanLister;
+  /**
+   * A discovery file (docs/19): official pages that list a company's services. The
+   * plans are made from them on every run and follow the plans of the plans file.
+   */
+  discoverPath?: string;
   /**
    * Names a change of the article generator (for example "figures-1"). Every live
    * article of the plans is regenerated once per revision (docs/04 "既存記事更新").
@@ -108,6 +121,8 @@ export interface PipelineRunResult {
    * `plans-status` lists them on the owner's machine.
    */
   held?: Partial<Record<HoldReason, number>>;
+  /** Plans made from discovery sources (docs/19), by count only for the same reason. */
+  discovery?: DiscoverySummary;
   results: {
     slug: string;
     finalState: string;
@@ -378,7 +393,12 @@ export async function runLivePipeline(
 
   // A plan whose domain is not allowed yet is held, not an error: the stock may be
   // ahead of the owner's terms checks, and it must not stop the live articles' updates.
-  const plans = await readPlans(plansPath);
+  const written = await readPlans(plansPath, { allowEmpty: options.discoverPath !== undefined });
+  // A bad discovery file stops the run here, before any page is fetched.
+  const discoverySources =
+    options.discoverPath === undefined
+      ? undefined
+      : parseDiscoveryFile(await readFile(resolveInputPath(options.discoverPath), "utf8"));
   // A plan kept as a brief takes its amounts from quotes of the official page (docs/18).
   const quoteSelector =
     options.quoteSelector ??
@@ -387,6 +407,25 @@ export async function runLivePipeline(
       maxCostJpy: policy.limits.max_job_cost_jpy,
       attempts: policy.limits.task_retry_attempts,
     });
+
+  const fetcher = options.fetcher ?? new HttpFetcher();
+  const discovered = discoverySources
+    ? await discoverPlans(discoverySources, {
+        repo,
+        policy,
+        clock,
+        fetcher,
+        lister:
+          options.planLister ??
+          new LlmPlanLister(gateway, {
+            timeoutMs: extractTimeoutMs(env),
+            maxCostJpy: policy.limits.max_job_cost_jpy,
+            attempts: policy.limits.task_retry_attempts,
+          }),
+      })
+    : undefined;
+  // The written plans come first and win on a slug; what the pages list follows, in the pages' order.
+  const plans = mergeDiscovered(written, discovered?.plans ?? []);
 
   const previewOnly = !policy.flags.publish_enabled;
   const livePreviewDir = join(ROOT, ".tmp/live-preview");
@@ -416,7 +455,7 @@ export async function runLivePipeline(
       repo,
       policy,
       logger,
-      fetcher: options.fetcher ?? new HttpFetcher(),
+      fetcher,
       extractor,
       quoteSelector,
       publisherIO: io,
@@ -449,13 +488,14 @@ export async function runLivePipeline(
     ...(refresh ? { refresh } : {}),
     results,
     held: countHeld(held),
+    ...(discovered ? { discovery: discovered.summary } : {}),
     llmCostJpy: Math.max(llmCostJpy, ledgerDelta),
   };
 }
 
-async function readPlans(plansPath: string): Promise<ArticlePlan[]> {
+async function readPlans(plansPath: string, options: { allowEmpty?: boolean } = {}): Promise<ArticlePlan[]> {
   const raw = JSON.parse(await readFile(resolveInputPath(plansPath), "utf8")) as PlansFile;
-  if (!Array.isArray(raw.plans) || raw.plans.length === 0) {
+  if (!Array.isArray(raw.plans) || (raw.plans.length === 0 && !options.allowEmpty)) {
     throw new Error(`plans file has no plans: ${plansPath}`);
   }
   return raw.plans;
@@ -703,6 +743,7 @@ if (isMain()) {
       out: { type: "string", default: ".tmp/preview" },
       month: { type: "string" },
       plans: { type: "string" },
+      discover: { type: "string" },
       live: { type: "boolean", default: false },
       preview: { type: "boolean", default: false },
       "template-revision": { type: "string" },
@@ -719,6 +760,9 @@ if (isMain()) {
   if (values["preview-update"] && !values.preview) {
     throw new Error("--preview-update only applies to a preview run (use it with --live --preview)");
   }
+  if (values.discover !== undefined && !values.live) {
+    throw new Error("--discover only applies to a live run (use it with --live)");
+  }
   if (values["template-revision"] !== undefined && !values.live) {
     throw new Error("--template-revision only applies to a live run (use it with --live)");
   }
@@ -727,6 +771,7 @@ if (isMain()) {
     outDir: values.out ?? ".tmp/preview",
     ...(values.preview ? { preview: true } : {}),
     ...(values["preview-update"] ? { previewUpdate: true } : {}),
+    ...(values.discover !== undefined ? { discoverPath: values.discover } : {}),
     ...(values["template-revision"] !== undefined ? { templateRevision: values["template-revision"] } : {}),
   };
   try {

@@ -75,6 +75,8 @@ jobs:
         run: |
           ARGS=()
           if [ -n "$TEMPLATE_REVISION" ]; then ARGS+=(--template-revision "$TEMPLATE_REVISION"); fi
+          # The plans of the pages that list a company's services (docs/19) follow the written plans.
+          if [ -f config/discovery.live.json ]; then ARGS+=(--discover config/discovery.live.json); fi
           pnpm tsx apps/worker/src/index.ts run-pipeline --live --policy config/policy.live.yaml --plans config/plans.live.json "${ARGS[@]}" > raw-output.txt
           cat raw-output.txt
       - name: Summarise new articles and updates
@@ -90,6 +92,8 @@ jobs:
               echo
               # Counts only: this log is public and the plans are private. `plans-status` names them locally.
               echo "Plans waiting (by reason): $(jq -r '(.held // {}) | to_entries | map("\(.key) \(.value)") | join(", ") | if . == "" then "none" else . end' result.json)"
+              echo
+              echo "Plans found on the listed pages: $(jq -r 'if .discovery then "\(.discovery.found) from \(.discovery.sources) source(s); skipped: \((.discovery.skipped | to_entries | map("\(.key) \(.value)") | join(", ")) | if . == "" then "none" else . end)" else "discovery is off" end' result.json)"
               echo
               echo "| article | action | update | state | QA | written |"
               echo "| --- | --- | --- | --- | --- | --- |"

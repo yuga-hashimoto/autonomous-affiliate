@@ -1,0 +1,15 @@
+{
+  "$comment": "Pages that list the services of an allowed company (docs/19). The plans are made from them on every live run. A source whose host is not in security.allowed_source_domains of the live policy is skipped without any request: add a company here only after the owner has checked its terms (docs/16, ADR-011).",
+  "sources": [
+    {
+      "verticalId": "water_delivery",
+      "brandSlug": "premium-water",
+      "brandName": "プレミアムウォーター",
+      "planName": "もっとPREMIUM",
+      "listUrls": ["https://premium-water.net/price/motto/"],
+      "sourceUrls": ["https://premium-water.net/price/motto/", "https://premium-water.net/price/"],
+      "months": 24,
+      "monthlyLiters": 25
+    }
+  ]
+}
