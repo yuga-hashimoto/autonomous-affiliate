@@ -136,7 +136,17 @@ function refused(reason: string, extra: Partial<ApplyReport> = {}): ApplyReport 
   return { outcome: "refused", reason, ...extra };
 }
 
-async function startApplication(page: Page, keyword: string, siteName: string): Promise<ApplyReport> {
+export interface ApplyOptions {
+  /** Refuse when more than one search result mentions the keyword, instead of taking the first. */
+  requireSingleMatch?: boolean;
+}
+
+export async function startApplication(
+  page: Page,
+  keyword: string,
+  siteName: string,
+  options: ApplyOptions = {},
+): Promise<ApplyReport> {
   const search = await searchFor(page, keyword);
   const state = listState({ rows: search.rows.length, noDataShown: search.noDataShown });
   const matches = search.rows.filter((row) => row.text.includes(keyword));
@@ -144,6 +154,9 @@ async function startApplication(page: Page, keyword: string, siteName: string): 
   if (state === "unrecognized") return { outcome: "unrecognized", reason: "the search results page was not understood", search: summary };
   const first = matches[0];
   if (!first) return { outcome: "not_found", reason: "no search result mentions the keyword", search: summary };
+  if (options.requireSingleMatch && matches.length > 1) {
+    return refused("more than one search result mentions the keyword", { search: summary });
+  }
   const detailPath = pickDetailPath(first);
   if (!detailPath) return { outcome: "unrecognized", reason: "the matching result has no detail link", search: summary };
   if (!isNotPartneredDetail(detailPath)) return refused("the program is already joined or has no application form", { search: summary });

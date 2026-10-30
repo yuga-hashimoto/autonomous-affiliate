@@ -317,6 +317,28 @@ class MemoryOfferRepository implements OfferRepository {
     return [...this.offers.values()].filter((o) => o.active && o.status === "APPROVED");
   }
 
+  private readonly trackingUrls = new Map<string, string>();
+
+  async setProgramTrackingUrl(programId: string, url: string | undefined): Promise<void> {
+    if (url === undefined) this.trackingUrls.delete(programId);
+    else this.trackingUrls.set(programId, url);
+  }
+
+  async hasProgramTrackingUrl(programId: string): Promise<boolean> {
+    return this.trackingUrls.has(programId);
+  }
+
+  async listOfferTrackingUrls(): Promise<Record<string, string>> {
+    const resolved: Record<string, string> = {};
+    for (const offer of this.offers.values()) {
+      const url = this.trackingUrls.get(offer.programId);
+      if (!url || !offer.active || offer.status !== "APPROVED" || !offer.channelPermissions.includes("site")) continue;
+      if (this.programs.get(offer.programId)?.status !== "APPROVED") continue;
+      resolved[offer.id] = url;
+    }
+    return resolved;
+  }
+
   async importConversion(conversion: Conversion): Promise<{ conversion: Conversion; created: boolean }> {
     if (conversion.externalEventId) {
       const key = `${conversion.programId}:${conversion.externalEventId}`;

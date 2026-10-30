@@ -257,3 +257,25 @@ describe("B011 Astro site (article template, disclosures, sponsored links, build
     expect(exists).toBe(false);
   });
 });
+
+describe("affiliate redirects written for a build (docs/20)", () => {
+  const GENERATED = path.join(ROOT, "content/go-offers.generated.json");
+  const OUT = path.join(ROOT, ".tmp/site-go-dist");
+  const LINK = "https://px.a8.net/svt/ejp?a8mat=3E2ETEST+AAAAAA+BBBBBB+CCCCCC";
+
+  afterAll(async () => {
+    await rm(GENERATED, { force: true });
+    await rm(OUT, { recursive: true, force: true });
+  });
+
+  it("builds /go/<offer> from the generated file next to the tracked placeholder, which stays empty", async () => {
+    await writeFile(GENERATED, JSON.stringify({ offers: { "offer-e2e-link": LINK } }), "utf8");
+    await build({ outDir: OUT });
+
+    const page = await readFile(path.join(OUT, "go", "offer-e2e-link"), "utf8");
+    expect(page).toContain(LINK);
+    // Only registered offers have a page: the placeholder adds none.
+    expect(await readdir(path.join(OUT, "go"))).toEqual(["offer-e2e-link"]);
+    expect(JSON.parse(await readFile(path.join(ROOT, "content/go-offers.json"), "utf8")).offers).toEqual({});
+  }, 240_000);
+});

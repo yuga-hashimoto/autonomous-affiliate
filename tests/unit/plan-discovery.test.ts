@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { titleRuleViolation, trademarkTermsOf } from "@aff/content";
 import { createMemoryRepository } from "@aff/db";
 import { parsePolicyText, type PolicyConfig } from "@aff/domain";
 import { type Fetcher } from "@aff/integrations";
@@ -186,6 +187,9 @@ describe("planForService", () => {
     });
     expect(plan.title).toContain("famfit2");
     expect(plan.title).toContain("24ヶ月");
+    // An advertiser's program terms can forbid its name at the start of the page title (docs/20).
+    expect(plan.title).toContain(source.brandName);
+    expect(titleRuleViolation(plan.title, trademarkTermsOf({ constraints: { trademark_terms: source.brandName } }))).toBeUndefined();
     expect(plan.keyword).toContain("famfit2");
   });
 

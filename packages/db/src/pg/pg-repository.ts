@@ -682,6 +682,38 @@ export function createPgRepository(pool: Pool): Repository {
         c.release();
       }
     },
+    async setProgramTrackingUrl(programId, url) {
+      const c = await client();
+      try {
+        await c.query("UPDATE affiliate_programs SET tracking_url = $2, updated_at = now() WHERE id = $1", [programId, url ?? null]);
+      } finally {
+        c.release();
+      }
+    },
+    async hasProgramTrackingUrl(programId) {
+      const c = await client();
+      try {
+        const r = await c.query("SELECT 1 FROM affiliate_programs WHERE id = $1 AND tracking_url IS NOT NULL", [programId]);
+        return r.rows.length > 0;
+      } finally {
+        c.release();
+      }
+    },
+    async listOfferTrackingUrls() {
+      const c = await client();
+      try {
+        const r = await c.query(
+          `SELECT o.id, p.tracking_url
+             FROM affiliate_offers o JOIN affiliate_programs p ON p.id = o.program_id
+            WHERE o.active = true AND o.status = 'APPROVED' AND p.status = 'APPROVED'
+              AND p.tracking_url IS NOT NULL AND o.channel_permissions @> '["site"]'::jsonb
+            ORDER BY o.id`,
+        );
+        return Object.fromEntries(r.rows.map((row) => [row.id as string, row.tracking_url as string]));
+      } finally {
+        c.release();
+      }
+    },
     async importConversion(conversion) {
       const c = await client();
       try {
