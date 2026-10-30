@@ -262,7 +262,7 @@ describe("a brief-only plan in the live pipeline worker", () => {
   const plansPath = path.join(TMP, "brief-plans.json");
   const WATER_URL = "https://sim-a.example.com/water-price";
   const WATER_PAGE = `<html><head><title>ウォーターA</title></head><body>
-    <div>月12.5L×2本ご利用の場合</div><div>3,880円/月</div><div>(税込4,190円)</div><div>モデルX</div>
+    <div>月12.5L×2本ご利用の場合</div><div>3,880円/月</div><div>(税込4,190円)</div><div>サーバーレンタル料</div><div>無料</div><div>モデルX</div>
     <div>採水工場より送料無料で配送いたします。</div>
     <div>初回登録事務手数料：3,300円（税込）</div>
     <div>モデルX</div><div>月額電気料金</div><div>通常使用時 約669円</div>
@@ -270,7 +270,7 @@ describe("a brief-only plan in the live pipeline worker", () => {
     <div>プランP</div><div>最低利用期間：5年</div>
   </body></html>`;
   const QUOTES = [
-    "月12.5L×2本ご利用の場合 3,880円/月 (税込4,190円) モデルX",
+    "月12.5L×2本ご利用の場合 3,880円/月 (税込4,190円) サーバーレンタル料 無料 モデルX",
     "採水工場より送料無料で配送いたします。",
     "初回登録事務手数料：3,300円（税込）",
     "モデルX 月額電気料金 通常使用時 約669円",

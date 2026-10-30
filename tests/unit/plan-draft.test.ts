@@ -28,6 +28,7 @@ const COMPLETE_FACTS: Fact[] = [
   fact("ウォーターA 送料は無料"),
   fact("ウォーターA 電気代の目安は月669円（税込・月36L使用時）"),
   fact("ウォーターA 初回登録事務手数料 3,300円（税込）"),
+  fact("ウォーターA サーバーレンタル料は無料"),
   fact("ウォーターA の最低利用期間は5年", "contract_term"),
 ];
 
@@ -74,6 +75,7 @@ describe("completeDraftedPlan: the amounts come from the official facts, or the 
       electricityFeeJpy: 669,
       electricityIsEstimate: true,
       electricityBasisLiters: 36,
+      serverRentalFeeJpy: 0,
       months: 24,
       initialFeeJpy: 3300,
       cancellationFeeJpy: "UNKNOWN",
@@ -243,6 +245,7 @@ describe("completeDraftedPlan: the amounts come from the official facts, or the 
     expect(result.issues.join("\n")).toContain("送料");
     expect(result.issues.join("\n")).toContain("電気代");
     expect(result.issues.join("\n")).toContain("初回費用");
+    expect(result.issues.join("\n")).toContain("サーバーレンタル料");
     expect(result.issues.join("\n")).not.toContain("解約");
   });
 
@@ -383,6 +386,108 @@ describe("completeDraftedPlan: the amounts come from the official facts, or the 
     const shipping = result.issues.find((issue) => issue.startsWith("送料")) ?? "";
     expect(shipping).toContain("候補");
     expect(shipping).toContain("送料は880円");
+  });
+
+  describe("the server rental fee is part of the total, or the plan is not made", () => {
+    const withoutRental = COMPLETE_FACTS.filter((f) => !f.text.includes("レンタル"));
+    const rentalOf = (result: ReturnType<typeof draftOf>) => (result.ok ? result.plan.calculators[0]?.input.serverRentalFeeJpy : undefined);
+
+    it("reads a stated rental (the tax-included figure) and the QA number check backs it", () => {
+      const facts = [...withoutRental, fact("ウォーターA サーバーレンタル料 200円/月 (税込220円)")];
+
+      const result = draftOf(facts);
+
+      expect(rentalOf(result)).toBe(220);
+      expect(result.ok && checkPlanEvidence(result.plan, facts, [SOURCE])).toEqual([]);
+    });
+
+    it("names the rental when the page states none, instead of leaving it out of the total", () => {
+      const result = draftOf(withoutRental);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.issues.join("\n")).toContain("サーバーレンタル料");
+    });
+
+    it("ends the rental's words at the next label of a price card, so the card's water charge is not the rental", () => {
+      const card = fact(
+        "月12.5L×2本ご利用の場合 3,880円/月 (税込4,190円) サーバーレンタル料 無料 天然水の料金 3,880円/月 (税込4,190円) 選べるウォーターサーバー ウォーターA",
+      );
+
+      expect(rentalOf(draftOf([...withoutRental, card]))).toBe(0);
+    });
+
+    it("ends the rental's words at the term label of a comparison row, so a saving stated further on is not the rental", () => {
+      const row = fact(
+        "ウォーターA を使いたい場合 サーバー レンタル料 無料 無料 最低利用期間 3年 5年 天然水を毎月1セット注文した場合… プランQと比較して 1年間 税込 1,296円お得 毎月 税込 108円お得",
+      );
+
+      expect(rentalOf(draftOf([...withoutRental, row]))).toBe(0);
+    });
+
+    it("still reads the water charge and the term of a passage that also carries the rental", () => {
+      const facts = [
+        ...withoutRental.filter((f) => !f.text.includes("月額") && f.claimType !== "contract_term"),
+        fact("月12.5L×2本ご利用の場合 3,880円/月 (税込4,190円) サーバーレンタル料 無料 選べるウォーターサーバー ウォーターA"),
+        fact("ウォーターA サーバーレンタル料 無料 最低利用期間 5年", "contract_term"),
+      ];
+
+      const result = draftOf(facts);
+
+      expect(result.ok && result.plan.calculators[0]?.input).toMatchObject({
+        waterChargeJpy: 4190,
+        serverRentalFeeJpy: 0,
+        minimumTermMonths: 60,
+      });
+    });
+
+    it("does not take a card's total, which includes the rental, as the water charge", () => {
+      const card = fact("月12.5L×2本ご利用の場合 4,080円/月 (税込4,410円) サーバーレンタル料 200円/月 (税込220円) 天然水の料金 3,880円/月 (税込4,190円) ウォーターA");
+      const facts = [...withoutRental.filter((f) => !f.text.includes("月額")), card];
+
+      const result = draftOf(facts);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.issues.find((issue) => issue.startsWith("水代"))).toBeDefined();
+    });
+
+    it("fails closed when one row gives a rental for each of two plans", () => {
+      const row = fact("ウォーターA グランデ サーバー レンタル料 1,000円/月 （税込1,100円） 200円/月 （税込220円） 最低利用期間 3年 5年");
+
+      const result = draftOf([...withoutRental, row]);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.issues.find((issue) => issue.startsWith("サーバーレンタル料"))).toContain("候補");
+    });
+
+    it("fails closed when two passages state different rentals for the same server", () => {
+      const facts = [
+        ...withoutRental,
+        fact("ウォーターA サーバーレンタル料 200円/月 (税込220円)"),
+        fact("ウォーターA サーバーレンタル料 1,000円/月 (税込1,100円)"),
+      ];
+
+      const result = draftOf(facts);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.issues.join("\n")).toMatch(/サーバーレンタル料.*220円・1100円/);
+    });
+
+    it("refuses a server whose electricity differs by size instead of choosing one", () => {
+      const facts = [
+        ...COMPLETE_FACTS.filter((f) => !f.text.includes("電気代")),
+        fact("ウォーターA 月額電気料金※1 ロング：約630円/月（エコモード時約520円/月） ショート：約666円/月（エコモード時約549円/月）"),
+      ];
+
+      const result = draftOf(facts);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.issues.join("\n")).toContain("電気代");
+    });
   });
 
   it("leaves a plan alone when it has no draft, or already has calculators", () => {

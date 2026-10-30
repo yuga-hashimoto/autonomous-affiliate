@@ -84,6 +84,46 @@ describe("fiber / water / buyback calculators", () => {
     expect(calc.assumptions.join("\n")).toContain("11,000円");
   });
 
+  describe("water server rental fee", () => {
+    const base = {
+      offerId: "offer-water-3",
+      title: "Water 25L rental",
+      waterChargeJpy: 4190,
+      shippingFeeJpy: 0,
+      electricityFeeJpy: 669,
+      months: 24,
+      initialFeeJpy: 3300,
+      cancellationFeeJpy: "UNKNOWN" as const,
+      monthlyLiters: 25,
+    };
+
+    it("adds the monthly rental to the total and shows it in the formula and the breakdown", () => {
+      const calc = calculateWaterServerCost({ ...base, serverRentalFeeJpy: 220 });
+
+      expect(calc.totalJpy).toBe((4190 + 0 + 669 + 220) * 24 + 3300);
+      expect(calc.formula).toBe(
+        "totalJpy = (waterChargeJpy + shippingFeeJpy + electricityFeeJpy + serverRentalFeeJpy) * months + initialFeeJpy",
+      );
+      expect(calc.breakdown.map((line) => line.label).join("\n")).toContain("サーバーレンタル料");
+    });
+
+    it("keeps the total and the formula as they were when no rental is given (plans and articles already live)", () => {
+      const calc = calculateWaterServerCost(base);
+
+      expect(calc.totalJpy).toBe((4190 + 669) * 24 + 3300);
+      expect(calc.formula).toBe("totalJpy = (waterChargeJpy + shippingFeeJpy + electricityFeeJpy) * months + initialFeeJpy");
+    });
+
+    it("counts a free rental as 0, and an unknown one makes the total UNKNOWN with a reader-facing name", () => {
+      expect(calculateWaterServerCost({ ...base, serverRentalFeeJpy: 0 }).totalJpy).toBe((4190 + 669) * 24 + 3300);
+
+      const unknown = calculateWaterServerCost({ ...base, serverRentalFeeJpy: "UNKNOWN" });
+      expect(unknown.totalJpy).toBe("UNKNOWN");
+      expect(unknown.unknowns).toEqual(["serverRentalFeeJpy"]);
+      expect(unknownLabel("serverRentalFeeJpy")).toBe("サーバーレンタル料");
+    });
+  });
+
   describe("water conditions that stay outside the total", () => {
     const base = {
       offerId: "offer-water-2",
