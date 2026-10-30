@@ -14,6 +14,7 @@
 | リンクの保管 | なし | DB（`affiliate_programs.tracking_url`）。リポジトリ・ログ・記事に入れない |
 | 記事のCTA | 常に「紹介プログラムなし」 | プログラムが使える間だけ `/go/<offerId>` が出る |
 | 配信用のリダイレクト | `AFFILIATE_TRACKING_URLS_JSON`（手で登録） | DBから毎回書き出す（`export-go-offers`） |
+| 広告掲載URLの登録 | なし | 配信後に `a8-submit-urls` が記事ページのURLをA8のURL管理へ提出し、一覧に出たか確かめる |
 | 広告主の規約 | 本人が読む | 公開ページの変化を検知、タイトル規則はQAで検査 |
 
 ## 日次の流れ（`live-pipeline`）
@@ -22,6 +23,7 @@
 2. `run-pipeline --live --a8-programs config/a8-programs.json`。計画を作った直後、記事を下書きする前に `ensureBrandOffers` が各ブランドのofferをプログラムの状態に合わせる。
 3. `export-go-offers content/go-offers.generated.json`（gitignore）。使えるofferだけをサイトの `/go/` 用に書き出す。
 4. サイトのビルドと配信。`deploy.yml`（mainのCI成功後）も同じ書き出しをしてからビルドする。DBから読むのでA8へのログインは要らない。
+5. 配信のあとに `a8-submit-urls`（失敗しても実行は失敗にしない）。ビルドしたサイトから、ブランドの広告リンク（`/go/<offer>`）を載せた記事ページの正規URLを集め、A8の広告掲載URL管理にそのブランドのプログラムとして提出する。
 
 ## 設定: `config/a8-programs.json`
 
@@ -72,9 +74,18 @@ offerのidは `offer-<brandSlug>-<サービス名>`（`discovery` が作る計�
 
 CAPTCHA、メールや端末の追加認証、本人確認、規約への同意が出たら通過しない。ログインは1回だけで再試行しない（ロック回避）。`a8-sync` が失敗してもその日の記事は止まらず、offerはリンクの確認が切れた日に自動で無効になる。
 
+## 広告掲載URLの登録（`a8-submit-urls`）
+
+プログラムカードの「広告掲載URL管理」ボタンは、新しいウィンドウで `/ad-site-url-manager/detail?programId=…` を開く。構造は `a8-adurl-probe` で調べた（中身は伏せて出力）: 「広告掲載URLの提出」タブ（テキスト欄に1URL1行、「提出する」）、「CSV一括アップロード」タブ、「提出済みの広告掲載URL一覧」と検索。画面の説明に「提出済みのURLを再提出すると更新日時が上書きされる」とあるため、毎回すべてを提出して冪等にしている（重複や取り消しの管理が要らない）。
+
+- 集める対象: ビルドした `apps/site/dist/articles/*/index.html` のうち `/go/<offer>` に向かうリンクを持つページ。URLはページ自身の正規URL（`<link rel="canonical">`、https、認証情報なし）。offer idの `offer-<brandSlug>-` でブランドごとに分ける。記事以外のページ（トップなど）は出さない。
+- 提出: 50件ずつ。画面が出す `alert`/`confirm` は受け入れる（種類と文字数だけ記録）。提出後、1件ずつ「提出済み」の検索にかけ、一覧に出たものを数える。
+- ログ: ブランドごとの結果（all_verified など）・ページ数・提出数・確認できた数だけ。
+- ブランドが提携中でない・ボタンが1つに決まらないときは何もしない（`no_manager_window`）。
+
 ## まだ自動でないこと
 
-- 記事ごとの「広告掲載URL」の登録（A8のプログラムカードの広告掲載URL管理）。プログラムによっては登録した掲載先でしか成果にならない。構造は `a8-adurl-probe`（手動・読み取り専用）で調べている最中で、カードのボタンは `#` へのスクリプトリンク。クリック前後の差分（新しく出た要素・隠れていたのが見えた要素・別タブ）から、開く画面の構造を伏せて出力する。
+- （完了）記事ごとの広告掲載URLの登録は「広告掲載URLの登録」の節。
 - 新しい広告主の選定。今は `config/discovery.live.json`（計画の発見元）と `config/a8-programs.json` にブランドを足す形で、A8の検索から候補を挙げる部分は未実装。
 - `AFFILIATE_TRACKING_URLS_JSON`（環境変数）は残してあるが日常運用では使わない。
 
