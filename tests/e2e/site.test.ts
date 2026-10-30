@@ -225,9 +225,27 @@ describe("B011 Astro site (article template, disclosures, sponsored links, build
     expect(configured.match(/google-site-verification/g)).toHaveLength(1);
   });
 
-  it("exposes robots.txt that disallows the affiliate redirect path", async () => {
+  it("exposes robots.txt that disallows the affiliate redirect path and names the sitemap", async () => {
     const robots = await readFile(path.join(DIST_DIR, "robots.txt"), "utf8");
     expect(robots).toContain("Disallow: /go/");
+    expect(robots).toMatch(/^Sitemap: https?:\/\/[^\s]+\/sitemap\.xml$/m);
+  });
+
+  it("publishes a sitemap of the indexable pages and every article, without redirects or the 404 page", async () => {
+    const xml = await readFile(path.join(DIST_DIR, "sitemap.xml"), "utf8");
+    const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1] ?? "");
+    // 6 site pages + the e2e article + the fillers
+    expect(locs).toHaveLength(6 + FILLER_COUNT + 1);
+    expect(locs.some((loc) => loc.endsWith("/articles/e2e-sim/"))).toBe(true);
+    expect(locs.some((loc) => loc.endsWith("/privacy/"))).toBe(true);
+    for (const loc of locs) {
+      expect(loc).not.toContain("/go/");
+      expect(loc).not.toContain("404");
+      expect(loc).not.toContain("search.json");
+    }
+    expect(xml).toContain("<lastmod>2026-10-24</lastmod>");
+    // the sitemap is not itself a page of the site
+    expect(locs.some((loc) => loc.endsWith("/sitemap.xml"))).toBe(false);
   });
 
   it("unregistered offers have no redirect endpoint", async () => {
