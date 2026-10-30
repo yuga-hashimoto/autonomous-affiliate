@@ -95,7 +95,8 @@ pnpm worker plans-status --policy config/policy.live.yaml --plans config/plans.l
 
 ### 0-6. Search Console / GA4（計測。収益化の必須手続きではないが公開直後に使う）
 
-- Search Console: <https://search.google.com/search-console> → ドメインを追加 → DNS TXTレコード認証（Cloudflare DNSに追加）
+- Search Console: <https://search.google.com/search-console> → 「URL プレフィックス」で `https://sougakuhikaku.com/` を追加 → 確認方法は「HTML タグ」。表示される `<meta name="google-site-verification" content="...">` の `content` の値（公開値）をGitHubのVariable `GSC_VERIFICATION_TOKEN` に登録すると、次回のサイトビルドから全ページの `<head>` に出る。デプロイ後にSearch Consoleで「確認」を押す。**確認後もタグを外さない**（外すと所有権の確認が失効する）。「ドメイン」タイプのDNS TXT認証はCloudflare DNSの編集権限が要るため使わない。なお「HTML ファイル」方式は、Cloudflare Pagesが `.html` のURLを拡張子なしへリダイレクトする可能性があるため避けた。
+  - 2026-10-30: プロパティ `https://sougakuhikaku.com/` を追加済み。確認は、タグを含むビルドのデプロイ後。
 - GA4: <https://analytics.google.com/> → プロパティ作成 → Webストリームで測定ID取得
 - 測定IDをGitHubのVariable `GA4_MEASUREMENT_ID` に登録する（`G-` で始まる公開値で、秘密情報ではない）。次回の `deploy` / `live-pipeline` のサイトビルドからGA4タグが入り、プライバシーポリシーもGoogle アナリティクス使用の文面に切り替わる。未登録のあいだはタグを出さない。
 - GA4の管理画面 → カスタム定義で、イベントスコープのカスタムディメンション `page_id` / `offer_id` / `cta_id` / `channel` を登録する（紹介リンククリック `affiliate_cta_click` を案件・記事別に見るため。docs/08）。**2026-10-29に登録済み**: ディメンション名は `affiliate_page_id` / `affiliate_offer_id` / `affiliate_cta_id` / `affiliate_channel`（プロパティ「総額比較 (sougakuhikaku.com)」。GA4アカウントは既存の「Default Account for Firebase」配下）。

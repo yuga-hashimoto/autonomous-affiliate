@@ -8,7 +8,8 @@ name: deploy
 # start CI, so that job keeps deploying for itself and nothing deploys twice.
 # Required secret: CLOUDFLARE_API_TOKEN.
 # Required variables: CLOUDFLARE_ACCOUNT_ID, SITE_BASE_URL, CF_PAGES_PROJECT.
-# Optional variable: GA4_MEASUREMENT_ID (turns the GA4 tag on; docs/16 0-6).
+# Optional variables: GA4_MEASUREMENT_ID (turns the GA4 tag on) and
+# GSC_VERIFICATION_TOKEN (Search Console ownership meta tag); docs/16 0-6.
 
 on:
   workflow_dispatch:
@@ -43,6 +44,8 @@ jobs:
           SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
           # GA4 measurement id (G-XXXXXXXX, public). Unset or invalid -> no tag is built in.
           GA4_MEASUREMENT_ID: ${{ vars.GA4_MEASUREMENT_ID }}
+          # Search Console HTML-tag token (public). Unset or invalid -> no meta tag.
+          GSC_VERIFICATION_TOKEN: ${{ vars.GSC_VERIFICATION_TOKEN }}
           # Affiliate tracking URLs (JSON: {"offers":{"<offer_id>":"<url>"}}).
           # Kept as a secret — never committed to the repository.
           AFFILIATE_TRACKING_URLS_JSON: ${{ secrets.AFFILIATE_TRACKING_URLS_JSON }}

@@ -10,6 +10,7 @@ import AnalyticsTag from "../components/AnalyticsTag.astro";
 import SiteHeader from "../components/SiteHeader.astro";
 import SiteFooter from "../components/SiteFooter.astro";
 import { SITE_NAME } from "../lib/articles";
+import { siteVerificationFrom } from "../lib/search-console";
 
 interface Props {
   title: string;
@@ -39,6 +40,8 @@ const canonical = new URL(path ?? Astro.url.pathname, site);
 const fullTitle = title.includes(SITE_NAME) ? title : `${title} | ${SITE_NAME}`;
 const ogImageUrl = ogImage ? new URL(ogImage, site) : undefined;
 const jsonLdText = jsonLd ? JSON.stringify(jsonLd).replace(/</g, "\\u003c") : undefined;
+// Build-time only (like SITE_BASE_URL). No valid token -> no ownership meta tag.
+const siteVerification = siteVerificationFrom(process.env.GSC_VERIFICATION_TOKEN);
 ---
 
 <!doctype html>
@@ -53,6 +56,7 @@ const jsonLdText = jsonLd ? JSON.stringify(jsonLd).replace(/</g, "\\u003c") : un
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#16191a" media="(prefers-color-scheme: dark)" />
     {noindex && <meta name="robots" content="noindex" />}
+    {siteVerification && <meta name="google-site-verification" content={siteVerification} />}
     <meta property="og:site_name" content={SITE_NAME} />
     <meta property="og:locale" content="ja_JP" />
     <meta property="og:type" content={ogType} />

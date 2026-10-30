@@ -62,10 +62,11 @@ offerIds: []
 
 const GA_DIST_DIR = path.join(ROOT, ".tmp/site-ga-dist");
 const GA_ID = "G-TEST123456";
+const GSC_TOKEN = "TestToken-0123456789_abcdefghijklmnopqrstuvwxyz";
 
-async function build(options: { outDir?: string; ga4MeasurementId?: string } = {}) {
-  // The environment is explicit so a developer's own GA4_MEASUREMENT_ID never leaks into the default build.
-  const { GA4_MEASUREMENT_ID: _inherited, ...inherited } = process.env;
+async function build(options: { outDir?: string; ga4MeasurementId?: string; siteVerification?: string } = {}) {
+  // The environment is explicit so a developer's own GA4 / Search Console settings never leak into the default build.
+  const { GA4_MEASUREMENT_ID: _ga, GSC_VERIFICATION_TOKEN: _gsc, ...inherited } = process.env;
   await execFileAsync(
     "pnpm",
     ["--filter", "site", "exec", "astro", "build", ...(options.outDir ? ["--outDir", options.outDir] : [])],
@@ -75,6 +76,7 @@ async function build(options: { outDir?: string; ga4MeasurementId?: string } = {
         ...inherited,
         ARTICLES_DIR,
         ...(options.ga4MeasurementId ? { GA4_MEASUREMENT_ID: options.ga4MeasurementId } : {}),
+        ...(options.siteVerification ? { GSC_VERIFICATION_TOKEN: options.siteVerification } : {}),
       },
     },
   );
@@ -99,7 +101,7 @@ describe("B011 Astro site (article template, disclosures, sponsored links, build
     }
     await build();
     await rm(GA_DIST_DIR, { recursive: true, force: true });
-    await build({ outDir: GA_DIST_DIR, ga4MeasurementId: GA_ID });
+    await build({ outDir: GA_DIST_DIR, ga4MeasurementId: GA_ID, siteVerification: GSC_TOKEN });
   }, 240000);
 
   afterAll(async () => {
@@ -213,6 +215,14 @@ describe("B011 Astro site (article template, disclosures, sponsored links, build
     expect(privacy).toContain("Do Not Track");
     expect(privacy).toContain("オプトアウト");
     expect(privacy).toContain("プライバシーポリシー");
+  });
+
+  it("writes the Search Console ownership meta tag only when a token is configured", async () => {
+    const plain = await readFile(path.join(DIST_DIR, "index.html"), "utf8");
+    expect(plain).not.toContain("google-site-verification");
+    const configured = await readFile(path.join(GA_DIST_DIR, "index.html"), "utf8");
+    expect(configured).toContain(`<meta name="google-site-verification" content="${GSC_TOKEN}">`);
+    expect(configured.match(/google-site-verification/g)).toHaveLength(1);
   });
 
   it("exposes robots.txt that disallows the affiliate redirect path", async () => {
