@@ -86,8 +86,8 @@ export function repositoryContract(
       await repo.content.recordTransition({
         itemId: a.id,
         runId: "run-1",
-        fromState: null,
-        toState: "DISCOVERED",
+        fromState: "DISCOVERED",
+        toState: "ELIGIBILITY_CHECKED",
         policyVersion: "v1",
         evidenceIds: [],
         at: new Date().toISOString(),

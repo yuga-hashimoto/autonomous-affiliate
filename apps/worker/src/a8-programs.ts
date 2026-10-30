@@ -335,8 +335,8 @@ export const READ_PROGRAM_ROWS = `(() => {
   return { rows: Array.from(rows.values()), noDataShown };
 })()`;
 
-/** Runs in the page: the element tree with only structure and own text. */
-export const DUMP_TREE = `(() => {
+/** Runs in the page: the element tree under `rootExpression` with only structure and own text. */
+export const dumpTreeScript = (rootExpression: string): string => `(() => {
   const SKIP = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "SVG", "PATH", "IMG", "LINK", "META"]);
   let budget = 3000;
   const walk = (element, depth) => {
@@ -368,8 +368,10 @@ export const DUMP_TREE = `(() => {
       children,
     };
   };
-  return walk(document.querySelector("main") || document.body, 0);
+  return walk(${rootExpression}, 0);
 })()`;
+
+export const DUMP_TREE = dumpTreeScript('document.querySelector("main") || document.body');
 
 export interface ListReport {
   state: ListState;

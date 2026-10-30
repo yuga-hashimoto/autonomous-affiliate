@@ -47,6 +47,7 @@ import {
 import { AspReportImporter, HttpFetcher, MapFetcher, checkRobots, type Fetcher } from "@aff/integrations";
 import { buildMonthlyReport, renderMonthlyReportMarkdown } from "@aff/analytics";
 import { runA8Apply } from "./a8-apply.js";
+import { runA8AdUrlProbe } from "./a8-adurl.js";
 import { runA8ExportApproved } from "./a8-export.js";
 import { runA8Inspect } from "./a8-inspect.js";
 import { runA8LinkProbe } from "./a8-linkpage.js";
@@ -875,6 +876,11 @@ if (isMain()) {
         resolveInputPath(arg ?? "content/go-offers.generated.json"),
       );
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    } else if (command === "a8-adurl-probe") {
+      const { probe, ...report } = await runA8AdUrlProbe(options.env ?? process.env);
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      if (probe) process.stdout.write(`--- ad-URL management: structure (content masked) ---\n${probe.join("\n")}\n`);
+      if (report.outcome !== "ok") process.exit(1);
     } else if (command === "a8-export-approved") {
       const { encrypted, ...report } = await runA8ExportApproved(options.env ?? process.env);
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

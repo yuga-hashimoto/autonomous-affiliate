@@ -413,7 +413,7 @@ export function createPgRepository(pool: Pool): Repository {
         return r.rows.map((row) => ({
           itemId: row.item_id as string,
           runId: row.run_id as string,
-          fromState: (row.from_state as string | null) as ContentTransitionRecord["fromState"],
+          fromState: row.from_state as ContentTransitionRecord["fromState"],
           toState: row.to_state as ContentTransitionRecord["toState"],
           policyVersion: row.policy_version as string,
           evidenceIds: (row.evidence_ids ?? []) as string[],

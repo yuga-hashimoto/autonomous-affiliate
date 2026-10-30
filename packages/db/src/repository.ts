@@ -39,7 +39,8 @@ export interface AgentEventRecord {
 export interface ContentTransitionRecord {
   itemId: string;
   runId: string;
-  fromState: ContentState | null;
+  /** Always a real state: the table (and every caller) records a move from one state to another. */
+  fromState: ContentState;
   toState: ContentState;
   policyVersion: string;
   evidenceIds: string[];
