@@ -120,6 +120,35 @@ export interface OfferRepository {
   listPayouts(): Promise<Payout[]>;
 }
 
+export type ScoutedState = "vetted" | "active" | "rejected" | "retired";
+
+/** An advertiser the daily run picked from the A8 console (docs/21). Private: never in a log, a trace or the repository. */
+export interface ScoutedBrand {
+  /** The A8 program id. */
+  programId: string;
+  brandSlug: string;
+  state: ScoutedState;
+  /** The advertiser's name as the console card shows it. */
+  keyword: string;
+  /** The advertiser's site (its own name, no www). */
+  host: string;
+  /** The company as its own pages name it. */
+  brandName: string;
+  termsUrl?: string | undefined;
+  termsSha256?: string | undefined;
+  listUrls: string[];
+  sourceUrls: string[];
+  /** Why the candidate was refused (empty otherwise). */
+  reasons: string[];
+  checkedAt: string;
+}
+
+export interface ScoutRepository {
+  get(programId: string): Promise<ScoutedBrand | undefined>;
+  list(): Promise<ScoutedBrand[]>;
+  upsert(brand: ScoutedBrand): Promise<void>;
+}
+
 export interface MetricsRepository {
   upsertTrafficDaily(row: DailyTraffic): Promise<DailyTraffic>;
   upsertOutboundClicks(row: DailyOutboundClicks): Promise<DailyOutboundClicks>;
@@ -167,4 +196,5 @@ export interface Repository {
   audit: AuditRepository;
   serp: SerpRepository;
   publications: PublicationRepository;
+  scout: ScoutRepository;
 }

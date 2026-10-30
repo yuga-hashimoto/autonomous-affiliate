@@ -86,7 +86,7 @@ CAPTCHA、メールや端末の追加認証、本人確認、規約への同意�
 ## まだ自動でないこと
 
 - （完了）記事ごとの広告掲載URLの登録は「広告掲載URLの登録」の節。
-- 新しい広告主の選定。今は `config/discovery.live.json`（計画の発見元）と `config/a8-programs.json` にブランドを足す形。A8の検索から候補を挙げて規則で選ぶ部分は docs/21（段階1の読み取りまで実装）。
+- （完了）新しい広告主の選定は docs/21。`config/a8-programs.json` と `config/discovery.live.json` に手で足す必要はない。
 - `AFFILIATE_TRACKING_URLS_JSON`（環境変数）は残してあるが日常運用では使わない。
 
 ## 実行の記録

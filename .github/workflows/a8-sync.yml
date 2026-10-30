@@ -6,6 +6,12 @@ name: a8-sync
 # conditions are member-only and this log is public, so the output is counts by outcome.
 on:
   workflow_dispatch:
+    inputs:
+      scout:
+        description: Also pick new advertisers from the console (docs/21); needs the live policy and the model
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -18,7 +24,7 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     environment: a8
     steps:
       - uses: actions/checkout@v4
@@ -29,8 +35,23 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Keep the A8 programs in step
-        run: pnpm tsx apps/worker/src/index.ts a8-sync --a8-programs config/a8-programs.json
+        run: |
+          ARGS=()
+          if [ "$SCOUT" = "true" ]; then
+            printf '%s' "$LIVE_POLICY_YAML" > config/policy.live.yaml
+            ARGS+=(--scout --policy config/policy.live.yaml)
+          fi
+          pnpm tsx apps/worker/src/index.ts a8-sync --a8-programs config/a8-programs.json "${ARGS[@]}"
         env:
+          SCOUT: ${{ inputs.scout }}
+          LIVE_POLICY_YAML: ${{ secrets.LIVE_POLICY_YAML }}
+          LLM_PROVIDER: openai-compatible
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_REASONING_EFFORT: ${{ vars.LLM_REASONING_EFFORT }}
+          LLM_INPUT_COST_JPY_PER_1M: ${{ vars.LLM_INPUT_COST_JPY_PER_1M }}
+          LLM_OUTPUT_COST_JPY_PER_1M: ${{ vars.LLM_OUTPUT_COST_JPY_PER_1M }}
           A8_BROWSER_CHANNEL: chrome
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           A8_LOGIN_ID: ${{ secrets.A8_LOGIN_ID }}

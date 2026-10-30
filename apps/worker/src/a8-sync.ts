@@ -2,14 +2,20 @@ import type { Page } from "playwright";
 import type { Repository } from "@aff/db";
 import {
   applyBrandObservation,
+  knownProgramIds,
   termsFingerprint,
+  withScoutedBrands,
   type A8Brand,
   type A8ProgramsConfig,
   type BrandObservation,
   type TermsState,
+  type VetCandidate,
+  type VetResult,
 } from "@aff/agents";
 import { checkRobots, htmlToVisibleText, type Fetcher } from "@aff/integrations";
 import { startApplication } from "./a8-apply.js";
+import { advanceScouted, registerCandidates, renewScoutedTerms } from "./a8-register.js";
+import { gatherCandidates, readCandidates, scoutConsoleOver, type ReadCandidate } from "./a8-scout.js";
 import { harvestTrackingUrl, type HarvestOutcome } from "./a8-harvest.js";
 import { pickCreateLinkPath } from "./a8-linkpage.js";
 import { withA8Session, type A8SmokeResult } from "./a8-login.js";
@@ -132,6 +138,26 @@ export interface SyncReport {
   /** Terms-page checks by outcome. */
   terms?: Record<string, number>;
   applications?: number;
+  /** Advertisers the run picked itself (docs/21): counts by outcome, no names. */
+  scout?: {
+    candidates: number;
+    read: number;
+    registered: Record<string, number>;
+    /** Why candidates were refused today, by reason: no names or sites. */
+    refused: Record<string, number>;
+    advanced: Record<string, number>;
+    terms: Record<string, number>;
+    failed?: boolean;
+  };
+}
+
+export interface ScoutDeps {
+  /** Looks at an advertiser's own site (docs/21). */
+  vet: (candidate: VetCandidate) => Promise<VetResult>;
+  /** Sites looked at in one run. */
+  maxVets: number;
+  /** Advertisers in use at the most. */
+  maxRegistered: number;
 }
 
 export interface SyncDeps {
@@ -139,39 +165,98 @@ export interface SyncDeps {
   repo: Repository;
   fetcher: Fetcher;
   clock: () => Date;
+  /** Picks new advertisers from the console as well; without it only the written brands are kept in step. */
+  scout?: ScoutDeps;
 }
 
 const tally = (labels: readonly string[]): Record<string, number> =>
   labels.reduce<Record<string, number>>((counts, label) => ({ ...counts, [label]: (counts[label] ?? 0) + 1 }), {});
 
-/** Logs in once, observes every brand, and stores what the console showed. */
+async function termsOf(fetcher: Fetcher, brands: readonly A8Brand[]): Promise<Map<string, TermsState>> {
+  const terms = new Map<string, TermsState>();
+  for (const brand of brands) terms.set(brand.brandSlug, await checkTerms(fetcher, brand));
+  return terms;
+}
+
+/** Logs in once, observes every brand (written and picked), looks for new advertisers, and stores what the console showed. */
 export async function runA8Sync(env: NodeJS.ProcessEnv, deps: SyncDeps): Promise<SyncReport> {
   const { config, repo, fetcher, clock } = deps;
-  const terms = new Map<string, TermsState>();
-  for (const brand of config.brands) terms.set(brand.brandSlug, await checkTerms(fetcher, brand));
+
+  // Rules pages that changed are read again first; an advertiser stays only if they still leave room for the comparison.
+  const scoutedBefore = await repo.scout.list();
+  const scoutedBrands = withScoutedBrands({ ...config, brands: [] }, scoutedBefore).brands;
+  const renewed = await renewScoutedTerms(repo, fetcher, scoutedBefore, await termsOf(fetcher, scoutedBrands), clock());
+  const scouted = await repo.scout.list();
+  const effective = withScoutedBrands(config, scouted);
+  const terms = await termsOf(fetcher, effective.brands);
 
   const { login, value } = await withA8Session(env, async (page) => {
     const console = consoleOver(page, config.siteName);
     const seen = new Map<string, BrandObservation>();
     let applicationsLeft = config.applicationsPerRun;
-    for (const brand of config.brands) {
+    for (const brand of effective.brands) {
       const { observation, applied } = await observeBrand(console, brand, applicationsLeft > 0);
       if (applied) applicationsLeft -= 1;
       seen.set(brand.brandSlug, observation);
     }
-    return { seen, applications: config.applicationsPerRun - applicationsLeft };
+    // A failure while looking for new advertisers never takes the observations above with it.
+    let read: ReadCandidate[] | undefined;
+    let candidates = 0;
+    let scoutFailed = false;
+    if (deps.scout) {
+      try {
+        const scoutConsole = scoutConsoleOver(page);
+        const gathered = await gatherCandidates(scoutConsole, effective.brands.map((brand) => brand.keyword), knownProgramIds(scouted, clock()));
+        candidates = gathered.candidates.length;
+        if (!gathered.unrecognized) read = await readCandidates(scoutConsole, gathered.candidates);
+        else scoutFailed = true;
+      } catch {
+        scoutFailed = true;
+      }
+    }
+    return { seen, applications: config.applicationsPerRun - applicationsLeft, read, candidates, scoutFailed };
   });
-  if (!value) return { outcome: "login_failed", login, brands: config.brands.length };
+  if (!value) return { outcome: "login_failed", login, brands: effective.brands.length };
 
   const labels: string[] = [];
-  for (const brand of config.brands) {
-    labels.push(await applyBrandObservation(repo, brand, value.seen.get(brand.brandSlug)!, terms.get(brand.brandSlug)!, clock()));
+  const labelOf = new Map<string, string>();
+  for (const brand of effective.brands) {
+    const label = await applyBrandObservation(repo, brand, value.seen.get(brand.brandSlug)!, terms.get(brand.brandSlug)!, clock());
+    labels.push(label);
+    labelOf.set(brand.brandSlug, label);
   }
-  return {
+  const report: SyncReport = {
     outcome: "ok",
-    brands: config.brands.length,
+    brands: effective.brands.length,
     results: tally(labels),
     terms: tally([...terms.values()]),
     applications: value.applications,
   };
+  if (deps.scout) {
+    const advanced = await advanceScouted(repo, scouted, labelOf, clock());
+    const since = clock().toISOString();
+    const registered = value.read
+      ? await registerCandidates(value.read, {
+          repo,
+          clock,
+          taken: new Set(config.brands.map((brand) => brand.brandSlug)),
+          vet: deps.scout.vet,
+          maxVets: deps.scout.maxVets,
+          maxRegistered: deps.scout.maxRegistered,
+        })
+      : {};
+    const refused = tally(
+      (await repo.scout.list()).filter((brand) => brand.state === "rejected" && brand.checkedAt >= since).flatMap((brand) => brand.reasons),
+    );
+    report.scout = {
+      candidates: value.candidates,
+      read: value.read?.length ?? 0,
+      registered,
+      refused,
+      advanced,
+      terms: renewed,
+      ...(value.scoutFailed ? { failed: true } : {}),
+    };
+  }
+  return report;
 }

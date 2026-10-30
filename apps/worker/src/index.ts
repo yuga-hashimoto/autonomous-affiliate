@@ -34,6 +34,10 @@ import {
   ensureBrandOffers,
   mergeDiscovered,
   parseA8ProgramsFile,
+  activeScoutedSources,
+  vetAdvertiserSite,
+  withScoutedBrands,
+  withScoutedDomains,
   parseDiscoveryFile,
   type DiscoverySummary,
   type FactExtractor,
@@ -55,12 +59,16 @@ import { runA8LoginSmoke } from "./a8-login.js";
 import { runA8Programs } from "./a8-programs.js";
 import { runA8SubmitUrls } from "./a8-submit.js";
 import { runA8Scout } from "./a8-scout.js";
-import { runA8Sync } from "./a8-sync.js";
+import { runA8Sync, type ScoutDeps } from "./a8-sync.js";
 import { exportGoOffers } from "./go-offers.js";
 import { createHeroImageService, runImageSmoke } from "./hero-image.js";
 import { LivePublisherIO } from "./live-io.js";
 import plansFixture from "../../../config/plans.dry-run.json" with { type: "json" };
 import offersFixture from "../../../config/offers.dry-run.json" with { type: "json" };
+
+/** New advertisers: sites looked at per run, and advertisers in use at the most (docs/21). */
+const SCOUT_MAX_VETS = 2;
+const SCOUT_MAX_REGISTERED = 3;
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -385,13 +393,17 @@ export async function runLivePipeline(
     options.templateRevision === undefined ? undefined : parseTemplateRevision(options.templateRevision);
   const parsedPolicy = parsePolicyText(await readFile(resolveInputPath(options.policyPath), "utf8"));
   // Preview can never publish, whatever the policy file says.
-  const policy: PolicyConfig = options.preview
+  const policyFromFile: PolicyConfig = options.preview
     ? { ...parsedPolicy, flags: { ...parsedPolicy.flags, publish_enabled: false } }
     : parsedPolicy;
-  assertLiveReadiness(policy, env, { requireDatabase: options.preview !== true });
+  assertLiveReadiness(policyFromFile, env, { requireDatabase: options.preview !== true });
   const repo = options.preview
     ? (options.repo ?? createMemoryRepository())
     : await loadRepository(options, { requirePg: true });
+  // Advertisers the run picked itself (docs/21) join the written ones, and their sites are allowed as
+  // sources only once the account has joined their program.
+  const scouted = await repo.scout.list();
+  const policy = withScoutedDomains(policyFromFile, scouted);
   const logger = options.logger ?? createLogger({ level: "info" });
 
   const ledger = await createLedger(repo, policy, clock);
@@ -412,11 +424,11 @@ export async function runLivePipeline(
   const discoverySources =
     options.discoverPath === undefined
       ? undefined
-      : parseDiscoveryFile(await readFile(resolveInputPath(options.discoverPath), "utf8"));
+      : [...parseDiscoveryFile(await readFile(resolveInputPath(options.discoverPath), "utf8")), ...activeScoutedSources(scouted)];
   const a8Programs =
     options.a8ProgramsPath === undefined
       ? undefined
-      : parseA8ProgramsFile(await readFile(resolveInputPath(options.a8ProgramsPath), "utf8"));
+      : withScoutedBrands(parseA8ProgramsFile(await readFile(resolveInputPath(options.a8ProgramsPath), "utf8")), scouted);
   // A plan kept as a brief takes its amounts from quotes of the official page (docs/18).
   const quoteSelector =
     options.quoteSelector ??
@@ -752,6 +764,49 @@ export async function runCheckRobots(url: string): Promise<unknown> {
   return checkRobots(new HttpFetcher(), url);
 }
 
+/**
+ * What picking new advertisers needs besides the console (docs/21): the model that reads a price page, the
+ * policy's limits, and a way to record what the model cost. The model's cost is booked like the pipeline's.
+ */
+async function buildScoutDeps(
+  options: WorkerOptions,
+  repo: Repository,
+  fetcher: Fetcher,
+  clock: () => Date,
+): Promise<{ deps: ScoutDeps; recordSpend: () => Promise<void> }> {
+  const env = options.env ?? process.env;
+  const policy = parsePolicyText(await readFile(resolveInputPath(options.policyPath), "utf8"));
+  const provider = buildLlmFromEnv(env);
+  if (!provider) throw new Error("--scout needs the model: LLM_API_KEY / LLM_MODEL / LLM_INPUT_COST_JPY_PER_1M / LLM_OUTPUT_COST_JPY_PER_1M");
+  const ledger = await createLedger(repo, policy, clock);
+  const spendBefore = ledger.spentJpy;
+  const lister = new LlmPlanLister(createGateway({ primary: provider }, ledger), {
+    timeoutMs: extractTimeoutMs(env),
+    maxCostJpy: policy.limits.max_job_cost_jpy,
+    attempts: policy.limits.task_retry_attempts,
+  });
+  return {
+    deps: {
+      vet: (candidate) => vetAdvertiserSite(candidate, { fetcher, repo, policy, clock, lister }),
+      maxVets: SCOUT_MAX_VETS,
+      maxRegistered: SCOUT_MAX_REGISTERED,
+    },
+    async recordSpend() {
+      const delta = ledger.spentJpy - spendBefore;
+      if (delta > 0) {
+        await repo.spend.recordSpend({
+          date: dayKeyInTz(clock()),
+          category: "llm",
+          provider: provider.id,
+          costJpy: delta,
+          source: "a8-scout",
+          estimated: true,
+        });
+      }
+    },
+  };
+}
+
 // ---- CLI ----
 
 function isMain(): boolean {
@@ -767,6 +822,7 @@ if (isMain()) {
       plans: { type: "string" },
       discover: { type: "string" },
       "a8-programs": { type: "string" },
+      scout: { type: "boolean", default: false },
       dist: { type: "string" },
       live: { type: "boolean", default: false },
       preview: { type: "boolean", default: false },
@@ -789,6 +845,9 @@ if (isMain()) {
   }
   if (values["a8-programs"] !== undefined && !values.live && command !== "a8-sync" && command !== "a8-submit-urls" && command !== "a8-scout") {
     throw new Error("--a8-programs only applies to a live run, a8-sync, a8-submit-urls or a8-scout");
+  }
+  if (values.scout && command !== "a8-sync") {
+    throw new Error("--scout only applies to a8-sync");
   }
   if (values["template-revision"] !== undefined && !values.live) {
     throw new Error("--template-revision only applies to a live run (use it with --live)");
@@ -865,12 +924,18 @@ if (isMain()) {
       const config = parseA8ProgramsFile(
         await readFile(resolveInputPath(values["a8-programs"] ?? "config/a8-programs.json"), "utf8"),
       );
+      const repo = await loadRepository(options, { requirePg: true });
+      const fetcher = new HttpFetcher();
+      const clock = () => new Date();
+      const scout = values.scout ? await buildScoutDeps(options, repo, fetcher, clock) : undefined;
       const report = await runA8Sync(options.env ?? process.env, {
         config,
-        repo: await loadRepository(options, { requirePg: true }),
-        fetcher: new HttpFetcher(),
-        clock: () => new Date(),
+        repo,
+        fetcher,
+        clock,
+        ...(scout ? { scout: scout.deps } : {}),
       });
+      await scout?.recordSpend();
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       if (report.outcome !== "ok") process.exit(1);
     } else if (command === "a8-scout") {
@@ -885,10 +950,12 @@ if (isMain()) {
       if (probe) process.stdout.write(`--- detail page: structure (content masked) ---\n${probe.join("\n")}\n`);
       if (report.outcome !== "ok") process.exit(1);
     } else if (command === "a8-submit-urls") {
+      const written = parseA8ProgramsFile(
+        await readFile(resolveInputPath(values["a8-programs"] ?? "config/a8-programs.json"), "utf8"),
+      );
+      const repo = await loadRepository(options, { requirePg: true });
       const report = await runA8SubmitUrls(options.env ?? process.env, {
-        config: parseA8ProgramsFile(
-          await readFile(resolveInputPath(values["a8-programs"] ?? "config/a8-programs.json"), "utf8"),
-        ),
+        config: withScoutedBrands(written, await repo.scout.list()),
         distDir: resolveInputPath(values.dist ?? "apps/site/dist"),
       });
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

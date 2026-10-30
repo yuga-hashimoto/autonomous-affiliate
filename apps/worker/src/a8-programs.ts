@@ -248,6 +248,8 @@ function statusWordsIn(text: string): string {
 }
 
 interface DescribeContext {
+  /** Only interface wording is printed (see `RenderProbeOptions.strict`). */
+  strict: boolean;
   /** Inside a select of the account's sites: option text is not printed. */
   maskOptions: boolean;
   /** Inside an area the caller knows to hold interface wording (hints, tab names): its text is printed. */
@@ -269,9 +271,9 @@ function describeNode(node: ProbeNode, masked: boolean, context: DescribeContext
   if (text) {
     const isLabel =
       (LABEL_TAGS.has(node.tag) && text.length <= PROBE_LABEL_MAX && !(node.tag === "option" && context.maskOptions)) ||
-      (HEADING_TAGS.has(node.tag) && text.length <= PROBE_HEADING_MAX && !masked) ||
+      (HEADING_TAGS.has(node.tag) && text.length <= PROBE_HEADING_MAX && !masked && !context.strict) ||
       (context.labelArea && text.length <= PROBE_AREA_TEXT_MAX);
-    const isShortOutsideRows = !masked && SHORT_TEXT_TAGS.has(node.tag) && text.length <= PROBE_SHORT_TEXT_MAX;
+    const isShortOutsideRows = !masked && !context.strict && SHORT_TEXT_TAGS.has(node.tag) && text.length <= PROBE_SHORT_TEXT_MAX;
     // Long digit strings (ids, numbers) are never printed, even in a label.
     parts.push(isLabel || isShortOutsideRows ? ` "${text.replace(/\d{5,}/g, "#")}"` : ` T${text.length}${statusWordsIn(text)}`);
   }
@@ -286,6 +288,11 @@ export interface RenderProbeOptions {
    * them is printed (short, long digit strings still masked); everything else stays masked.
    */
   labelAreas?: readonly string[];
+  /**
+   * Print text only where the page's own interface wording is (column headings, buttons, form labels):
+   * links, list items and headings, which can carry a program's or an advertiser's name, are masked.
+   */
+  strict?: boolean;
 }
 
 function redactTerms(line: string, terms: readonly string[]): string {
@@ -316,7 +323,7 @@ export function renderProbe(root: ProbeNode, options: RenderProbeOptions = {}): 
     const masked = insideRow || node.tag === "td" || memo.get(node)?.size === 1;
     const siteSelect = maskOptions || (node.tag === "select" && SITE_SELECT.test(node.name ?? ""));
     const labelArea = inArea || node.cls.some((name) => areas.includes(name));
-    lines.push(`${"  ".repeat(Math.min(depth, 12))}${redactTerms(describeNode(node, masked, { maskOptions: siteSelect, labelArea }), terms)}`);
+    lines.push(`${"  ".repeat(Math.min(depth, 12))}${redactTerms(describeNode(node, masked, { maskOptions: siteSelect, labelArea, strict: options.strict === true }), terms)}`);
     for (const child of node.children) visit(child, depth + 1, masked, siteSelect, labelArea);
   };
   visit(root, 0, false, false, false);

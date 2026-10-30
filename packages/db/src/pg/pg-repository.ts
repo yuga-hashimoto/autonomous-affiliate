@@ -21,6 +21,8 @@ import type {
   PublicationRepository,
   Repository,
   SerpRepository,
+  ScoutRepository,
+  ScoutedBrand,
   SourceRepository,
   SpendRepository,
 } from "../repository.js";
@@ -1060,7 +1062,57 @@ export function createPgRepository(pool: Pool): Repository {
     },
   } satisfies PublicationRepository;
 
-  return { jobs, locks, content, sources, facts, analyses, offers, metrics, spend, audit, serp, publications };
+  const scout: ScoutRepository = {
+    async get(programId) {
+      const c = await client();
+      try {
+        const r = await c.query("SELECT * FROM scouted_brands WHERE program_id = $1", [programId]);
+        return r.rows[0] ? rowToScoutedBrand(r.rows[0]) : undefined;
+      } finally {
+        c.release();
+      }
+    },
+    async list() {
+      const c = await client();
+      try {
+        const r = await c.query("SELECT * FROM scouted_brands ORDER BY program_id");
+        return r.rows.map(rowToScoutedBrand);
+      } finally {
+        c.release();
+      }
+    },
+    async upsert(brand) {
+      const c = await client();
+      try {
+        await c.query(
+          `INSERT INTO scouted_brands (program_id, brand_slug, state, keyword, host, brand_name, terms_url, terms_sha256, list_urls, source_urls, reasons, checked_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           ON CONFLICT (program_id) DO UPDATE SET brand_slug = EXCLUDED.brand_slug, state = EXCLUDED.state, keyword = EXCLUDED.keyword,
+             host = EXCLUDED.host, brand_name = EXCLUDED.brand_name, terms_url = EXCLUDED.terms_url, terms_sha256 = EXCLUDED.terms_sha256,
+             list_urls = EXCLUDED.list_urls, source_urls = EXCLUDED.source_urls, reasons = EXCLUDED.reasons,
+             checked_at = EXCLUDED.checked_at, updated_at = now()`,
+          [
+            brand.programId,
+            brand.brandSlug,
+            brand.state,
+            brand.keyword,
+            brand.host,
+            brand.brandName,
+            brand.termsUrl ?? null,
+            brand.termsSha256 ?? null,
+            JSON.stringify(brand.listUrls),
+            JSON.stringify(brand.sourceUrls),
+            JSON.stringify(brand.reasons),
+            brand.checkedAt,
+          ],
+        );
+      } finally {
+        c.release();
+      }
+    },
+  };
+
+  return { jobs, locks, content, sources, facts, analyses, offers, metrics, spend, audit, serp, publications, scout };
 }
 
 function rowToItem(row: QueryResultRow): {
@@ -1100,6 +1152,23 @@ function rowToRevision(row: QueryResultRow): {
     qaReportId: (row.qa_report_id as string | null) ?? undefined,
     publishedAt: iso(row.published_at as Date),
     sourceIds: (row.source_ids ?? []) as string[],
+  };
+}
+
+function rowToScoutedBrand(row: QueryResultRow): ScoutedBrand {
+  return {
+    programId: row.program_id as string,
+    brandSlug: row.brand_slug as string,
+    state: row.state as ScoutedBrand["state"],
+    keyword: row.keyword as string,
+    host: row.host as string,
+    brandName: row.brand_name as string,
+    termsUrl: (row.terms_url as string | null) ?? undefined,
+    termsSha256: (row.terms_sha256 as string | null) ?? undefined,
+    listUrls: (row.list_urls ?? []) as string[],
+    sourceUrls: (row.source_urls ?? []) as string[],
+    reasons: (row.reasons ?? []) as string[],
+    checkedAt: requiredIso(row.checked_at as Date),
   };
 }
 
