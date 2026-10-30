@@ -1,5 +1,5 @@
 import type { Locator, Page } from "playwright";
-import { withA8Session, type A8SmokeResult } from "./a8-login.js";
+import { CONSOLE_ORIGIN, withA8Session, type A8SmokeResult } from "./a8-login.js";
 import {
   dumpTreeScript,
   hrefShape,
@@ -20,6 +20,15 @@ import {
  */
 
 const KEYWORD_MAX_LENGTH = 40;
+const POPUP_WAIT_MS = 4_000;
+
+function safeOrigin(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "";
+  }
+}
 
 /** The card whose program name mentions the keyword, then its ad-URL button. */
 export function adUrlButtonLocator(page: Page, keyword: string): Locator {
@@ -29,22 +38,48 @@ export function adUrlButtonLocator(page: Page, keyword: string): Locator {
     .locator(".actionAdurl");
 }
 
-/** Runs in the page: the visible dialog with the most controls if one is open, else the page's main content. */
-export const DUMP_DIALOG_OR_MAIN = dumpTreeScript(`(() => {
-  const candidates = Array.from(document.querySelectorAll('[role="dialog"], [aria-modal="true"], .modal, [class*="modal" i], [class*="dialog" i]'))
-    .filter((element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden");
-  const controls = (element) => element.querySelectorAll("input, select, textarea, button").length;
-  candidates.sort((a, b) => controls(b) - controls(a));
-  return candidates[0] || document.querySelector("main") || document.body;
-})()`);
+/** Runs in the page: remembers, for every element, whether it is on screen now. Run before the click. */
+export const MARK_SEEN = `(() => {
+  for (const element of document.querySelectorAll("*")) {
+    element.setAttribute("data-probe-seen", element.getClientRects().length > 0 ? "v" : "h");
+  }
+})()`;
+
+/** Elements on screen now that were not there before the click (new, or hidden before), outermost only. */
+const CHANGED_ROOTS = `(() => {
+  const onScreen = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden";
+  const changed = Array.from(document.querySelectorAll("*")).filter((element) => {
+    const mark = element.getAttribute("data-probe-seen");
+    return onScreen(element) && (mark === null || mark === "h");
+  });
+  const set = new Set(changed);
+  return changed.filter((element) => {
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) if (set.has(parent)) return false;
+    return true;
+  });
+})()`;
+
+/**
+ * Runs in the page after the click: how many outermost elements appeared, and the masked tree of the
+ * one with the most controls (a dialog, a panel); the page's main content when nothing appeared.
+ */
+export const DUMP_CHANGES_OR_MAIN = `({
+  changed: (${CHANGED_ROOTS}).length,
+  tree: ${dumpTreeScript(`(() => {
+    const roots = ${CHANGED_ROOTS};
+    const controls = (element) => element.querySelectorAll("input, select, textarea, button").length;
+    roots.sort((a, b) => controls(b) - controls(a));
+    return roots[0] || document.querySelector("main") || document.body;
+  })()`)},
+})`;
 
 export interface AdUrlProbeReport {
   outcome: "ok" | "login_failed" | "not_found" | "unrecognized";
   login?: A8SmokeResult;
   reason?: string;
   partnered?: { state: ListState; buttons: number };
-  /** Where the click led, as a path shape; the same as the list's when only a dialog opened. */
-  after?: { page: string; navigated: boolean };
+  /** Where the click led, as a path shape; the same as the list's when only a panel opened. */
+  after?: { page: string; navigated: boolean; popup: boolean; changed: number };
   /** Masked structure of the dialog or page the button opened. */
   probe?: string[];
 }
@@ -65,14 +100,21 @@ export async function runA8AdUrlProbe(env: NodeJS.ProcessEnv): Promise<AdUrlProb
     const partnered = { state, buttons };
     if (buttons !== 1) return { outcome: "not_found", reason: "no single ad-URL button on a joined program's card", partnered };
 
+    await page.evaluate(MARK_SEEN);
     const before = page.url();
-    await button.click();
-    await settlePage(page);
-    const tree = (await page.evaluate(DUMP_DIALOG_OR_MAIN)) as ProbeNode;
+    // The button may open the management page in a new tab, or a panel on this page.
+    const [popup] = await Promise.all([page.waitForEvent("popup", { timeout: POPUP_WAIT_MS }).catch(() => undefined), button.click()]);
+    const target = popup ?? page;
+    if (popup) await popup.waitForLoadState("domcontentloaded").catch(() => undefined);
+    await settlePage(target);
+    if (popup && safeOrigin(popup.url()) !== CONSOLE_ORIGIN) {
+      return { outcome: "unrecognized", reason: "the button opened a page outside the console", partnered, after: { page: hrefShape(popup.url()), navigated: false, popup: true, changed: 0 } };
+    }
+    const { changed, tree } = (await target.evaluate(DUMP_CHANGES_OR_MAIN)) as { changed: number; tree: ProbeNode };
     return {
       outcome: "ok",
       partnered,
-      after: { page: hrefShape(page.url()), navigated: page.url() !== before },
+      after: { page: hrefShape(target.url()), navigated: target.url() !== before, popup: popup !== undefined, changed },
       probe: renderProbe(tree, { redact: [keyword, siteName] }),
     };
   });
