@@ -128,6 +128,51 @@ function claimTypeOf(text: string): Fact["claimType"] {
 
 const failed = (...issues: string[]): DraftResult => ({ ok: false, issues });
 
+type QuotePass =
+  | { ok: true; candidates: Fact[]; read: { plan: ArticlePlan } }
+  | { ok: false; issues: string[] };
+
+/** One pass: the model picks quotes from every page, the code checks them, the rules read them. */
+async function readQuotesOnce(
+  plan: ArticlePlan,
+  brief: QuoteBrief,
+  collected: readonly CollectedSource[],
+  selector: QuoteSelector,
+  now: string,
+): Promise<QuotePass> {
+  const candidates: Fact[] = [];
+  let rejected = 0;
+  try {
+    for (const source of collected) {
+      const text = htmlToVisibleText(source.body, source.record.contentType);
+      const quotes: string[] = [];
+      for (const window of selectRelevantWindows(text)) {
+        quotes.push(...(await selector.select({ brief, window })));
+      }
+      const checked = verifyQuotes(quotes, text);
+      rejected += checked.rejected;
+      candidates.push(
+        ...checked.verified.map((quote, index) => ({
+          id: `quote-${source.record.id}-${index}`,
+          text: quote,
+          claimType: claimTypeOf(quote),
+          sourceIds: [source.record.id],
+          verifiedAt: now,
+          confidence: 1,
+          verificationStatus: "VERIFIED" as const,
+        })),
+      );
+    }
+  } catch (error) {
+    return { ok: false, issues: [`引用の選択に失敗しました: ${error instanceof Error ? error.message : String(error)}`] };
+  }
+  const read = completeDraftedPlan(plan, candidates, collected.map((source) => source.record));
+  if (!read.ok) {
+    return { ok: false, issues: [...read.issues, ...(rejected > 0 ? [`本文に無い引用を${rejected}件破棄しました`] : [])] };
+  }
+  return { ok: true, candidates, read };
+}
+
 /**
  * Fills a brief-only plan's calculators from quotes of this cycle's pages. The
  * quotes that were read are saved as facts (verbatim passages of the official page),
@@ -158,36 +203,17 @@ export async function draftPlanFromPages(plan: ArticlePlan, deps: QuoteDraftDeps
     ...(draft.planTerms ? { planTerms: draft.planTerms } : {}),
     monthlyLiters: draft.monthlyLiters,
   };
-  const now = deps.clock().toISOString();
-  const candidates: Fact[] = [];
-  let rejected = 0;
-  try {
-    for (const source of collected) {
-      const text = htmlToVisibleText(source.body, source.record.contentType);
-      const quotes: string[] = [];
-      for (const window of selectRelevantWindows(text)) {
-        quotes.push(...(await deps.selector.select({ brief, window })));
-      }
-      const checked = verifyQuotes(quotes, text);
-      rejected += checked.rejected;
-      candidates.push(
-        ...checked.verified.map((quote, index) => ({
-          id: `quote-${source.record.id}-${index}`,
-          text: quote,
-          claimType: claimTypeOf(quote),
-          sourceIds: [source.record.id],
-          verifiedAt: now,
-          confidence: 1,
-          verificationStatus: "VERIFIED" as const,
-        })),
-      );
-    }
-  } catch (error) {
-    return failed(`引用の選択に失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+  const selector = deps.selector;
+  // A new plan that cannot be drafted is quarantined and never tried again, so a model that
+  // picked badly once is asked again in this run. Each pass is independent; the first that reads wins.
+  const attempts = Math.max(1, deps.policy.limits.task_retry_attempts);
+  let pass: QuotePass = { ok: false, issues: [] };
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    pass = await readQuotesOnce(plan, brief, collected, selector, deps.clock().toISOString());
+    if (pass.ok) break;
   }
-
-  const read = completeDraftedPlan(plan, candidates, collected.map((source) => source.record));
-  if (!read.ok) return failed(...read.issues, ...(rejected > 0 ? [`本文に無い引用を${rejected}件破棄しました`] : []));
+  if (!pass.ok) return failed(...pass.issues);
+  const { candidates, read } = pass;
 
   const freshness = createFreshnessPolicy(deps.policy);
   const saved: Fact[] = [];

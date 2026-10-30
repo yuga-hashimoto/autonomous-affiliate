@@ -15,6 +15,11 @@ on:
       plans:
         description: Plans file in the repository (under config/)
         default: config/plans.live-preview.json
+      discover:
+        description: >-
+          Discovery file in the repository (under config/): also make the plans of the pages it
+          lists (docs/19), as the daily run does. Leave empty for the plans file alone.
+        default: ""
       update_path:
         description: >-
           Also run the update path on each article the preview produced (regenerate it as
@@ -36,6 +41,7 @@ jobs:
     env:
       POLICY: ${{ inputs.policy }}
       PLANS: ${{ inputs.plans }}
+      DISCOVER: ${{ inputs.discover }}
       UPDATE_PATH: ${{ inputs.update_path }}
       LLM_PROVIDER: openai-compatible
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
@@ -58,10 +64,15 @@ jobs:
           case "$POLICY" in config/*.yaml) ;; *) echo "policy must be config/*.yaml" >&2; exit 1 ;; esac
           case "$PLANS" in config/*.json) ;; *) echo "plans must be config/*.json" >&2; exit 1 ;; esac
           test -f "$POLICY" && test -f "$PLANS"
+          if [ -n "$DISCOVER" ]; then
+            case "$DISCOVER" in config/*.json) ;; *) echo "discover must be config/*.json" >&2; exit 1 ;; esac
+            test -f "$DISCOVER"
+          fi
       - name: Run the preview (real pages, real LLM, nothing is published)
         run: |
           ARGS=()
           if [ "$UPDATE_PATH" = "true" ]; then ARGS+=(--preview-update); fi
+          if [ -n "$DISCOVER" ]; then ARGS+=(--discover "$DISCOVER"); fi
           pnpm -s tsx apps/worker/src/index.ts run-pipeline --live --preview --policy "$POLICY" --plans "$PLANS" "${ARGS[@]}" > raw-output.txt
           sed -n '/^{/,$p' raw-output.txt > result.json
           jq -e '.results | length > 0' result.json > /dev/null
@@ -77,6 +88,8 @@ jobs:
               jq -r '.results[] | "| \(.slug) | \(.action) | \(.update.outcome // "-") | \(.finalState) | \(.qaStatus) | \(.published) |"' result.json
               echo
               jq -r '.results[] | select(.qaFailures) | "**\(.slug)**", (.qaFailures[] | "- `\(.id)`: \(.detail)")' result.json
+              echo
+              jq -r 'if .discovery then "Plans found on the listed pages: \(.discovery.found) from \(.discovery.sources) source(s); skipped: \((.discovery.skipped | to_entries | map("\(.key) \(.value)") | join(", ")) | if . == "" then "none" else . end)" else empty end' result.json
               echo
               echo "LLM cost recorded: $(jq -r '.llmCostJpy' result.json) JPY"
             else
