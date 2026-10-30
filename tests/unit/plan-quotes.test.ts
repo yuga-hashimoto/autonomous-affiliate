@@ -301,6 +301,48 @@ describe("draftPlanFromPages: the amounts come from quotes of the page text", ()
     expect(selector.calls).toHaveLength(0);
   });
 
+  it("asks again when the model's first pick yields no plan, and reaches the same input", async () => {
+    const { env, collected } = await collectedOf(pageHtml());
+    const real = new PatternSelector();
+    let pass = 0;
+    const flaky: QuoteSelector = {
+      async select(request) {
+        pass += 1;
+        return pass === 1 ? [] : real.select(request);
+      },
+    };
+
+    const result = await draftPlanFromPages(planOf(), { ...env.services, collected, selector: flaky });
+
+    expect(result.ok && result.plan.calculators[0]?.input).toEqual(EXPECTED_INPUT);
+    expect(pass).toBe(2);
+  });
+
+  it("gives up after the policy's retry attempts and does not call the model more than that", async () => {
+    const { env, collected } = await collectedOf(pageHtml());
+    let calls = 0;
+    const empty: QuoteSelector = {
+      async select() {
+        calls += 1;
+        return [];
+      },
+    };
+
+    const result = await draftPlanFromPages(planOf(), { ...env.services, collected, selector: empty });
+
+    expect(result.ok).toBe(false);
+    expect(calls).toBe(policy.limits.task_retry_attempts);
+  });
+
+  it("asks once when the first pick already makes the plan", async () => {
+    const { env, collected } = await collectedOf(pageHtml());
+    const selector = new PatternSelector();
+
+    await draftPlanFromPages(planOf(), { ...env.services, collected, selector });
+
+    expect(selector.calls).toHaveLength(1);
+  });
+
   it("passes the brief to the selector, never anything a page could write", async () => {
     const { env, collected } = await collectedOf(pageHtml());
     const selector = new PatternSelector();
@@ -319,6 +361,25 @@ describe("draftPlanFromPages: the amounts come from quotes of the page text", ()
 
 describe("a quote-drafted plan in the pipeline", () => {
   const PATH = "content/articles/quoted-water-a.ja-JP.md";
+
+  it("publishes when the model needs a second try, instead of quarantining the plan for good", async () => {
+    const env = setup(pageHtml(), null);
+    const real = new PatternSelector();
+    let pass = 0;
+    const services = {
+      ...env.services,
+      quoteSelector: {
+        async select(request: QuoteRequest) {
+          pass += 1;
+          return pass === 1 ? [] : real.select(request);
+        },
+      },
+    };
+
+    const result = await runArticlePipeline(planOf(), services);
+
+    expect(result).toMatchObject({ finalState: "PUBLISHED", qaStatus: "PASS", published: true });
+  });
 
   it("publishes an article whose figures were never typed in, from quotes of the page", async () => {
     const env = setup(pageHtml());
