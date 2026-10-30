@@ -1,7 +1,7 @@
 ---
 title: "プレミアムウォーター famfit2の24ヶ月総額（公式料金ベースの試算）"
-description: "公式の料金ページに載る月額・送料・手数料・電気代の目安から、月12.5L×2本を24ヶ月使った場合の総額を試算します。"
-pubDate: "2026-10-27T09:26:28.884Z"
+description: "公式の料金ページに載る月額・送料・手数料・電気代の目安から、月25Lを24ヶ月使った場合の総額を試算します。"
+pubDate: "2026-10-30T03:23:17.784Z"
 disclosure: "本記事にはプロモーション（PR）を含みます。"
 offerIds: []
 heroImage: "/images/articles/premium-water-famfit2-24month/hero.webp"
@@ -15,9 +15,9 @@ heroImageHeight: 576
 # プレミアムウォーター famfit2の24ヶ月総額（公式料金ベースの試算）
 
 この記事は**家庭でボトル型ウォーターサーバーの利用を検討している人**を対象に、公式一次情報のみに基づいて比較・試算します。
-公式の料金ページに載る月額・送料・手数料・電気代の目安から、月12.5L×2本を24ヶ月使った場合の総額を試算します。
+公式の料金ページに載る月額・送料・手数料・電気代の目安から、月25Lを24ヶ月使った場合の総額を試算します。
 
-最終確認日: 2026-10-27。金額は公式ページの確認時点のものです。
+最終確認日: 2026-10-30。金額は公式ページの確認時点のものです。
 
 ## 総額比較（同一条件・同一通貨）
 
@@ -38,10 +38,10 @@ heroImageHeight: 576
 ### プレミアムウォーター famfit2（もっとPREMIUMプラン）
 
 ```chart
-{"type":"bars","title":"24ヶ月の費用の内訳","rows":[{"label":"水代","detail":"24ヶ月 × 月4,190円","value":100560},{"label":"配送料","detail":"24ヶ月 × 月0円","value":0},{"label":"電気代","detail":"24ヶ月 × 月669円","value":16056},{"label":"初期費用","value":3300}]}
+{"type":"bars","title":"24ヶ月の費用の内訳","rows":[{"label":"水代","detail":"24ヶ月 × 月4,190円","value":100560},{"label":"配送料","detail":"24ヶ月 × 月0円","value":0},{"label":"電気代","detail":"24ヶ月 × 月669円","value":16056},{"label":"サーバーレンタル料","detail":"24ヶ月 × 月0円","value":0},{"label":"初期費用","value":3300}]}
 ```
 
-- 計算式: `totalJpy = (waterChargeJpy + shippingFeeJpy + electricityFeeJpy) * months + initialFeeJpy`
+- 計算式: `totalJpy = (waterChargeJpy + shippingFeeJpy + electricityFeeJpy + serverRentalFeeJpy) * months + initialFeeJpy`
 - 式バージョン: analysis-formulas-v1
 - 前提: 比較期間は24ヶ月
 - 前提: 使用量: 月25L（24ヶ月分）
@@ -51,6 +51,7 @@ heroImageHeight: 576
 - 水代（24ヶ月 × 月4,190円）: 100,560円
 - 配送料（24ヶ月 × 月0円）: 0円
 - 電気代（24ヶ月 × 月669円）: 16,056円
+- サーバーレンタル料（24ヶ月 × 月0円）: 0円
 - 初期費用: 3,300円
 
 ## 契約条件（総額に含めない項目）
@@ -78,6 +79,6 @@ heroImageHeight: 576
 
 ## 出典
 
-- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-27T09:23:26.936Z（sha256: 4a98e6a6dbe9…）
-- [公式](https://premium-water.net/price) — 確認日時: 2026-10-27T09:23:28.004Z（sha256: 938be56d8436…）
+- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-30T03:18:56.399Z（sha256: 905e7f0ecee7…）
+- [公式](https://premium-water.net/price) — 確認日時: 2026-10-30T03:18:57.681Z（sha256: 3dddc74b8cc3…）
 
