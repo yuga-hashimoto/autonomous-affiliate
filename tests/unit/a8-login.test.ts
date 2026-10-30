@@ -5,6 +5,7 @@ import {
   classifyA8Page,
   credentialsFromEnv,
   describeA8Failure,
+  publicErrorLine,
   redactSecrets,
   safePath,
   type A8PageSnapshot,
@@ -134,6 +135,23 @@ describe("redactSecrets", () => {
   it("replaces every secret and ignores empty ones", () => {
     const text = "fill id-1 then pw-1 failed; id-1 again";
     expect(redactSecrets(text, ["id-1", "pw-1", ""])).toBe("fill [redacted] then [redacted] failed; [redacted] again");
+  });
+});
+
+describe("publicErrorLine", () => {
+  it("keeps only the first line and hides secrets, numbers that could be ids, and the query of any link", () => {
+    const message =
+      'page.goto: Timeout 30000ms exceeded navigating to "https://media-console.a8.net/program/create-link?programId=s00000123456&websiteId=98765432" with id-1\n  - waiting for load state';
+    const line = publicErrorLine(message, ["id-1"]);
+    expect(line).not.toContain("id-1");
+    expect(line).not.toContain("s00000123456");
+    expect(line).not.toContain("98765432");
+    expect(line).not.toContain("\n");
+    expect(line).toContain("Timeout 30000ms exceeded");
+  });
+
+  it("falls back to a fixed sentence when nothing is left", () => {
+    expect(publicErrorLine("", [])).toBe("A8 console work failed");
   });
 });
 

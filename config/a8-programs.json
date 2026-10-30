@@ -1,0 +1,15 @@
+{
+  "$comment": "Brands whose A8 program the daily run keeps in step (docs/20): it looks the program up in the A8 console by the advertiser's name, applies if the account has not joined, and reads the ad link for the site named here. The reward and conditions of a program are member-only and never go in this file. termsSha256 is the fingerprint (termsFingerprint) of the advertiser's public partner-rules page as it was when the rules were read; if the page changes, the links go off until the rules are read again and the fingerprint is renewed.",
+  "siteName": "総額比較",
+  "applicationsPerRun": 1,
+  "brands": [
+    {
+      "brandSlug": "premium-water",
+      "keyword": "プレミアムウォーター",
+      "verticalId": "water_delivery",
+      "termsUrl": "https://premium-water.net/affiliate/",
+      "termsSha256": "e42855aadaa1df6d50cfcfe6510d771db3f0e68d44253724a2469fb75943828c",
+      "trademarkTerms": ["プレミアムウォーター", "PREMIUM WATER", "ぷれみあむうぉーたー"]
+    }
+  ]
+}

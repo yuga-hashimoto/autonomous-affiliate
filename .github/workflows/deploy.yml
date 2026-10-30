@@ -38,6 +38,16 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Write the affiliate redirects from the database (never committed)
+        # The links live in the database (docs/20); without this a deploy would drop every /go/ page.
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -n "$DATABASE_URL" ]; then
+            pnpm tsx apps/worker/src/index.ts export-go-offers content/go-offers.generated.json
+          else
+            echo "DATABASE_URL is not set: the site is built without affiliate redirects"
+          fi
       - name: Build site (fails the deploy if the build breaks)
         run: pnpm --filter site build
         env:

@@ -39,7 +39,8 @@ export interface AgentEventRecord {
 export interface ContentTransitionRecord {
   itemId: string;
   runId: string;
-  fromState: ContentState | null;
+  /** Always a real state: the table (and every caller) records a move from one state to another. */
+  fromState: ContentState;
   toState: ContentState;
   policyVersion: string;
   evidenceIds: string[];
@@ -101,6 +102,18 @@ export interface OfferRepository {
   getOffer(id: string): Promise<AffiliateOffer | undefined>;
   listOffers(): Promise<AffiliateOffer[]>;
   listApprovedActiveOffers(): Promise<AffiliateOffer[]>;
+  /**
+   * The ad link the ASP issued for a program. Kept apart from programs and offers so it
+   * cannot travel with them into a trace, a log or a draft; `undefined` clears it.
+   */
+  setProgramTrackingUrl(programId: string, url: string | undefined): Promise<void>;
+  /** Whether a link is stored, without handing the link to the caller. */
+  hasProgramTrackingUrl(programId: string): Promise<boolean>;
+  /**
+   * Offer id -> ad link, for the offers that may be monetized right now (active, approved,
+   * site channel, on an approved program that has a link). The site builds /go/ from this.
+   */
+  listOfferTrackingUrls(): Promise<Record<string, string>>;
   importConversion(conversion: Conversion): Promise<{ conversion: Conversion; created: boolean }>;
   listConversions(): Promise<Conversion[]>;
   importPayout(payout: Payout): Promise<Payout>;

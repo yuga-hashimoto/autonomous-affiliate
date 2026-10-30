@@ -496,3 +496,94 @@ describe("discovered plans in the live pipeline worker", () => {
     expect(JSON.stringify(result)).not.toContain("other-company");
   });
 });
+
+describe("A8 offers in the live pipeline worker", () => {
+  const policyPath = path.join(TMP, "a8-policy.yaml");
+  const plansPath = path.join(TMP, "a8-plans.json");
+  const a8Path = path.join(TMP, "a8-programs.json");
+  const seams = {
+    fetcher: new MapFetcher(new Map([[PAGE_URL, { body: PAGE }]])),
+    extractor: new FixtureFactExtractor(),
+  };
+  const BRAND = {
+    brandSlug: "brand-a",
+    keyword: "ブランドA",
+    verticalId: "mobile",
+    termsUrl: "https://brand-a.example.com/affiliate/",
+    termsSha256: "a".repeat(64),
+    trademarkTerms: ["ブランドA"],
+  };
+  const planWith = (slug: string, title: string) => ({
+    plans: [
+      {
+        ...PLANS.plans[0]!,
+        slug,
+        title,
+        calculators: [
+          {
+            ...PLANS.plans[0]!.calculators[0]!,
+            input: { ...PLANS.plans[0]!.calculators[0]!.input, offerId: "offer-brand-a-sim20", title: "ブランドA SIM A 20GB" },
+          },
+        ],
+      },
+    ],
+  });
+
+  async function runWith(slug: string, title: string, joined: boolean, withConfig = true) {
+    const repo = createMemoryRepository();
+    if (joined) {
+      await repo.offers.upsertProgram({ id: "prog-a8-brand-a", provider: "a8", status: "APPROVED", payoutCurrency: "JPY", termsUrl: BRAND.termsUrl, termsCheckedAt: new Date().toISOString() });
+      await repo.offers.setProgramTrackingUrl("prog-a8-brand-a", "https://px.a8.net/svt/ejp?a8mat=3ABCDE+1FGHIJ+2KLMNO+PQRST");
+    }
+    await writeFile(plansPath, JSON.stringify(planWith(slug, title)), "utf8");
+    const result = await runLivePipeline(
+      { policyPath, outDir: ".tmp/unused", env: { ...LLM_ENV }, preview: true, repo, ...(withConfig ? { a8ProgramsPath: a8Path } : {}), ...seams },
+      plansPath,
+    );
+    const stored = await readFile(path.join(PREVIEW_DIR, "content/articles", `${slug}.ja-JP.md`), "utf8").catch(() => "");
+    return { result, stored, repo };
+  }
+
+  beforeAll(async () => {
+    await mkdir(TMP, { recursive: true });
+    await writeFile(policyPath, livePolicyText(), "utf8");
+    await writeFile(a8Path, JSON.stringify({ siteName: "総額比較", brands: [BRAND] }), "utf8");
+  });
+
+  afterAll(async () => {
+    await rm(TMP, { recursive: true, force: true });
+    await rm(PREVIEW_DIR, { recursive: true, force: true });
+  });
+
+  it("puts the revenue link in the article of a brand whose program is joined, with a link and a recent terms check", async () => {
+    const { result, stored, repo } = await runWith("a8-linked-sim", "SIM A 20GBの24ヶ月総額（ブランドA）", true);
+    expect(result.a8Offers).toEqual({ offers: 1, active: 1 });
+    expect(result.results[0]).toMatchObject({ qaStatus: "PASS", finalState: "PUBLISHED" });
+    expect(stored).toContain("/go/offer-brand-a-sim20");
+    expect(Object.keys(await repo.offers.listOfferTrackingUrls())).toEqual(["offer-brand-a-sim20"]);
+    // The link itself is not in the article, the result or the log-safe output.
+    expect(stored).not.toContain("px.a8.net");
+    expect(JSON.stringify(result)).not.toContain("px.a8.net");
+  });
+
+  it("publishes the article without a link when the program is not joined", async () => {
+    const { result, stored } = await runWith("a8-unjoined-sim", "SIM A 20GBの24ヶ月総額（ブランドA）", false);
+    expect(result.a8Offers).toEqual({ offers: 0, active: 0 });
+    expect(result.results[0]).toMatchObject({ qaStatus: "PASS", finalState: "PUBLISHED" });
+    expect(stored).not.toContain("/go/");
+    expect(stored).toContain("掲載可能な紹介プログラムがありません");
+  });
+
+  it("stops a linked article whose title begins with the advertiser's name (the program's terms forbid it)", async () => {
+    const { result } = await runWith("a8-bad-title-sim", "ブランドA SIM A 20GBの24ヶ月総額", true);
+    expect(result.results[0]).toMatchObject({ qaStatus: "FAIL", published: false });
+    expect(result.results[0]!.qaFailures?.map((failure) => failure.id)).toContain("offer_title_rule");
+  });
+
+  it("changes nothing without the A8 file", async () => {
+    const { result, stored } = await runWith("a8-off-sim", "ブランドA SIM A 20GBの24ヶ月総額", true, false);
+    expect(result.a8Offers).toBeUndefined();
+    expect(result.results[0]).toMatchObject({ qaStatus: "PASS" });
+    expect(stored).not.toContain("/go/");
+  });
+});

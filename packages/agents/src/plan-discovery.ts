@@ -205,7 +205,8 @@ export function planForService(source: DiscoverySource, name: ServiceName): Arti
   const evidenceTerms = [...new Set([name.display, name.canonical, brandName])];
   return {
     slug: discoveredSlug(brandSlug, name.display, months),
-    title: `${brandName} ${name.display}の${months}ヶ月総額（公式料金ベースの試算）`,
+    // The company's name stays in the title but not at its start: program terms can forbid that (docs/20).
+    title: `ウォーターサーバー ${name.display}（${brandName}）の${months}ヶ月総額（公式料金ベースの試算）`,
     audience: "家庭でボトル型ウォーターサーバーの利用を検討している人",
     purpose: `公式の料金ページに載る月額・送料・手数料・電気代の目安から、月${monthlyLiters}Lを${months}ヶ月使った場合の総額を試算します。`,
     verticalId: source.verticalId,

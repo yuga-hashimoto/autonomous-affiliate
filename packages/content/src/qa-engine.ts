@@ -10,6 +10,7 @@ import { newId, sha256Hex } from "@aff/domain";
 import type { FreshnessPolicy } from "@aff/integrations";
 import { findProhibitedPhrases, AD_DISCLOSURE } from "./draft-types.js";
 import type { Draft } from "./draft-types.js";
+import { titleRuleViolation, trademarkTermsOf } from "./title-rule.js";
 
 export interface QaEngineDeps {
   freshness: FreshnessPolicy;
@@ -174,6 +175,19 @@ export class QaEngine {
       illegal.length === 0
         ? check("offers_approved_and_active", "PASS", "掲載オファーは承認済みかつ有効です")
         : check("offers_approved_and_active", "FAIL", `未承認/無効オファーが参照されています: ${illegal.join(", ")}`),
+    );
+
+    // 5b. An advertiser can forbid its own name at the start of (or filling) the page title.
+    const titleBreaks = input.offers
+      .filter((o) => referencedOfferIds.has(o.id))
+      .flatMap((o) => {
+        const why = titleRuleViolation(draft.title, trademarkTermsOf(o));
+        return why ? [`${o.id}: ${why}`] : [];
+      });
+    checks.push(
+      titleBreaks.length === 0
+        ? check("offer_title_rule", "PASS", "広告主のタイトル規則に抵触しません")
+        : check("offer_title_rule", "FAIL", `広告主の規約に反するタイトルです: ${titleBreaks.join(", ")}`),
     );
 
     // 6. Original value: an own calculation table must exist.

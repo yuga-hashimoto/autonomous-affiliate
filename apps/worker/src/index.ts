@@ -31,7 +31,9 @@ import {
   LlmPlanLister,
   LlmQuoteSelector,
   discoverPlans,
+  ensureBrandOffers,
   mergeDiscovered,
+  parseA8ProgramsFile,
   parseDiscoveryFile,
   type DiscoverySummary,
   type FactExtractor,
@@ -45,11 +47,14 @@ import {
 import { AspReportImporter, HttpFetcher, MapFetcher, checkRobots, type Fetcher } from "@aff/integrations";
 import { buildMonthlyReport, renderMonthlyReportMarkdown } from "@aff/analytics";
 import { runA8Apply } from "./a8-apply.js";
+import { runA8AdUrlProbe } from "./a8-adurl.js";
 import { runA8ExportApproved } from "./a8-export.js";
 import { runA8Inspect } from "./a8-inspect.js";
 import { runA8LinkProbe } from "./a8-linkpage.js";
 import { runA8LoginSmoke } from "./a8-login.js";
 import { runA8Programs } from "./a8-programs.js";
+import { runA8Sync } from "./a8-sync.js";
+import { exportGoOffers } from "./go-offers.js";
 import { createHeroImageService, runImageSmoke } from "./hero-image.js";
 import { LivePublisherIO } from "./live-io.js";
 import plansFixture from "../../../config/plans.dry-run.json" with { type: "json" };
@@ -88,6 +93,11 @@ export interface WorkerOptions {
    */
   discoverPath?: string;
   /**
+   * The A8 brands file (docs/20): before the plans run, each brand's offers are made to match
+   * what its program allows now, so an article carries a revenue link only when everything holds.
+   */
+  a8ProgramsPath?: string;
+  /**
    * Names a change of the article generator (for example "figures-1"). Every live
    * article of the plans is regenerated once per revision (docs/04 "既存記事更新").
    */
@@ -123,6 +133,8 @@ export interface PipelineRunResult {
   held?: Partial<Record<HoldReason, number>>;
   /** Plans made from discovery sources (docs/19), by count only for the same reason. */
   discovery?: DiscoverySummary;
+  /** Offers of the A8 brands (docs/20) and how many may carry a link now; counts only, the programs are private. */
+  a8Offers?: { offers: number; active: number };
   results: {
     slug: string;
     finalState: string;
@@ -399,6 +411,10 @@ export async function runLivePipeline(
     options.discoverPath === undefined
       ? undefined
       : parseDiscoveryFile(await readFile(resolveInputPath(options.discoverPath), "utf8"));
+  const a8Programs =
+    options.a8ProgramsPath === undefined
+      ? undefined
+      : parseA8ProgramsFile(await readFile(resolveInputPath(options.a8ProgramsPath), "utf8"));
   // A plan kept as a brief takes its amounts from quotes of the official page (docs/18).
   const quoteSelector =
     options.quoteSelector ??
@@ -426,6 +442,9 @@ export async function runLivePipeline(
     : undefined;
   // The written plans come first and win on a slug; what the pages list follows, in the pages' order.
   const plans = mergeDiscovered(written, discovered?.plans ?? []);
+  // Offers follow the programs before any article is drafted, so a link appears only while the
+  // program is joined, has a link and its rules are as they were read (docs/20).
+  const a8Offers = a8Programs ? await ensureBrandOffers(repo, plans, a8Programs, policy, clock()) : undefined;
 
   const previewOnly = !policy.flags.publish_enabled;
   const livePreviewDir = join(ROOT, ".tmp/live-preview");
@@ -489,6 +508,7 @@ export async function runLivePipeline(
     results,
     held: countHeld(held),
     ...(discovered ? { discovery: discovered.summary } : {}),
+    ...(a8Offers ? { a8Offers } : {}),
     llmCostJpy: Math.max(llmCostJpy, ledgerDelta),
   };
 }
@@ -744,6 +764,7 @@ if (isMain()) {
       month: { type: "string" },
       plans: { type: "string" },
       discover: { type: "string" },
+      "a8-programs": { type: "string" },
       live: { type: "boolean", default: false },
       preview: { type: "boolean", default: false },
       "template-revision": { type: "string" },
@@ -763,6 +784,9 @@ if (isMain()) {
   if (values.discover !== undefined && !values.live) {
     throw new Error("--discover only applies to a live run (use it with --live)");
   }
+  if (values["a8-programs"] !== undefined && !values.live && command !== "a8-sync") {
+    throw new Error("--a8-programs only applies to a live run or a8-sync");
+  }
   if (values["template-revision"] !== undefined && !values.live) {
     throw new Error("--template-revision only applies to a live run (use it with --live)");
   }
@@ -772,6 +796,7 @@ if (isMain()) {
     ...(values.preview ? { preview: true } : {}),
     ...(values["preview-update"] ? { previewUpdate: true } : {}),
     ...(values.discover !== undefined ? { discoverPath: values.discover } : {}),
+    ...(values["a8-programs"] !== undefined && values.live ? { a8ProgramsPath: values["a8-programs"] } : {}),
     ...(values["template-revision"] !== undefined ? { templateRevision: values["template-revision"] } : {}),
   };
   try {
@@ -832,6 +857,29 @@ if (isMain()) {
       const { probe, ...report } = await runA8LinkProbe(options.env ?? process.env);
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       if (probe) process.stdout.write(`--- ad-link page: structure (content masked) ---\n${probe.join("\n")}\n`);
+      if (report.outcome !== "ok") process.exit(1);
+    } else if (command === "a8-sync") {
+      const config = parseA8ProgramsFile(
+        await readFile(resolveInputPath(values["a8-programs"] ?? "config/a8-programs.json"), "utf8"),
+      );
+      const report = await runA8Sync(options.env ?? process.env, {
+        config,
+        repo: await loadRepository(options, { requirePg: true }),
+        fetcher: new HttpFetcher(),
+        clock: () => new Date(),
+      });
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      if (report.outcome !== "ok") process.exit(1);
+    } else if (command === "export-go-offers") {
+      const report = await exportGoOffers(
+        await loadRepository(options, { requirePg: true }),
+        resolveInputPath(arg ?? "content/go-offers.generated.json"),
+      );
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    } else if (command === "a8-adurl-probe") {
+      const { probe, ...report } = await runA8AdUrlProbe(options.env ?? process.env);
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      if (probe) process.stdout.write(`--- ad-URL management: structure (content masked) ---\n${probe.join("\n")}\n`);
       if (report.outcome !== "ok") process.exit(1);
     } else if (command === "a8-export-approved") {
       const { encrypted, ...report } = await runA8ExportApproved(options.env ?? process.env);

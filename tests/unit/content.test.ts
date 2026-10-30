@@ -432,6 +432,37 @@ describe("B010 QA engine", () => {
     expect(decision.status).toBe("FAIL");
   });
 
+  describe("the advertiser's page-title rule (offer constraint trademark_terms)", () => {
+    const TERMS = "プレミアムウォーター|PREMIUM WATER|ぷれみあむうぉーたー";
+    const evaluateTitled = (title: string, constraints: AffiliateOffer["constraints"] = { trademark_terms: TERMS }) => {
+      const draft = { ...buildTestDraft(), title };
+      const decision = qaEngine().evaluate({ draft, facts: [fact()], offers: [offer({ constraints })], sources: [source] });
+      return decision.checks.find((c) => c.id === "offer_title_rule");
+    };
+
+    it("fails a title that begins with the advertiser's name, as the program's terms forbid", () => {
+      expect(evaluateTitled("プレミアムウォーター famfit2の24ヶ月総額")?.status).toBe("FAIL");
+    });
+
+    it("sees through spacing, brackets, case and width variants at the start", () => {
+      for (const title of ["【プレミアムウォーター】famfit2の総額", "  PREMIUM WATER famfit2の総額", "ｐｒｅｍｉｕｍ ｗａｔｅｒ famfit2の総額", "ぷれみあむうぉーたー famfit2の総額"]) {
+        expect(evaluateTitled(title)?.status, title).toBe("FAIL");
+      }
+    });
+
+    it("fails a title the name makes up most of", () => {
+      expect(evaluateTitled("famfit2 プレミアムウォーター プレミアムウォーター")?.status).toBe("FAIL");
+    });
+
+    it("passes a title that only mentions the name in passing", () => {
+      expect(evaluateTitled("ウォーターサーバー famfit2（プレミアムウォーター）の24ヶ月総額")?.status).toBe("PASS");
+    });
+
+    it("has nothing to check for an offer without the constraint", () => {
+      expect(evaluateTitled("プレミアムウォーター famfit2の24ヶ月総額", {})?.status).toBe("PASS");
+    });
+  });
+
   it("fails when evidence is stale beyond the freshness window", () => {
     const draft = buildTestDraft();
     const staleFact = fact({ verifiedAt: "2026-01-01T00:00:00Z" });

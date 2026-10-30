@@ -86,8 +86,8 @@ export function repositoryContract(
       await repo.content.recordTransition({
         itemId: a.id,
         runId: "run-1",
-        fromState: null,
-        toState: "DISCOVERED",
+        fromState: "DISCOVERED",
+        toState: "ELIGIBILITY_CHECKED",
         policyVersion: "v1",
         evidenceIds: [],
         at: new Date().toISOString(),
@@ -132,6 +132,37 @@ export function repositoryContract(
       expect(second.created).toBe(false);
       expect((await repo.offers.listConversions()).length).toBe(1);
       expect((await repo.offers.listApprovedActiveOffers()).map((o) => o.id)).toEqual(["offer-1"]);
+    });
+
+    it("offers: a program's tracking URL is kept apart from the offers and only usable offers resolve to it", async () => {
+      const repo = await makeRepo();
+      const url = "https://px.a8.net/svt/ejp?a8mat=TESTMAT1";
+      await repo.offers.upsertProgram({ id: "trk-prog", provider: "a8", status: "APPROVED", payoutCurrency: "JPY" });
+      await repo.offers.upsertProgram({ id: "trk-ended", provider: "a8", status: "TERMINATED", payoutCurrency: "JPY" });
+      const base = { verticalId: "water_delivery", rewardModel: "unknown" as const, channelPermissions: ["site" as const], constraints: {} };
+      await repo.offers.upsertOffer({ ...base, id: "trk-offer-a", programId: "trk-prog", title: "A", active: true, status: "APPROVED" });
+      await repo.offers.upsertOffer({ ...base, id: "trk-offer-off", programId: "trk-prog", title: "B", active: false, status: "APPROVED" });
+      await repo.offers.upsertOffer({ ...base, id: "trk-offer-ended", programId: "trk-ended", title: "C", active: true, status: "APPROVED" });
+      await repo.offers.upsertOffer({ ...base, id: "trk-offer-nolink", programId: "trk-ended", title: "D", active: true, status: "APPROVED" });
+
+      await repo.offers.setProgramTrackingUrl("trk-prog", url);
+      await repo.offers.setProgramTrackingUrl("trk-ended", "https://px.a8.net/svt/ejp?a8mat=TESTMAT2");
+
+      const resolved = await repo.offers.listOfferTrackingUrls();
+      expect(resolved["trk-offer-a"]).toBe(url);
+      expect(resolved["trk-offer-off"]).toBeUndefined();
+      expect(resolved["trk-offer-ended"]).toBeUndefined();
+      expect(await repo.offers.hasProgramTrackingUrl("trk-prog")).toBe(true);
+      expect(await repo.offers.hasProgramTrackingUrl("trk-unknown")).toBe(false);
+      expect(JSON.stringify(await repo.offers.listOffers())).not.toContain("TESTMAT");
+      expect(JSON.stringify(await repo.offers.getProgram("trk-prog"))).not.toContain("TESTMAT");
+
+      // A new program record (terms refreshed) must not lose the link, and clearing removes it.
+      await repo.offers.upsertProgram({ id: "trk-prog", provider: "a8", status: "APPROVED", payoutCurrency: "JPY", termsUrl: "https://example.test/terms" });
+      expect((await repo.offers.listOfferTrackingUrls())["trk-offer-a"]).toBe(url);
+      await repo.offers.setProgramTrackingUrl("trk-prog", undefined);
+      expect((await repo.offers.listOfferTrackingUrls())["trk-offer-a"]).toBeUndefined();
+      expect(await repo.offers.hasProgramTrackingUrl("trk-prog")).toBe(false);
     });
 
     it("spend accumulates per day+category+provider+source and sums by month", async () => {

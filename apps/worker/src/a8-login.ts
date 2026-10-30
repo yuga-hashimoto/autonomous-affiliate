@@ -134,6 +134,16 @@ export function redactSecrets(text: string, secrets: readonly string[]): string 
     .reduce((current, secret) => current.split(secret).join("[redacted]"), text);
 }
 
+/**
+ * An error of console work as one line for a public log: the first line only, secrets hidden, and
+ * the query of any link and any long number (ids) masked, since a browser error can quote the page it was on.
+ */
+export function publicErrorLine(message: string, secrets: readonly string[]): string {
+  const line = redactSecrets(message, secrets).split("\n")[0] ?? "";
+  const masked = line.replace(/\?[^\s"')]*/g, "?…").replace(/\d{6,}/g, "#").trim();
+  return masked || "A8 console work failed";
+}
+
 export function describeA8Failure(outcome: Exclude<A8Outcome, "logged_in">): string {
   switch (outcome) {
     case "challenge":
@@ -259,7 +269,7 @@ export async function withA8Session<T>(
     return { login, value: await work(page) };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(redactSecrets(message, secrets).split("\n")[0] ?? "A8 console work failed");
+    throw new Error(publicErrorLine(message, secrets));
   } finally {
     await browser.close();
   }

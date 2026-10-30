@@ -14,11 +14,16 @@ async function loadRegistry(): Promise<GoRegistry> {
       throw new Error("AFFILIATE_TRACKING_URLS_JSON is not valid JSON");
     }
   }
-  // Priority 2: local development file (keep it empty in the repository).
-  const localModule = (await import("../../../../../content/go-offers.json").catch(() => null)) as {
-    default?: GoRegistry;
-  } | null;
-  return localModule?.default ?? { offers: {} };
+  // Priority 2: files in content/. go-offers.json is the tracked placeholder (empty in the
+  // repository); go-offers.generated.json is written by `export-go-offers` from the database just
+  // before a build and is never committed (docs/20). A glob, so a missing file is not an error.
+  const files = import.meta.glob<GoRegistry>("../../../../../content/go-offers*.json", {
+    eager: true,
+    import: "default",
+  });
+  const offers: Record<string, string> = {};
+  for (const registry of Object.values(files)) Object.assign(offers, registry?.offers ?? {});
+  return { offers };
 }
 
 /**
