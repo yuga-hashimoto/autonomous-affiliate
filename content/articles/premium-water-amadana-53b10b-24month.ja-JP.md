@@ -1,7 +1,7 @@
 ---
 title: "プレミアムウォーター amadanaスタンダードサーバーの24ヶ月総額（公式料金ベースの試算）"
 description: "公式の料金ページに載る月額・送料・手数料・電気代の目安から、月25Lを24ヶ月使った場合の総額を試算します。"
-pubDate: "2026-10-30T02:37:54.995Z"
+pubDate: "2026-10-30T03:27:09.104Z"
 disclosure: "本記事にはプロモーション（PR）を含みます。"
 offerIds: []
 heroImage: "/images/articles/premium-water-amadana-53b10b-24month/hero.webp"
@@ -79,19 +79,6 @@ heroImageHeight: 576
 
 ## 出典
 
-- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-27T04:41:52.321Z（sha256: 32712aee5a11…）
-- [公式](https://premium-water.net/price) — 確認日時: 2026-10-27T04:43:59.196Z（sha256: 9519a59f926e…）
-- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-27T05:42:39.152Z（sha256: 565bc7ad5037…）
-- [公式](https://premium-water.net/price) — 確認日時: 2026-10-27T05:42:40.261Z（sha256: 6e6846afae72…）
-- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-27T09:23:26.936Z（sha256: 4a98e6a6dbe9…）
-- [公式](https://premium-water.net/price) — 確認日時: 2026-10-27T09:23:28.004Z（sha256: 938be56d8436…）
-- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-30T02:15:54.963Z（sha256: 02d9904682a2…）
-- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-30T02:16:17.231Z（sha256: c2b530e68d85…）
-- [公式](https://premium-water.net/price) — 確認日時: 2026-10-30T02:16:18.381Z（sha256: f6cbbd691b5d…）
-- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-30T02:23:12.615Z（sha256: cd3195369782…）
-- [公式](https://premium-water.net/price) — 確認日時: 2026-10-30T02:23:13.728Z（sha256: c3dce81d7c47…）
-- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-30T02:29:19.314Z（sha256: ad874509e677…）
-- [公式](https://premium-water.net/price) — 確認日時: 2026-10-30T02:29:20.452Z（sha256: 5a2b797405a3…）
-- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-30T02:34:41.261Z（sha256: df772f89ac96…）
-- [公式](https://premium-water.net/price) — 確認日時: 2026-10-30T02:34:42.669Z（sha256: 23cefef2899e…）
+- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-30T03:23:33.485Z（sha256: 8c96c9e235d7…）
+- [公式](https://premium-water.net/price) — 確認日時: 2026-10-30T03:23:35.032Z（sha256: c3cbd68e31af…）
 
