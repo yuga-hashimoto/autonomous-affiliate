@@ -1,9 +1,9 @@
 ---
-title: "プレミアムウォーター amadanaスタンダードサーバーの24ヶ月総額（公式料金ベースの試算）"
+title: "ウォーターサーバー amadanaスタンダードサーバー（プレミアムウォーター）の24ヶ月総額（公式料金ベースの試算）"
 description: "公式の料金ページに載る月額・送料・手数料・電気代の目安から、月25Lを24ヶ月使った場合の総額を試算します。"
-pubDate: "2026-10-30T03:27:09.104Z"
+pubDate: "2026-10-30T08:35:25.664Z"
 disclosure: "本記事にはプロモーション（PR）を含みます。"
-offerIds: []
+offerIds: ["offer-premium-water-amadana-53b10b"]
 heroImage: "/images/articles/premium-water-amadana-53b10b-24month/hero.webp"
 heroImageAlt: "ウォーターサーバーのイメージ（AI生成）"
 heroImageWidth: 1024
@@ -12,7 +12,7 @@ heroImageHeight: 576
 
 本記事にはプロモーション（PR）を含みます。
 
-# プレミアムウォーター amadanaスタンダードサーバーの24ヶ月総額（公式料金ベースの試算）
+# ウォーターサーバー amadanaスタンダードサーバー（プレミアムウォーター）の24ヶ月総額（公式料金ベースの試算）
 
 この記事は**家庭でボトル型ウォーターサーバーの利用を検討している人**を対象に、公式一次情報のみに基づいて比較・試算します。
 公式の料金ページに載る月額・送料・手数料・電気代の目安から、月25Lを24ヶ月使った場合の総額を試算します。
@@ -69,7 +69,7 @@ heroImageHeight: 576
 
 ## 申し込みを検討する場合
 
-現在、掲載可能な紹介プログラムがありません。公式サイトで最新の条件をご確認ください（この記事は収益リンクを持たずに公開されます）。
+- [プレミアムウォーター amadanaスタンダードサーバー（もっとPREMIUMプラン）の公式サイトを確認する](/go/offer-premium-water-amadana-53b10b)（PR / rel=sponsored）
 
 ## この比較の限界
 
@@ -79,6 +79,6 @@ heroImageHeight: 576
 
 ## 出典
 
-- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-30T03:23:33.485Z（sha256: 8c96c9e235d7…）
-- [公式](https://premium-water.net/price) — 確認日時: 2026-10-30T03:23:35.032Z（sha256: c3cbd68e31af…）
+- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-30T08:32:27.721Z（sha256: 22252912d586…）
+- [公式](https://premium-water.net/price) — 確認日時: 2026-10-30T08:32:28.927Z（sha256: e9e3d3df5b8d…）
 
