@@ -223,6 +223,27 @@ describe("renderProbe", () => {
     expect(text).toContain("承認日");
   });
 
+  it("prints the text under the areas it is told are interface wording, and masks the rest of the page", () => {
+    const page = node("main", {
+      children: [
+        node("ul", {
+          cls: ["annotationList"],
+          children: [node("li", { text: "URLは1行に1件ずつ入力してください" }), node("li", { text: "12345678 のような番号は伏せる" })],
+        }),
+        node("ul", { cls: ["tab"], children: [node("li", { children: [node("a", { cls: ["tabOn"], href: "#", text: "URLを入力して提出" })] })] }),
+        node("p", { text: "秘密の広告主の注意書きがここにあるが外には出さない文章" }),
+        node("dd", { text: "秘密の広告主名" }),
+      ],
+    });
+    const lines = renderProbe(page, { labelAreas: ["annotationList", "tab"] }).join("\n");
+    expect(lines).toContain("URLは1行に1件ずつ入力してください");
+    expect(lines).toContain("URLを入力して提出");
+    expect(lines).not.toContain("12345678");
+    expect(lines).not.toContain("秘密の広告主");
+    // Without the option the same page prints none of it.
+    expect(renderProbe(page).join("\n")).not.toContain("URLは1行に1件ずつ");
+  });
+
   it("masks cell text and link text, so no program name, reward or id reaches the log", () => {
     const text = renderProbe(table).join("\n");
     expect(text).not.toContain("秘密の広告主名");

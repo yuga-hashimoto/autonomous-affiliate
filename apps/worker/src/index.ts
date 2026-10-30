@@ -879,9 +879,10 @@ if (isMain()) {
       );
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     } else if (command === "a8-adurl-probe") {
-      const { probe, ...report } = await runA8AdUrlProbe(options.env ?? process.env);
+      const { probe, secondTab, ...report } = await runA8AdUrlProbe(options.env ?? process.env);
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       if (probe) process.stdout.write(`--- ad-URL management: structure (content masked) ---\n${probe.join("\n")}\n`);
+      if (secondTab) process.stdout.write(`--- ad-URL management, second tab: structure (content masked) ---\n${secondTab.join("\n")}\n`);
       if (report.outcome !== "ok") process.exit(1);
     } else if (command === "a8-export-approved") {
       const { encrypted, ...report } = await runA8ExportApproved(options.env ?? process.env);
