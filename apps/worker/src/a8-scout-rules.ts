@@ -17,7 +17,7 @@ export const SCOUT_SEARCHES: Readonly<Record<string, readonly string[]>> = {
 
 /** The keyword that finds a program on the console is the advertiser's name, so it has to fit the brand schema. */
 const NAME_MAX = 40;
-const NAME_MIN = 2;
+const NAME_MIN = 4;
 
 export interface ScoutCandidate {
   programId: string;

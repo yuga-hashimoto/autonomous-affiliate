@@ -10,13 +10,13 @@ const passed = (id: string, name: string, host: string | undefined, via: "labele
   candidate: { programId: id, name, joined: false, detailPath: `/program/detail-not-partnered?programId=${id}` },
   gate: { ok: true, reasons: [] },
   site: host ? { host, via } : { via: via === "labeled_link" ? "none" : via },
-  signals: { chars: 1000, prohibitions: 0, topics: [] },
+  signals: { chars: 1000, prohibitions: 0, topics: [], rules: true },
 });
 const failed = (id: string, reasons: string[]): ReadCandidate => ({
   candidate: { programId: id, name: `広告主${id}`, joined: false, detailPath: `/program/detail-not-partnered?programId=${id}` },
   gate: { ok: false, reasons },
   site: { host: "x.com", via: "labeled_link" },
-  signals: { chars: 1000, prohibitions: 1, topics: ["price"] },
+  signals: { chars: 1000, prohibitions: 1, topics: ["price"], rules: true },
 });
 
 const okVet = (candidate: VetCandidate): VetResult => ({
@@ -85,20 +85,37 @@ describe("registerCandidates", () => {
     expect((await repo.scout.get("s0002"))?.reasons).toEqual(["terms_ban_automation"]);
   });
 
-  it("gives up on a site that takes too long, to look again tomorrow, and on one that throws", async () => {
-    const { repo, deps } = setup((candidate) => (candidate.host === "slow.com" ? new Promise<VetResult>(() => undefined) : Promise.reject(new Error("boom"))));
-    const counts = await registerCandidates([passed("s0001", "A社", "slow.com"), passed("s0002", "B社", "broken.com")], { ...deps, vetTimeoutMs: 20 });
-    expect(counts).toEqual({ retry_later: 2 });
-    expect((await repo.scout.get("s0001"))?.reasons).toEqual(["vet_timeout"]);
-    expect((await repo.scout.get("s0002"))?.reasons).toEqual(["site_unreachable"]);
+  it("gives up on a site that takes too long, to look again tomorrow, and keeps going past one that throws", async () => {
+    const slow = setup(() => new Promise<VetResult>(() => undefined));
+    const counts = await registerCandidates([passed("s0001", "A社", "slow.com")], { ...slow.deps, vetTimeoutMs: 20 });
+    expect(counts).toEqual({ retry_later: 1 });
+    expect((await slow.repo.scout.get("s0001"))?.reasons).toEqual(["vet_timeout"]);
+
+    const broken = setup((candidate) => (candidate.host === "broken.com" ? Promise.reject(new Error("boom")) : okVet(candidate)));
+    const after = await registerCandidates([passed("s0002", "B社", "broken.com"), passed("s0003", "C社", "fine.com")], broken.deps);
+    expect(after).toEqual({ retry_later: 1, vetted: 1 });
+    expect((await broken.repo.scout.get("s0002"))?.reasons).toEqual(["site_unreachable"]);
   });
 
   it("does not judge a page that came back almost empty", async () => {
     const { repo, deps, vetted } = setup();
-    const empty = { ...passed("s0001", "A社", "a-site.com"), signals: { chars: 20, prohibitions: 0, topics: [] } };
+    const empty = { ...passed("s0001", "A社", "a-site.com"), signals: { chars: 20, prohibitions: 0, topics: [], rules: true } };
     expect(await registerCandidates([empty], deps)).toEqual({ retry_later: 1 });
     expect(vetted).toEqual([]);
     expect((await repo.scout.get("s0001"))?.reasons).toEqual(["page_unreadable"]);
+  });
+
+  it("does not judge a page that is not a program's page, however long", async () => {
+    const { deps } = setup();
+    const other = { ...passed("s0001", "A社", "a-site.com"), signals: { chars: 5000, prohibitions: 0, topics: [], rules: false } };
+    expect(await registerCandidates([other], deps)).toEqual({ retry_later: 1 });
+  });
+
+  it("starts no other check beside one that ran out of time", async () => {
+    const { deps, vetted } = setup(() => new Promise<VetResult>(() => undefined));
+    const counts = await registerCandidates([passed("s0001", "A社", "a-site.com"), passed("s0002", "B社", "b-site.com")], { ...deps, vetTimeoutMs: 20 });
+    expect(counts).toEqual({ retry_later: 1, waiting: 1 });
+    expect(vetted).toEqual(["a-site"]);
   });
 
   it("does not take a slug that a brand already has", async () => {
@@ -168,6 +185,34 @@ describe("advanceScouted", () => {
     expect(states).toEqual({ "brand-a": "active", "brand-b": "retired", "brand-c": "active" });
   });
 
+  it("does not make an advertiser active while its rules page changed or could not be read", async () => {
+    const repo = createMemoryRepository();
+    const changed = stored();
+    const unreadable = stored({ programId: "s0002", brandSlug: "brand-b" });
+    for (const brand of [changed, unreadable]) await repo.scout.upsert(brand);
+    const labels = new Map([["brand-a", "linked_terms_changed"], ["brand-b", "linked_terms_unreadable"]]);
+    expect(await advanceScouted(repo, [changed, unreadable], labels, NOW)).toEqual({});
+    expect((await repo.scout.get("s0001"))?.state).toBe("vetted");
+  });
+
+  it("frees the place of a joined advertiser that gives no article, and keeps one that does", async () => {
+    const repo = createMemoryRepository();
+    const idle = stored({ state: "active", checkedAt: "2026-09-20T00:00:00.000Z" });
+    const writing = stored({ programId: "s0002", brandSlug: "brand-b", state: "active", checkedAt: "2026-09-20T00:00:00.000Z" });
+    const young = stored({ programId: "s0003", brandSlug: "brand-c", state: "active", checkedAt: "2026-10-25T00:00:00.000Z" });
+    for (const brand of [idle, writing, young]) await repo.scout.upsert(brand);
+    const articles = [
+      { slug: "brand-b-model-x-24month", state: "PUBLISHED" },
+      { slug: "brand-a-model-y-24month", state: "QUARANTINED" },
+    ];
+    const labels = new Map([["brand-a", "linked"], ["brand-b", "linked"], ["brand-c", "linked"]]);
+    expect(await advanceScouted(repo, [idle, writing, young], labels, NOW, articles)).toEqual({ retired: 1 });
+    expect((await repo.scout.get("s0001"))?.state).toBe("retired");
+    expect((await repo.scout.get("s0001"))?.reasons).toEqual(["no_articles"]);
+    expect((await repo.scout.get("s0002"))?.state).toBe("active");
+    expect((await repo.scout.get("s0003"))?.state).toBe("active");
+  });
+
   it("gives up on an advertiser that never joined", async () => {
     const repo = createMemoryRepository();
     const waiting = stored({ checkedAt: "2026-09-01T00:00:00.000Z" });
@@ -202,7 +247,7 @@ describe("renewScoutedTerms", () => {
     const repo = createMemoryRepository();
     const brand = stored({ state: "active" });
     await repo.scout.upsert(brand);
-    const fetcher = new MapFetcher(new Map([[url, page(["価格の掲載はできません。"])]]));
+    const fetcher = new MapFetcher(new Map([[url, page(["アフィリエイト規約", "価格の掲載はできません。"])]]));
     expect(await renewScoutedTerms(repo, fetcher, [brand], new Map([["brand-a", "changed"]]), NOW)).toEqual({ retired: 1 });
     const after = await repo.scout.get("s0001");
     expect(after?.state).toBe("retired");

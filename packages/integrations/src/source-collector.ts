@@ -48,6 +48,12 @@ export class SourceCollector {
     if (result.status < 200 || result.status >= 300) {
       throw new SourceUnavailableError(canonicalUrl, `HTTP ${result.status}`);
     }
+    // A redirect to another site is not the official page: the host the page came from must be allowed too.
+    try {
+      this.allowlist.assertAllowed(result.finalUrl || canonicalUrl);
+    } catch {
+      throw new SourceUnavailableError(canonicalUrl, "the page was served from a host that is not allowed");
+    }
     const record: SourceRecord = {
       id: newId("src"),
       canonicalUrl,

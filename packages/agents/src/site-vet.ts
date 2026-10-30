@@ -69,7 +69,30 @@ export function siteNameOf(name: string): string {
   return name.replace(/[（(【[][^）)】\]]*[）)】\]]/g, "").trim() || name.trim();
 }
 
+/** Words that say what the company sells, not who it is: a page that has only these is not the company's. */
+const GENERIC_WORDS = ["ミネラルウォーター", "ウォーターサーバー", "宅配ウォーター", "ウォーター", "サーバー", "宅配水", "天然水", "公式", "サイト", "新規", "設置", "宅配", "水"];
+
 const comparable = (text: string): string => text.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+
+/**
+ * The form of the advertiser's name that the site's own text shows: the name as the console gives it
+ * (without notes), else its longest distinctive part (the console may add what the company sells).
+ * Nothing when the site shows none of it, which is a "no": the link in the console may be the wrong site.
+ */
+export function nameOnSite(name: string, siteText: string): string | undefined {
+  const text = comparable(siteText);
+  const whole = siteNameOf(name);
+  if (text.includes(comparable(whole))) return whole;
+  const parts = whole
+    .normalize("NFKC")
+    .split(/[\s・/|｜\-－―「」『』]+/)
+    .map((part) => GENERIC_WORDS.reduce((rest, word) => rest.split(word).join(" "), part).split(/\s+/))
+    .flat()
+    .filter((part) => part.length >= 3);
+  return parts.sort((a, b) => b.length - a.length).find((part) => text.includes(comparable(part)));
+}
+
+const MIN_TOP_TEXT = 200;
 
 async function readPage(fetcher: Fetcher, url: string, host: string): Promise<ReadOutcome> {
   if (registrableHost(new URL(url).hostname) !== host) return { unavailable: true };
@@ -88,25 +111,28 @@ function sameSiteLinks(links: readonly PageLink[], host: string): PageLink[] {
   return links.filter((link) => registrableHost(new URL(link.url).hostname) === host);
 }
 
+interface Linked {
+  pages: Read[];
+  robots: boolean;
+  /** Links that matched but whose page could not be read now. */
+  unreadable: number;
+}
+
 /** Pages behind the links whose text matches, in the order of the page, at most `limit` that can be read. */
-async function readLinked(
-  fetcher: Fetcher,
-  links: readonly PageLink[],
-  pattern: RegExp,
-  host: string,
-  limit: number,
-): Promise<{ pages: Read[]; robots: boolean }> {
+async function readLinked(fetcher: Fetcher, links: readonly PageLink[], pattern: RegExp, host: string, limit: number): Promise<Linked> {
   const pages: Read[] = [];
   const seen = new Set<string>();
+  let unreadable = 0;
   for (const link of links) {
     if (pages.length >= limit) break;
     if (!pattern.test(link.text) || seen.has(link.url)) continue;
     seen.add(link.url);
     const outcome = await readPage(fetcher, link.url, host);
-    if ("robots" in outcome) return { pages, robots: true };
+    if ("robots" in outcome) return { pages, robots: true, unreadable };
     if ("read" in outcome) pages.push(outcome.read);
+    else unreadable += 1;
   }
-  return { pages, robots: false };
+  return { pages, robots: false, unreadable };
 }
 
 function priceCandidates(links: readonly PageLink[], used: ReadonlySet<string>): string[] {
@@ -117,9 +143,11 @@ function priceCandidates(links: readonly PageLink[], used: ReadonlySet<string>):
   return [...new Set(scored.map((entry) => entry.url))].slice(0, MAX_PRICE_PAGES);
 }
 
+/** A price page shows prices: at least one amount in yen. */
+const YEN_AMOUNT = /\d[\d,]*\s*円/;
+
 export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps): Promise<VetResult> {
   const { host } = candidate;
-  const brandName = siteNameOf(candidate.name);
 
   let top: Read | undefined;
   for (const origin of [`https://${host}/`, `https://www.${host}/`]) {
@@ -130,15 +158,19 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
       break;
     }
   }
-  if (!top) return { ok: false, reasons: ["site_unreachable"] };
-  if (!comparable(top.text).includes(comparable(brandName))) return { ok: false, reasons: ["name_not_on_site"] };
+  // A front page with almost no text is probably drawn by script: not this check's to judge.
+  if (!top || top.text.length < MIN_TOP_TEXT) return { ok: false, reasons: ["site_unreachable"] };
+  const brandName = nameOnSite(candidate.name, top.text);
+  if (!brandName) return { ok: false, reasons: ["name_not_on_site"] };
 
   const links = sameSiteLinks(linksOfHtml(top.html, top.url), host);
   const terms = await readLinked(deps.fetcher, links, TERMS_LINK, host, MAX_RULE_PAGES);
   if (terms.robots) return { ok: false, reasons: ["robots_disallow"] };
-  if (terms.pages.length === 0) return { ok: false, reasons: ["terms_not_found"] };
+  if (terms.pages.length === 0) return { ok: false, reasons: [terms.unreadable > 0 ? "site_unreachable" : "terms_not_found"] };
   const partner = await readLinked(deps.fetcher, links, PARTNER_LINK, host, MAX_RULE_PAGES);
   if (partner.robots) return { ok: false, reasons: ["robots_disallow"] };
+  // A rules page for partners that is there but cannot be read now is not "no rules for partners".
+  if (partner.pages.length === 0 && partner.unreadable > 0) return { ok: false, reasons: ["site_unreachable"] };
 
   const reasons = new Set<string>();
   if (terms.pages.some((page) => automationBan(page.text)) || partner.pages.some((page) => automationBan(page.text))) {
@@ -155,13 +187,22 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
 
   let sawPage = false;
   let failedListing = false;
-  for (const url of pricePages) {
+  let unreadable = 0;
+  for (const url of [...new Set(pricePages)]) {
+    // The same guards as every other page: robots.txt, the host the page really came from, and prices on it.
+    const outcome = await readPage(deps.fetcher, url, host);
+    if ("robots" in outcome) continue;
+    if (!("read" in outcome)) {
+      unreadable += 1;
+      continue;
+    }
+    if (!YEN_AMOUNT.test(outcome.read.text)) continue;
     const source: DiscoverySource = {
       verticalId: "water_delivery",
       brandSlug: candidate.brandSlug,
       brandName,
-      listUrls: [url],
-      sourceUrls: [url],
+      listUrls: [outcome.read.url],
+      sourceUrls: [outcome.read.url],
       months: 24,
       monthlyLiters: 25,
     };
@@ -178,8 +219,8 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
         brandName,
         termsUrl: rules.url,
         termsSha256: termsFingerprint(rules.text),
-        listUrls: [url],
-        sourceUrls: [url],
+        listUrls: source.listUrls,
+        sourceUrls: source.sourceUrls ?? source.listUrls,
         services: found.plans.length,
       };
     }
@@ -187,19 +228,25 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
     failedListing ||= (found.summary.skipped.listing_failed ?? 0) > 0;
   }
   if (failedListing && !sawPage) return { ok: false, reasons: ["listing_failed"] };
+  if (!sawPage && unreadable > 0) return { ok: false, reasons: ["site_unreachable"] };
   return { ok: false, reasons: [sawPage ? "no_services" : "no_price_page"] };
 }
 
 export type RereadResult = { ok: true; termsSha256: string } | { ok: false; reasons: string[] };
 
+/** A rules page for partners says so at its top; the terms of use of a site have sentences about fees that are not about advertising. */
+const PARTNER_PAGE = /アフィリエイト|アフィリエイター|パートナー|広告掲載/;
+
 /**
  * The advertiser's rules page again, after it changed: still readable and still leaving room for the
- * comparison. `terms_unreadable` is a "not now"; the other reasons are about what the page says.
+ * comparison. `terms_unreadable` is a "not now"; the other reasons are about what the page says. The
+ * page is held to the same rules as when it was first read: a partner page to the rules about what an
+ * article may say, any page to the ban on collecting by program.
  */
 export async function rereadTerms(fetcher: Fetcher, termsUrl: string, host: string): Promise<RereadResult> {
   const outcome = await readPage(fetcher, termsUrl, host);
   if (!("read" in outcome)) return { ok: false, reasons: ["terms_unreadable"] };
-  const reasons = new Set<string>(restrictionReasons(outcome.read.text));
+  const reasons = new Set<string>(PARTNER_PAGE.test(outcome.read.text.slice(0, 300)) ? restrictionReasons(outcome.read.text) : []);
   if (automationBan(outcome.read.text)) reasons.add("terms_ban_automation");
   if (reasons.size > 0) return { ok: false, reasons: [...reasons] };
   return { ok: true, termsSha256: termsFingerprint(outcome.read.text) };

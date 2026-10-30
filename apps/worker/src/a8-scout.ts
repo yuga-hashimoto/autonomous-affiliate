@@ -43,16 +43,18 @@ export interface DetailPage {
  */
 export const READ_DETAIL_PAGE = `(() => {
   const root = document.querySelector("main") || document.body;
+  // The program's own card holds its conditions; the application form below it and the related keywords are the console's.
+  const card = document.querySelector(".pgCard.pgDetail") || root;
   const skip = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"]);
   const folded = [];
-  for (const element of root.querySelectorAll("*")) {
+  for (const element of card.querySelectorAll("*")) {
     if (skip.has(element.tagName)) continue;
     const parent = element.parentElement;
     if (getComputedStyle(element).display !== "none" || !parent || getComputedStyle(parent).display === "none") continue;
     folded.push((element.textContent || "").replace(/\\s+/g, " ").trim());
   }
   return {
-    text: [root.innerText || "", ...folded].join("\\n"),
+    text: [card.innerText || "", ...folded].join("\\n"),
     links: Array.from(root.querySelectorAll("a[href]")).slice(0, 400).map((anchor) => ({
       href: anchor.getAttribute("href") || "",
       text: (anchor.innerText || "").replace(/\\s+/g, " ").trim().slice(0, 40),
@@ -65,8 +67,11 @@ export interface ReadCandidate {
   gate: ProgramGate;
   site: SiteHost;
   /** What the page was about, as counts: whether the rules had anything to find. */
-  signals: { chars: number; prohibitions: number; topics: string[] };
+  signals: { chars: number; prohibitions: number; topics: string[]; rules: boolean };
 }
+
+/** The headings of the part of a program's page that states its conditions; a page without them was not read as a program's page. */
+const RULES_HEADING = /成果条件|否認条件|PR文/;
 
 /** A page with less text than this was probably not read. */
 export const READABLE_CHARS = 300;
@@ -128,13 +133,19 @@ export async function gatherCandidates(
 export async function readCandidates(console: ScoutConsole, candidates: readonly ScoutCandidate[]): Promise<ReadCandidate[]> {
   const read: ReadCandidate[] = [];
   for (const candidate of candidates.slice(0, MAX_DETAIL_READS)) {
-    const page = await console.detail(candidate);
+    let page: DetailPage;
+    try {
+      page = await console.detail(candidate);
+    } catch {
+      // One page that fails to open must not lose the others; it is looked at again tomorrow.
+      page = { text: "", links: [] };
+    }
     const signals = ruleSignals(page.text);
     read.push({
       candidate,
       gate: programGate(page.text),
       site: siteHostFromDetail(page),
-      signals: { chars: page.text.length, ...signals },
+      signals: { chars: page.text.length, ...signals, rules: RULES_HEADING.test(page.text) },
     });
   }
   return read;
@@ -153,7 +164,7 @@ export function summarize(
     read: read.length,
     passed: passed.length,
     signals: {
-      readable: read.filter((entry) => entry.signals.chars >= READABLE_CHARS).length,
+      readable: read.filter((entry) => entry.signals.chars >= READABLE_CHARS && entry.signals.rules).length,
       withProhibition: read.filter((entry) => entry.signals.prohibitions > 0).length,
       mentions: tally(read.flatMap((entry) => entry.signals.topics)),
     },
