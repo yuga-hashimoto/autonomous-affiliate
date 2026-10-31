@@ -74,8 +74,18 @@ const GENERIC_WORDS = ["ミネラルウォーター", "ウォーターサーバ�
 
 const comparable = (text: string): string => text.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
 
+/** The name without the words for what is sold, split where a name is put together: what is left is who the company is. */
+function distinctiveParts(whole: string): string[] {
+  return whole
+    .normalize("NFKC")
+    .split(/[\s・/|｜\-－―「」『』]+/)
+    .map((part) => GENERIC_WORDS.reduce((rest, word) => rest.split(word).join(" "), part).split(/\s+/))
+    .flat()
+    .filter((part) => part.length >= 3);
+}
+
 /**
- * The form of the advertiser's name that the site's own text shows: the name as the console gives it
+ * The form of the advertiser's name that the site's own words show: the name as the console gives it
  * (without notes), else its longest distinctive part (the console may add what the company sells).
  * Nothing when the site shows none of it, which is a "no": the link in the console may be the wrong site.
  */
@@ -83,13 +93,74 @@ export function nameOnSite(name: string, siteText: string): string | undefined {
   const text = comparable(siteText);
   const whole = siteNameOf(name);
   if (text.includes(comparable(whole))) return whole;
-  const parts = whole
-    .normalize("NFKC")
-    .split(/[\s・/|｜\-－―「」『』]+/)
-    .map((part) => GENERIC_WORDS.reduce((rest, word) => rest.split(word).join(" "), part).split(/\s+/))
-    .flat()
-    .filter((part) => part.length >= 3);
-  return parts.sort((a, b) => b.length - a.length).find((part) => text.includes(comparable(part)));
+  return distinctiveParts(whole)
+    .sort((a, b) => b.length - a.length)
+    .find((part) => text.includes(comparable(part)));
+}
+
+const ATTRIBUTE_TEXT = /\b(?:content|alt|title)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+/** A page is read this far for what it says about itself; the scans below are plain searches, so a hostile page costs time in proportion to its size. */
+const MAX_IDENTITY_HTML = 1_500_000;
+const MAX_IDENTITY_TAGS = 2_000;
+const MAX_IDENTITY_CHARS = 40_000;
+
+/** The `<name ...>` tags of a page, as written, found by searching forward so that a page full of unclosed tags costs one pass. */
+function openTags(html: string, lower: string, name: string): string[] {
+  const found: string[] = [];
+  let from = 0;
+  while (found.length < MAX_IDENTITY_TAGS) {
+    const open = lower.indexOf(`<${name}`, from);
+    if (open === -1) break;
+    const end = lower.indexOf(">", open);
+    if (end === -1) break;
+    found.push(html.slice(open, end + 1));
+    from = end + 1;
+  }
+  return found;
+}
+
+/** The text of the `<script type="application/ld+json">` blocks (structured data about the company). */
+function structuredData(html: string, lower: string): string[] {
+  const found: string[] = [];
+  let from = 0;
+  while (found.length < MAX_IDENTITY_TAGS) {
+    const marker = lower.indexOf("application/ld+json", from);
+    if (marker === -1) break;
+    const start = lower.indexOf(">", marker);
+    if (start === -1) break;
+    const end = lower.indexOf("</script", start);
+    if (end === -1) break;
+    found.push(html.slice(start + 1, end));
+    from = end;
+  }
+  return found;
+}
+
+/**
+ * What the page says about itself apart from the text a visitor reads: the meta tags (site name,
+ * description), the alternative text of images (a logo is often only an image) and the structured
+ * data. The page's own words, read like its text; nothing here is followed or run.
+ */
+export function identityText(page: string): string {
+  const html = page.slice(0, MAX_IDENTITY_HTML);
+  const lower = html.toLowerCase();
+  const parts: string[] = [];
+  for (const tag of [...openTags(html, lower, "meta"), ...openTags(html, lower, "img")]) {
+    for (const attribute of tag.matchAll(ATTRIBUTE_TEXT)) parts.push(attribute[1] ?? attribute[2] ?? "");
+  }
+  parts.push(...structuredData(html, lower));
+  return parts.join("\n").slice(0, MAX_IDENTITY_CHARS);
+}
+
+/**
+ * Facts about a miss that carry no name: how much text the page had, which kind of letters the name
+ * uses, and how many distinctive parts it had (none: the console named what is sold, not who sells it).
+ */
+function nameMissNote(name: string, text: string): string {
+  const whole = siteNameOf(name);
+  const size = text.length < 1000 ? "lt1k" : text.length < 3000 ? "lt3k" : "ge3k";
+  const letters = /[\u30a0-\u30ff]/.test(whole) ? "kana" : /[\u4e00-\u9fff]/.test(whole) ? "kanji" : /[a-z]/i.test(whole) ? "latin" : "other";
+  return `name_miss_${size}_${letters}_p${Math.min(distinctiveParts(whole).length, 9)}`;
 }
 
 const MIN_TOP_TEXT = 200;
@@ -160,8 +231,8 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
   }
   // A front page with almost no text is probably drawn by script: not this check's to judge.
   if (!top || top.text.length < MIN_TOP_TEXT) return { ok: false, reasons: ["site_unreachable"] };
-  const brandName = nameOnSite(candidate.name, top.text);
-  if (!brandName) return { ok: false, reasons: ["name_not_on_site"] };
+  const brandName = nameOnSite(candidate.name, `${top.text}\n${identityText(top.html)}`);
+  if (!brandName) return { ok: false, reasons: ["name_not_on_site", nameMissNote(candidate.name, top.text)] };
 
   const links = sameSiteLinks(linksOfHtml(top.html, top.url), host);
   const terms = await readLinked(deps.fetcher, links, TERMS_LINK, host, MAX_RULE_PAGES);

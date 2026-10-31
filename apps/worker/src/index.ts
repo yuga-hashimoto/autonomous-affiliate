@@ -338,7 +338,8 @@ export async function runDryRunPipeline(options: WorkerOptions): Promise<Pipelin
       status: program.status as "APPROVED" | "PENDING" | "REJECTED" | "TERMINATED",
       payoutCurrency: program.payoutCurrency,
       termsUrl: program.termsUrl,
-      termsCheckedAt: program.termsCheckedAt,
+      // The fixture stands for a program whose terms were just checked; a fixed date would go stale and block every dry run after a week.
+      termsCheckedAt: clock().toISOString(),
     });
   }
   for (const offer of offersFixture.offers) {

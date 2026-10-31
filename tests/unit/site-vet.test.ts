@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryRepository } from "@aff/db";
 import { parsePolicyText, type PolicyConfig } from "@aff/domain";
 import { MapFetcher } from "@aff/integrations";
-import { termsFingerprint, vetAdvertiserSite, type ListRequest, type PlanLister } from "@aff/agents";
+import { identityText, termsFingerprint, vetAdvertiserSite, type ListRequest, type PlanLister } from "@aff/agents";
 import { readFileSync } from "./helpers.js";
 
 const HOST = "brand-a.com";
@@ -91,7 +91,7 @@ describe("vetAdvertiserSite", () => {
     const named = { ...candidate, name: "【新規設置】ブランドA・ウォーターサーバー" };
     expect(await vetAdvertiserSite(named, deps(site()))).toMatchObject({ ok: true, brandName: "ブランドA" });
     const generic = { ...candidate, name: "ウォーターサーバー宅配水" };
-    expect(await vetAdvertiserSite(generic, deps(site()))).toEqual({ ok: false, reasons: ["name_not_on_site"] });
+    expect(await vetAdvertiserSite(generic, deps(site()))).toMatchObject({ ok: false, reasons: ["name_not_on_site", expect.any(String)] });
   });
 
   it("does not judge a front page with almost no text, and treats unreadable rules pages as not now", async () => {
@@ -110,9 +110,32 @@ describe("vetAdvertiserSite", () => {
     expect(await vetAdvertiserSite(candidate, deps(site({ [`${ORIGIN}/robots.txt`]: robots })))).toEqual({ ok: false, reasons: ["no_price_page"] });
   });
 
-  it("rejects a site that does not show the advertiser's name", async () => {
+  it("rejects a site that does not show the advertiser's name, and says what kind of miss it was without the name", async () => {
     const result = await vetAdvertiserSite({ ...candidate, name: "別の会社" }, deps(site()));
-    expect(result).toEqual({ ok: false, reasons: ["name_not_on_site"] });
+    expect(result).toEqual({ ok: false, reasons: ["name_not_on_site", "name_miss_lt1k_kanji_p1"] });
+    const generic = await vetAdvertiserSite({ ...candidate, name: "ウォーターサーバー宅配水" }, deps(site()));
+    expect(generic).toEqual({ ok: false, reasons: ["name_not_on_site", "name_miss_lt1k_kana_p0"] });
+  });
+
+  it("finds the name in what the site says about itself besides its text: a logo's alternative text, its meta names", async () => {
+    const shell = (head: string, body: string): string =>
+      `<html><head><title>ようこそ</title>${head}</head><body>${body}<p>${FILLER}</p>${TOP_LINKS}</body></html>`;
+    const logo = shell("", `<img src="/logo.png" alt="ブランドA">`);
+    expect(await vetAdvertiserSite(candidate, deps(site({ [`${ORIGIN}/`]: logo })))).toMatchObject({ ok: true, brandName: "ブランドA" });
+    const meta = shell(`<meta property="og:site_name" content="ブランドA">`, "");
+    expect(await vetAdvertiserSite(candidate, deps(site({ [`${ORIGIN}/`]: meta })))).toMatchObject({ ok: true, brandName: "ブランドA" });
+    const structured = shell(`<script type="application/ld+json">{"@type":"Organization","name":"ブランドA"}</script>`, "");
+    expect(await vetAdvertiserSite(candidate, deps(site({ [`${ORIGIN}/`]: structured })))).toMatchObject({ ok: true, brandName: "ブランドA" });
+    const none = shell("", `<img src="/logo.png" alt="別の会社">`);
+    expect(await vetAdvertiserSite(candidate, deps(site({ [`${ORIGIN}/`]: none })))).toMatchObject({ ok: false, reasons: ["name_not_on_site", expect.any(String)] });
+  });
+
+  it("reads what a page says about itself in time proportional to its size, however it is broken", () => {
+    const started = Date.now();
+    identityText("<meta ".repeat(250_000));
+    identityText('<script type="application/ld+json">'.repeat(40_000));
+    identityText("<img alt=".repeat(150_000));
+    expect(Date.now() - started).toBeLessThan(2_000);
   });
 
   it("rejects a site with no terms of use, because unknown is a no", async () => {
