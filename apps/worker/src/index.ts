@@ -74,6 +74,12 @@ function scoutingEnabled(env: NodeJS.ProcessEnv): boolean {
 
 /** New advertisers: sites looked at per run, and advertisers in use at the most (docs/21). */
 const SCOUT_MAX_VETS = 2;
+/** A manual run may look at more sites at once (`A8_SCOUT_MAX_VETS`); the daily run keeps the default, so its step stays inside its time limit. */
+const SCOUT_MAX_VETS_CEILING = 6;
+export function scoutMaxVets(env: NodeJS.ProcessEnv): number {
+  const asked = Number.parseInt(env.A8_SCOUT_MAX_VETS ?? "", 10);
+  return Number.isInteger(asked) && asked >= 1 ? Math.min(asked, SCOUT_MAX_VETS_CEILING) : SCOUT_MAX_VETS;
+}
 const SCOUT_MAX_REGISTERED = 3;
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -797,7 +803,7 @@ async function buildScoutDeps(
   return {
     deps: {
       vet: (candidate) => vetAdvertiserSite(candidate, { fetcher, repo, policy, clock, lister }),
-      maxVets: SCOUT_MAX_VETS,
+      maxVets: scoutMaxVets(env),
       maxRegistered: SCOUT_MAX_REGISTERED,
     },
     async recordSpend() {
