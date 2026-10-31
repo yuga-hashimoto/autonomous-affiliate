@@ -1,13 +1,12 @@
 {
-  "$comment": "Dry-run offer registry fixture. Monetizable CTAs require program.status=APPROVED and offer.status=APPROVED + active=true (docs/14). offer-sim-b is intentionally PENDING to exercise the gate.",
+  "$comment": "Dry-run offer registry fixture. Monetizable CTAs require program.status=APPROVED and offer.status=APPROVED + active=true (docs/14). offer-sim-b is intentionally PENDING to exercise the gate. The program's terms are taken as checked at the time of the run (the date is not stored here, or it would go stale).",
   "programs": [
     {
       "id": "prog-a8",
       "provider": "a8",
       "status": "APPROVED",
       "payoutCurrency": "JPY",
-      "termsUrl": "https://a8.example.com/terms",
-      "termsCheckedAt": "2026-10-24T00:00:00.000Z"
+      "termsUrl": "https://a8.example.com/terms"
     }
   ],
   "offers": [
