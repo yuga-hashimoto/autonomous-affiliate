@@ -5,6 +5,8 @@ import {
   activeScoutedSources,
   brandOfScouted,
   knownProgramIds,
+  registrableHost,
+  scoutedInUse,
   withScoutedBrands,
   withScoutedDomains,
   type A8ProgramsConfig,
@@ -129,11 +131,31 @@ describe("knownProgramIds", () => {
         scouted({ programId: "r", state: "retired" }),
         scouted({ programId: "rej-new", state: "rejected", reasons: ["robots_disallow"], checkedAt: daysAgo(3) }),
         scouted({ programId: "rej-old", state: "rejected", reasons: ["robots_disallow"], checkedAt: daysAgo(31) }),
-        scouted({ programId: "soon", state: "rejected", reasons: ["site_unreachable"], checkedAt: daysAgo(2) }),
+        scouted({ programId: "soon", state: "rejected", reasons: ["site_unreachable"], checkedAt: new Date(NOW.getTime() - 20 * 3_600_000).toISOString() }),
         scouted({ programId: "now", state: "rejected", reasons: ["site_unreachable"], checkedAt: new Date(NOW.getTime() - 3_600_000).toISOString() }),
       ],
       NOW,
     );
     expect([...known].sort()).toEqual(["a", "now", "r", "rej-new", "v"]);
+  });
+});
+
+describe("scoutedInUse", () => {
+  it("is the one filter for brands, sources and domains: a brand that takes a written slug is in none of them", () => {
+    const clash = scouted({ programId: "s0009", brandSlug: "premium-water", host: "evil-site.com", state: "active", keyword: "別名" });
+    const fine = scouted({ programId: "s0002", brandSlug: "brand-b", host: "brand-b.com", state: "active", keyword: "ブランドB" });
+    const inUse = scoutedInUse(config, [clash, fine]);
+    expect(inUse.map((brand) => brand.brandSlug)).toEqual(["brand-b"]);
+    const policy = parsePolicyText(readFileSync(new URL("../../config/policy.dry-run.yaml", import.meta.url), "utf8"));
+    expect(withScoutedDomains(policy, inUse).security.allowed_source_domains).not.toContain("evil-site.com");
+    expect(activeScoutedSources(inUse).map((source) => source.brandSlug)).toEqual(["brand-b"]);
+  });
+});
+
+describe("shared hosting", () => {
+  it("is not a site's own name", () => {
+    expect(registrableHost("shop.shop-pro.jp")).toBeUndefined();
+    expect(registrableHost("brand.tokyo.jp")).toBeUndefined();
+    expect(registrableHost("www.brand-a.com")).toBe("brand-a.com");
   });
 });

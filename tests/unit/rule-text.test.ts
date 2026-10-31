@@ -38,3 +38,33 @@ describe("ruleSignals", () => {
     expect(signals).toEqual({ prohibitions: 1, topics: ["comparison", "price"] });
   });
 });
+
+describe("rules written as lists and in other polite forms", () => {
+  it("reads the items under a prohibition heading together with it", () => {
+    const text = "以下の表現・掲載は禁止します\n比較サイトでの掲載\nランキング形式\n価格の断定";
+    expect(restrictionReasons(text)).toEqual(["restricted_comparison", "restricted_ranking", "restricted_price"]);
+    expect(automationBan("次の行為を禁止します。\nクローラーやスクレイピング")).toBe(true);
+    expect(automationBan("次の行為は禁止します\nクローラーやスクレイピングによる収集")).toBe(true);
+  });
+
+  it("does not run a list on into text that is not a list item", () => {
+    const text = "不正な申込は禁止します\n" + "あ".repeat(80) + "\n比較サイトは歓迎です";
+    expect(restrictionReasons(text)).toEqual([]);
+  });
+
+  it("knows more polite forms of no", () => {
+    expect(restrictionReasons("他社との比較表現は認められません。")).toEqual(["restricted_comparison"]);
+    expect(restrictionReasons("ランキング掲載はお控えください。")).toEqual(["restricted_ranking"]);
+    expect(restrictionReasons("価格を掲載しないでください。")).toEqual(["restricted_price"]);
+    expect(automationBan("自動で収集することは認めません。")).toBe(true);
+    expect(automationBan("ツールを使用した取得は禁止です。")).toBe(true);
+  });
+
+  it("takes out only the search-ad clause of a sentence, not the whole sentence", () => {
+    expect(restrictionReasons("キーワード出稿は禁止、比較サイト・ランキングサイトでの掲載も禁止")).toEqual([
+      "restricted_comparison",
+      "restricted_ranking",
+    ]);
+    expect(restrictionReasons("リスティング広告では、比較キーワードの入札は禁止です。")).toEqual([]);
+  });
+});

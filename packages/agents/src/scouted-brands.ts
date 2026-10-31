@@ -13,7 +13,7 @@ import { TRANSIENT_REASONS } from "./site-vet.js";
 const DAY_MS = 86_400_000;
 /** A refusal that is about the site is looked at again after this long; one about the moment, after `RETRY_TRANSIENT_DAYS`. */
 export const RECHECK_REFUSED_DAYS = 30;
-export const RETRY_TRANSIENT_DAYS = 1;
+export const RETRY_TRANSIENT_DAYS = 0.5;
 
 export function brandOfScouted(brand: ScoutedBrand): A8Brand | undefined {
   if (!brand.termsUrl || !brand.termsSha256) return undefined;
@@ -28,19 +28,25 @@ export function brandOfScouted(brand: ScoutedBrand): A8Brand | undefined {
   };
 }
 
-/** The written brands, then the scouted ones that are registered (vetted or joined); a written brand's slug or name is never taken. */
-export function withScoutedBrands(config: A8ProgramsConfig, scouted: readonly ScoutedBrand[]): A8ProgramsConfig {
+/** The scouted advertisers that are registered (vetted or joined) and do not take a written brand's slug or name, once each. */
+export function scoutedInUse(config: A8ProgramsConfig, scouted: readonly ScoutedBrand[]): ScoutedBrand[] {
   const slugs = new Set(config.brands.map((brand) => brand.brandSlug));
   const keywords = new Set(config.brands.map((brand) => brand.keyword));
-  const added: A8Brand[] = [];
+  const accepted: ScoutedBrand[] = [];
   for (const entry of scouted) {
     if (entry.state !== "vetted" && entry.state !== "active") continue;
     const brand = brandOfScouted(entry);
     if (!brand || slugs.has(brand.brandSlug) || keywords.has(brand.keyword)) continue;
     slugs.add(brand.brandSlug);
     keywords.add(brand.keyword);
-    added.push(brand);
+    accepted.push(entry);
   }
+  return accepted;
+}
+
+/** The written brands, then the scouted ones in use. */
+export function withScoutedBrands(config: A8ProgramsConfig, scouted: readonly ScoutedBrand[]): A8ProgramsConfig {
+  const added = scoutedInUse(config, scouted).flatMap((entry) => brandOfScouted(entry) ?? []);
   return { ...config, brands: [...config.brands, ...added] };
 }
 

@@ -183,10 +183,11 @@ export async function runA8Sync(env: NodeJS.ProcessEnv, deps: SyncDeps): Promise
   const { config, repo, fetcher, clock } = deps;
 
   // Rules pages that changed are read again first; an advertiser stays only if they still leave room for the comparison.
-  const scoutedBefore = await repo.scout.list();
+  // Advertisers the run picked itself are used only while scouting is on (the stop switch, docs/21).
+  const scoutedBefore = deps.scout ? await repo.scout.list() : [];
   const scoutedBrands = withScoutedBrands({ ...config, brands: [] }, scoutedBefore).brands;
   const renewed = await renewScoutedTerms(repo, fetcher, scoutedBefore, await termsOf(fetcher, scoutedBrands), clock());
-  const scouted = await repo.scout.list();
+  const scouted = deps.scout ? await repo.scout.list() : [];
   const effective = withScoutedBrands(config, scouted);
   const terms = await termsOf(fetcher, effective.brands);
 
@@ -203,7 +204,9 @@ export async function runA8Sync(env: NodeJS.ProcessEnv, deps: SyncDeps): Promise
     let read: ReadCandidate[] | undefined;
     let candidates = 0;
     let scoutFailed = false;
-    if (deps.scout) {
+    // Nothing to look for when every place is taken: the pages would be read every day for nothing.
+    const room = deps.scout ? deps.scout.maxRegistered - scouted.filter((brand) => brand.state === "vetted" || brand.state === "active").length : 0;
+    if (deps.scout && room > 0) {
       try {
         const scoutConsole = scoutConsoleOver(page);
         const gathered = await gatherCandidates(scoutConsole, effective.brands.map((brand) => brand.keyword), knownProgramIds(scouted, clock()));
@@ -233,7 +236,8 @@ export async function runA8Sync(env: NodeJS.ProcessEnv, deps: SyncDeps): Promise
     applications: value.applications,
   };
   if (deps.scout) {
-    const advanced = await advanceScouted(repo, scouted, labelOf, clock());
+    const articles = (await repo.content.listAll()).map((item) => ({ slug: item.slug, state: item.state }));
+    const advanced = await advanceScouted(repo, scouted, labelOf, clock(), articles);
     const since = clock().toISOString();
     const registered = value.read
       ? await registerCandidates(value.read, {

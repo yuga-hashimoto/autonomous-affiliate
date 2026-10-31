@@ -36,6 +36,7 @@ import {
   parseA8ProgramsFile,
   activeScoutedSources,
   vetAdvertiserSite,
+  scoutedInUse,
   withScoutedBrands,
   withScoutedDomains,
   parseDiscoveryFile,
@@ -65,6 +66,11 @@ import { createHeroImageService, runImageSmoke } from "./hero-image.js";
 import { LivePublisherIO } from "./live-io.js";
 import plansFixture from "../../../config/plans.dry-run.json" with { type: "json" };
 import offersFixture from "../../../config/offers.dry-run.json" with { type: "json" };
+
+/** The stop switch for advertisers the run picked itself (docs/21): unset or anything but "true" and none of them is used. */
+function scoutingEnabled(env: NodeJS.ProcessEnv): boolean {
+  return env.A8_SCOUT_ENABLED === "true";
+}
 
 /** New advertisers: sites looked at per run, and advertisers in use at the most (docs/21). */
 const SCOUT_MAX_VETS = 2;
@@ -400,9 +406,14 @@ export async function runLivePipeline(
   const repo = options.preview
     ? (options.repo ?? createMemoryRepository())
     : await loadRepository(options, { requirePg: true });
-  // Advertisers the run picked itself (docs/21) join the written ones, and their sites are allowed as
-  // sources only once the account has joined their program.
-  const scouted = await repo.scout.list();
+  // Advertisers the run picked itself (docs/21) join the written ones while A8_SCOUT_ENABLED is "true" (the
+  // stop switch: without it none of them is used), and their sites are allowed as sources only once the
+  // account has joined their program.
+  const writtenA8 =
+    options.a8ProgramsPath === undefined
+      ? undefined
+      : parseA8ProgramsFile(await readFile(resolveInputPath(options.a8ProgramsPath), "utf8"));
+  const scouted = writtenA8 && scoutingEnabled(env) ? scoutedInUse(writtenA8, await repo.scout.list()) : [];
   const policy = withScoutedDomains(policyFromFile, scouted);
   const logger = options.logger ?? createLogger({ level: "info" });
 
@@ -425,10 +436,7 @@ export async function runLivePipeline(
     options.discoverPath === undefined
       ? undefined
       : [...parseDiscoveryFile(await readFile(resolveInputPath(options.discoverPath), "utf8")), ...activeScoutedSources(scouted)];
-  const a8Programs =
-    options.a8ProgramsPath === undefined
-      ? undefined
-      : withScoutedBrands(parseA8ProgramsFile(await readFile(resolveInputPath(options.a8ProgramsPath), "utf8")), scouted);
+  const a8Programs = writtenA8 ? withScoutedBrands(writtenA8, scouted) : undefined;
   // A plan kept as a brief takes its amounts from quotes of the official page (docs/18).
   const quoteSelector =
     options.quoteSelector ??
@@ -928,14 +936,18 @@ if (isMain()) {
       const fetcher = new HttpFetcher();
       const clock = () => new Date();
       const scout = values.scout ? await buildScoutDeps(options, repo, fetcher, clock) : undefined;
-      const report = await runA8Sync(options.env ?? process.env, {
-        config,
-        repo,
-        fetcher,
-        clock,
-        ...(scout ? { scout: scout.deps } : {}),
-      });
-      await scout?.recordSpend();
+      let report;
+      try {
+        report = await runA8Sync(options.env ?? process.env, {
+          config,
+          repo,
+          fetcher,
+          clock,
+          ...(scout ? { scout: scout.deps } : {}),
+        });
+      } finally {
+        await scout?.recordSpend();
+      }
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       if (report.outcome !== "ok") process.exit(1);
     } else if (command === "a8-scout") {
@@ -954,8 +966,9 @@ if (isMain()) {
         await readFile(resolveInputPath(values["a8-programs"] ?? "config/a8-programs.json"), "utf8"),
       );
       const repo = await loadRepository(options, { requirePg: true });
-      const report = await runA8SubmitUrls(options.env ?? process.env, {
-        config: withScoutedBrands(written, await repo.scout.list()),
+      const submitEnv = options.env ?? process.env;
+      const report = await runA8SubmitUrls(submitEnv, {
+        config: scoutingEnabled(submitEnv) ? withScoutedBrands(written, await repo.scout.list()) : written,
         distDir: resolveInputPath(values.dist ?? "apps/site/dist"),
       });
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

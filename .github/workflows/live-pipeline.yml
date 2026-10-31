@@ -34,6 +34,8 @@ jobs:
     environment: a8
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # The stop switch for advertisers the run picked itself (docs/21): every step that uses them reads it.
+      A8_SCOUT_ENABLED: ${{ vars.A8_SCOUT_ENABLED }}
       # Hosted runners cannot inherit local opencode credentials. Use the
       # priced API provider for unattended runs; CLI mode remains local/manual.
       LLM_PROVIDER: openai-compatible
@@ -80,8 +82,6 @@ jobs:
           A8_BROWSER_CHANNEL: chrome
           A8_LOGIN_ID: ${{ secrets.A8_LOGIN_ID }}
           A8_LOGIN_PASSWORD: ${{ secrets.A8_LOGIN_PASSWORD }}
-          # Picking new advertisers from the console (docs/21): off unless the repository variable is "true".
-          A8_SCOUT_ENABLED: ${{ vars.A8_SCOUT_ENABLED }}
         run: |
           if [ -f config/a8-programs.json ]; then
             ARGS=()

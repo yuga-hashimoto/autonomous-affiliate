@@ -4,6 +4,32 @@ const TWO_PART_SUFFIXES = new Set(["co.jp", "or.jp", "ne.jp", "ac.jp", "go.jp", 
 const HOST_LABEL = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const SLUG_MAX = 32;
 
+/** Hosts that serve many unrelated sites: a name under one of them says nothing about who runs the page. */
+const SHARED_HOSTING = new Set([
+  "shop-pro.jp",
+  "thebase.in",
+  "base.shop",
+  "stores.jp",
+  "myshopify.com",
+  "wixsite.com",
+  "weebly.com",
+  "blogspot.com",
+  "hatenablog.com",
+  "hatenablog.jp",
+  "livedoor.blog",
+  "fc2.com",
+  "github.io",
+  "netlify.app",
+  "vercel.app",
+  "pages.dev",
+  "web.app",
+  "firebaseapp.com",
+  "herokuapp.com",
+  "tokyo.jp",
+  "osaka.jp",
+  "com.tw",
+]);
+
 /** The site's own name: the host without `www.` and subdomains. Nothing for an IP address or a single-label name. */
 export function registrableHost(host: string): string | undefined {
   const labels = host.trim().toLowerCase().replace(/\.$/, "").split(".");
@@ -11,7 +37,8 @@ export function registrableHost(host: string): string | undefined {
   if (labels.every((label) => /^\d+$/.test(label))) return undefined;
   const lastTwo = labels.slice(-2).join(".");
   const take = TWO_PART_SUFFIXES.has(lastTwo) ? 3 : 2;
-  return labels.slice(-take).join(".");
+  const name = labels.slice(-take).join(".");
+  return SHARED_HOSTING.has(name) || SHARED_HOSTING.has(lastTwo) ? undefined : name;
 }
 
 /** A short ascii slug from the site's name (`cosmo-water.com` -> `cosmo-water`). */

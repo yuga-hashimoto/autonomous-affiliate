@@ -50,6 +50,8 @@ export async function registerCandidates(read: readonly ReadCandidate[], deps: R
   for (const brand of registered) taken.add(brand.brandSlug);
   let room = deps.maxRegistered - registered.length;
   let vets = 0;
+  // A check that ran out of time may still be running; no other is started beside it in this run.
+  let timedOut = false;
   const labels: string[] = [];
 
   const refuse = async (entry: ReadCandidate, reasons: string[], host = entry.site.host ?? ""): Promise<string> => {
@@ -72,7 +74,7 @@ export async function registerCandidates(read: readonly ReadCandidate[], deps: R
   for (const entry of read) {
     const { candidate, gate, site } = entry;
     // A page that came back almost empty was not read (the console draws its pages late): look again tomorrow, do not judge it.
-    if (entry.signals.chars < READABLE_CHARS) {
+    if (entry.signals.chars < READABLE_CHARS || !entry.signals.rules) {
       labels.push(await refuse(entry, ["page_unreadable"]));
       continue;
     }
@@ -93,13 +95,14 @@ export async function registerCandidates(read: readonly ReadCandidate[], deps: R
       labels.push(await refuse(entry, ["slug_taken"]));
       continue;
     }
-    if (room <= 0 || vets >= deps.maxVets) {
+    if (room <= 0 || vets >= deps.maxVets || timedOut) {
       labels.push("waiting");
       continue;
     }
     vets += 1;
     const result = await vetWithin(deps.vet, { name: candidate.name, host: site.host, brandSlug }, deps.vetTimeoutMs ?? DEFAULT_VET_TIMEOUT_MS);
     if (!result.ok) {
+      timedOut ||= result.reasons.includes("vet_timeout");
       labels.push(await refuse(entry, result.reasons));
       continue;
     }
@@ -127,6 +130,9 @@ export async function registerCandidates(read: readonly ReadCandidate[], deps: R
 const DAY_MS = 86_400_000;
 /** An advertiser registered this long ago that the account has not joined is given up on. */
 export const GIVE_UP_AFTER_DAYS = 30;
+/** A joined advertiser that still has no published article after this long frees its place (its price pages give no article). */
+export const UNPRODUCTIVE_AFTER_DAYS = 21;
+const PUBLISHED_STATES: ReadonlySet<string> = new Set(["PUBLISHED", "MEASURING", "UPDATE_CANDIDATE"]);
 
 /** Moves registered advertisers along by what the console showed for them today. */
 export async function advanceScouted(
@@ -134,16 +140,21 @@ export async function advanceScouted(
   scouted: readonly ScoutedBrand[],
   labelOf: ReadonlyMap<string, string>,
   now: Date,
+  articles: readonly { slug: string; state: string }[] = [],
 ): Promise<Record<string, number>> {
   const labels: string[] = [];
   for (const brand of scouted) {
     if (brand.state !== "vetted" && brand.state !== "active") continue;
     const label = labelOf.get(brand.brandSlug) ?? "";
     const waitedDays = (now.getTime() - Date.parse(brand.checkedAt)) / DAY_MS;
-    if (label.startsWith("linked") && brand.state === "vetted") {
+    const hasArticle = articles.some((article) => article.slug.startsWith(`${brand.brandSlug}-`) && PUBLISHED_STATES.has(article.state));
+    if (label === "linked" && brand.state === "vetted") {
       await repo.scout.upsert({ ...brand, state: "active" });
       labels.push("activated");
-    } else if (label === "ended" || (brand.state === "vetted" && !label.startsWith("linked") && waitedDays > GIVE_UP_AFTER_DAYS)) {
+    } else if (brand.state === "active" && !hasArticle && waitedDays > UNPRODUCTIVE_AFTER_DAYS) {
+      await repo.scout.upsert({ ...brand, state: "retired", reasons: ["no_articles"] });
+      labels.push("retired");
+    } else if (label === "ended" || (brand.state === "vetted" && label !== "linked" && waitedDays > GIVE_UP_AFTER_DAYS)) {
       await repo.scout.upsert({ ...brand, state: "retired" });
       labels.push("retired");
     }

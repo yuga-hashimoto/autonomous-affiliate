@@ -38,3 +38,21 @@ describe("linksOfHtml", () => {
     expect(linksOfHtml(`<a name="x">x</a><a href="">e</a>`, BASE)).toEqual([]);
   });
 });
+
+describe("linksOfHtml on hostile input", () => {
+  it("reads many unclosed anchors in time proportional to the page", () => {
+    const html = "<a href=x>".repeat(100_000);
+    const started = Date.now();
+    linksOfHtml(html, BASE);
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("takes the text of an anchor that is closed, and stops an unclosed one at the next anchor", () => {
+    const html = `<a href="/a">A</a> <a href="/b">B <a href="/c">C</a>`;
+    expect(linksOfHtml(html, BASE).map((link) => [link.url.slice(-2), link.text])).toEqual([["/a", "A"], ["/b", "B"], ["/c", "C"]]);
+  });
+
+  it("does not take a tag that merely starts with a", () => {
+    expect(linksOfHtml(`<abbr href="/x">x</abbr><area href="/y">`, BASE)).toEqual([]);
+  });
+});
