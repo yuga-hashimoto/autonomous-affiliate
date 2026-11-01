@@ -72,7 +72,16 @@ export function siteNameOf(name: string): string {
 /** Words that say what the company sells, not who it is: a page that has only these is not the company's. */
 const GENERIC_WORDS = ["ミネラルウォーター", "ウォーターサーバー", "宅配ウォーター", "ウォーター", "サーバー", "宅配水", "天然水", "公式", "サイト", "新規", "設置", "宅配", "水"];
 
-const comparable = (text: string): string => text.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+/**
+ * The form in which two spellings of a name are compared: letters of one width and case, katakana
+ * as hiragana (a brand written in either is the same brand), and no spaces, dots or long-vowel marks.
+ */
+const comparable = (text: string): string =>
+  text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u30a1-\u30f6]/g, (letter) => String.fromCharCode(letter.charCodeAt(0) - 0x60))
+    .replace(/[\s\u30fc・･\-‐‑–—―_.]+/g, "");
 
 /** The name without the words for what is sold, split where a name is put together: what is left is who the company is. */
 function distinctiveParts(whole: string): string[] {
@@ -152,15 +161,42 @@ export function identityText(page: string): string {
   return parts.join("\n").slice(0, MAX_IDENTITY_CHARS);
 }
 
+/** The page's own title, as written. */
+function titleOf(html: string): string {
+  const lower = html.slice(0, MAX_IDENTITY_HTML).toLowerCase();
+  const open = lower.indexOf("<title");
+  const start = open === -1 ? -1 : lower.indexOf(">", open);
+  const end = start === -1 ? -1 : lower.indexOf("</title", start);
+  return end === -1 ? "" : html.slice(start + 1, end).trim();
+}
+
+const SELLS_WATER = /ウォーターサーバー|宅配水|天然水|ミネラルウォーター|宅配ウォーター/;
+
+/** How much of the name's letter pairs the page has, in four steps. */
+function overlapStep(name: string, pageText: string): number {
+  const wanted = comparable(name);
+  const have = comparable(pageText);
+  const pairs = new Set(Array.from({ length: Math.max(wanted.length - 1, 0) }, (_, index) => wanted.slice(index, index + 2)));
+  if (pairs.size === 0) return 0;
+  const found = [...pairs].filter((pair) => have.includes(pair)).length / pairs.size;
+  return found < 0.2 ? 0 : found < 0.5 ? 1 : found < 0.8 ? 2 : 3;
+}
+
 /**
- * Facts about a miss that carry no name: how much text the page had, which kind of letters the name
- * uses, and how many distinctive parts it had (none: the console named what is sold, not who sells it).
+ * Facts about a miss that carry no name, to learn from the log why a name was not found: how much
+ * text the page had (`lt1k`/`lt3k`/`ge3k`), the kind of letters the name uses, how many distinctive
+ * parts it had (none: the console named what is sold, not who sells it), whether the page is about
+ * water at all (`v`), how much of the name's letter pairs it has (`o0`..`o3`) and whether its title is
+ * in Latin letters (`tlatin`), Japanese (`tjp`) or missing (`tnone`).
  */
-function nameMissNote(name: string, text: string): string {
+function nameMissNote(name: string, top: { text: string; html: string }): string {
   const whole = siteNameOf(name);
-  const size = text.length < 1000 ? "lt1k" : text.length < 3000 ? "lt3k" : "ge3k";
+  const size = top.text.length < 1000 ? "lt1k" : top.text.length < 3000 ? "lt3k" : "ge3k";
   const letters = /[\u30a0-\u30ff]/.test(whole) ? "kana" : /[\u4e00-\u9fff]/.test(whole) ? "kanji" : /[a-z]/i.test(whole) ? "latin" : "other";
-  return `name_miss_${size}_${letters}_p${Math.min(distinctiveParts(whole).length, 9)}`;
+  const title = titleOf(top.html);
+  const titleKind = title === "" ? "none" : /[a-z]{3}/i.test(title) && !/[\u3040-\u30ff\u4e00-\u9fff]/.test(title) ? "latin" : "jp";
+  const overlap = overlapStep(whole, `${top.text}\n${identityText(top.html)}`);
+  return `name_miss_${size}_${letters}_p${Math.min(distinctiveParts(whole).length, 9)}_v${SELLS_WATER.test(top.text) ? 1 : 0}_o${overlap}_t${titleKind}`;
 }
 
 const MIN_TOP_TEXT = 200;
@@ -232,7 +268,7 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
   // A front page with almost no text is probably drawn by script: not this check's to judge.
   if (!top || top.text.length < MIN_TOP_TEXT) return { ok: false, reasons: ["site_unreachable"] };
   const brandName = nameOnSite(candidate.name, `${top.text}\n${identityText(top.html)}`);
-  if (!brandName) return { ok: false, reasons: ["name_not_on_site", nameMissNote(candidate.name, top.text)] };
+  if (!brandName) return { ok: false, reasons: ["name_not_on_site", nameMissNote(candidate.name, top)] };
 
   const links = sameSiteLinks(linksOfHtml(top.html, top.url), host);
   const terms = await readLinked(deps.fetcher, links, TERMS_LINK, host, MAX_RULE_PAGES);

@@ -12,6 +12,11 @@ on:
         type: boolean
         required: false
         default: false
+      vets:
+        description: Advertiser sites to check in one run when picking (1 to 6; the daily run checks 2)
+        type: string
+        required: false
+        default: "2"
 
 permissions:
   contents: read
@@ -44,6 +49,7 @@ jobs:
           pnpm tsx apps/worker/src/index.ts a8-sync --a8-programs config/a8-programs.json "${ARGS[@]}"
         env:
           SCOUT: ${{ inputs.scout }}
+          A8_SCOUT_MAX_VETS: ${{ inputs.vets }}
           LIVE_POLICY_YAML: ${{ secrets.LIVE_POLICY_YAML }}
           LLM_PROVIDER: openai-compatible
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}

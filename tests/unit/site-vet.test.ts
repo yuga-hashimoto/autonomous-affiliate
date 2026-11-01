@@ -112,9 +112,9 @@ describe("vetAdvertiserSite", () => {
 
   it("rejects a site that does not show the advertiser's name, and says what kind of miss it was without the name", async () => {
     const result = await vetAdvertiserSite({ ...candidate, name: "別の会社" }, deps(site()));
-    expect(result).toEqual({ ok: false, reasons: ["name_not_on_site", "name_miss_lt1k_kanji_p1"] });
+    expect(result).toEqual({ ok: false, reasons: ["name_not_on_site", "name_miss_lt1k_kanji_p1_v0_o0_tjp"] });
     const generic = await vetAdvertiserSite({ ...candidate, name: "ウォーターサーバー宅配水" }, deps(site()));
-    expect(generic).toEqual({ ok: false, reasons: ["name_not_on_site", "name_miss_lt1k_kana_p0"] });
+    expect(generic).toEqual({ ok: false, reasons: ["name_not_on_site", "name_miss_lt1k_kana_p0_v0_o0_tjp"] });
   });
 
   it("finds the name in what the site says about itself besides its text: a logo's alternative text, its meta names", async () => {
@@ -128,6 +128,23 @@ describe("vetAdvertiserSite", () => {
     expect(await vetAdvertiserSite(candidate, deps(site({ [`${ORIGIN}/`]: structured })))).toMatchObject({ ok: true, brandName: "ブランドA" });
     const none = shell("", `<img src="/logo.png" alt="別の会社">`);
     expect(await vetAdvertiserSite(candidate, deps(site({ [`${ORIGIN}/`]: none })))).toMatchObject({ ok: false, reasons: ["name_not_on_site", expect.any(String)] });
+  });
+
+  it("does not tell hiragana from katakana, nor a long-vowel mark or a dot from nothing", async () => {
+    const hira = page(["ぶらんど・えー", FILLER], TOP_LINKS).replace("<title>ブランドA</title>", "<title>ようこそ</title>");
+    const named = { ...candidate, name: "ブランドエー" };
+    expect(await vetAdvertiserSite(named, deps(site({ [`${ORIGIN}/`]: hira })))).toMatchObject({ ok: true });
+    const other = page(["べつのかいしゃ", FILLER], TOP_LINKS).replace("<title>ブランドA</title>", "<title>ようこそ</title>");
+    expect(await vetAdvertiserSite(named, deps(site({ [`${ORIGIN}/`]: other })))).toMatchObject({ ok: false });
+  });
+
+  it("says, without the name, how near a miss was: what the page sells, whether its title is in Latin letters, how much of the name is on it", async () => {
+    const latin = `<html><head><title>BRAND A Official</title></head><body><p>ウォーターサーバーの宅配です。</p><p>${FILLER}</p>${TOP_LINKS}</body></html>`;
+    const result = await vetAdvertiserSite({ ...candidate, name: "ゆゆゆゆ" }, deps(site({ [`${ORIGIN}/`]: latin })));
+    expect(result).toEqual({ ok: false, reasons: ["name_not_on_site", "name_miss_lt1k_other_p1_v1_o0_tlatin"] });
+    const near = page(["ぶらんど", FILLER], TOP_LINKS).replace("<title>ブランドA</title>", "<title>ようこそ</title>");
+    const partly = await vetAdvertiserSite({ ...candidate, name: "ブランドエクセル" }, deps(site({ [`${ORIGIN}/`]: near })));
+    expect(partly).toMatchObject({ ok: false, reasons: ["name_not_on_site", expect.stringMatching(/_o[12]_tjp$/)] });
   });
 
   it("reads what a page says about itself in time proportional to its size, however it is broken", () => {
