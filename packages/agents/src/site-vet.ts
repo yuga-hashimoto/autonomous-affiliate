@@ -1,6 +1,6 @@
 import type { Repository } from "@aff/db";
 import type { PolicyConfig } from "@aff/domain";
-import { checkRobots, htmlToVisibleText, linksOfHtml, type Fetcher, type PageLink } from "@aff/integrations";
+import { FetchError, checkRobots, htmlToVisibleText, linksOfHtml, type Fetcher, type PageLink } from "@aff/integrations";
 import { termsFingerprint } from "./a8-offers.js";
 import { discoverPlans, type DiscoverySource, type PlanLister } from "./plan-discovery.js";
 import { automationBan, restrictionReasons } from "./rule-text.js";
@@ -26,9 +26,18 @@ const FETCH_TIMEOUT_MS = 15_000;
 /** Reasons that say "not now" rather than "not this site": a caller may look again soon. */
 export const TRANSIENT_REASONS: ReadonlySet<string> = new Set(["site_unreachable", "no_lister", "listing_failed", "page_unreadable", "vet_timeout"]);
 
+/** `unreachable_<page>_<why>` is a note that comes with `site_unreachable` (which page, and what it answered): it is as transient as the reason it explains. */
+export const isTransientReason = (reason: string): boolean => TRANSIENT_REASONS.has(reason) || reason.startsWith("unreachable_");
+
 export interface VetCandidate {
   /** The advertiser's name as the console shows it. */
   name: string;
+  /**
+   * The text of the program's page in the console. Not shown or stored: it is only compared with the
+   * names the site gives itself, when the console's name is not on the site (the console may name the
+   * operating company, the site the service).
+   */
+  programText?: string | undefined;
   /** The site's own name (see `registrableHost`). */
   host: string;
   brandSlug: string;
@@ -62,7 +71,8 @@ interface Read {
   text: string;
 }
 
-type ReadOutcome = { read: Read } | { robots: true } | { unavailable: true };
+/** `unavailable` says why in a word that carries no address: `http403`, `notHtml`, `offsite`, `timeout`, `network`, `toolarge`. */
+type ReadOutcome = { read: Read } | { robots: true } | { unavailable: string };
 
 /** The name without a trailing note in brackets: `ブランドA（ウォーターサーバー）` -> `ブランドA`. */
 export function siteNameOf(name: string): string {
@@ -170,6 +180,112 @@ function titleOf(html: string): string {
   return end === -1 ? "" : html.slice(start + 1, end).trim();
 }
 
+/** Words a title or a heading uses to say what a page is or offers, not who the company is. */
+const PAGE_WORDS = [
+  "トップページ", "ホームページ", "公式サイト", "公式", "通販", "オンライン", "ショップ", "ストア", "料金", "価格", "比較", "口コミ", "評判",
+  "おすすめ", "ランキング", "お申し込み", "お申込み", "キャンペーン", "無料", "特集", "最新", "情報", "サービス", "とは",
+];
+const TITLE_SPLIT = /\s*[|｜–—―]\s*|\s+-\s+|\s*[：:]\s*/;
+const SELF_NAME_META = /^(?:og:site_name|application-name|apple-mobile-web-app-title)$/i;
+const META_KEY = /\b(?:property|name)\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
+const META_CONTENT = /\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
+const ORGANIZATION_TYPE = /^(?:Organization|Corporation|WebSite|LocalBusiness|Brand|Store|OnlineStore)$/;
+const MAX_SELF_NAMES = 12;
+const MAX_SELF_NAME_CHARS = 30;
+const MAX_STRUCTURED_NODES = 400;
+
+/** The `name` of the organizations that structured data (`ld+json`) describes; what is not JSON, or not about a company, gives nothing. */
+function structuredNames(blocks: readonly string[]): string[] {
+  const found: string[] = [];
+  let budget = MAX_STRUCTURED_NODES;
+  const visit = (node: unknown, depth: number): void => {
+    if (budget <= 0 || depth > 5 || found.length >= MAX_SELF_NAMES) return;
+    budget -= 1;
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item, depth + 1);
+      return;
+    }
+    if (typeof node !== "object" || node === null) return;
+    const record = node as Record<string, unknown>;
+    const types = [record["@type"]].flat().filter((type): type is string => typeof type === "string");
+    if (types.some((type) => ORGANIZATION_TYPE.test(type))) {
+      for (const key of ["name", "alternateName"]) {
+        const value = record[key];
+        if (typeof value === "string") found.push(value);
+      }
+    }
+    for (const value of Object.values(record)) if (typeof value === "object") visit(value, depth + 1);
+  };
+  for (const block of blocks) {
+    try {
+      visit(JSON.parse(block), 0);
+    } catch {
+      // Not JSON: the page says nothing here.
+    }
+  }
+  return found;
+}
+
+/**
+ * The names a page gives itself, most reliable first: the site name in the meta tags, the name of the
+ * organization in the structured data, then the parts of the title. Nothing here is followed or run.
+ */
+export function selfNames(page: string): string[] {
+  const html = page.slice(0, MAX_IDENTITY_HTML);
+  const lower = html.toLowerCase();
+  const raw: string[] = [];
+  for (const tag of openTags(html, lower, "meta")) {
+    if (tag.length > 2_000) continue;
+    const key = META_KEY.exec(tag);
+    const content = META_CONTENT.exec(tag);
+    if (key && content && SELF_NAME_META.test((key[1] ?? key[2] ?? "").trim())) raw.push(content[1] ?? content[2] ?? "");
+  }
+  raw.push(...structuredNames(structuredData(html, lower)));
+  raw.push(...titleOf(html).split(TITLE_SPLIT));
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const entry of raw) {
+    const name = entry.normalize("NFKC").replace(/\s+/g, " ").trim();
+    const key = comparable(name);
+    if (name === "" || name.length > 100 || seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+    if (names.length >= MAX_SELF_NAMES) break;
+  }
+  return names;
+}
+
+/** What is left of a name the site gives itself without the words for what a page is. */
+const withoutPageWords = (name: string): string => PAGE_WORDS.reduce((text, word) => text.split(word).join(" "), name).replace(/\s+/g, " ").trim();
+
+/**
+ * The parts of such a name that say who the company is: not what is sold or what a page is, at least
+ * three letters, one of them kanji, katakana or Latin, and not beginning with a hiragana particle.
+ */
+function brandParts(name: string): string[] {
+  return distinctiveParts(withoutPageWords(name)).filter(
+    (part) => comparable(part).length >= 3 && /[\u30a0-\u30ff\u4e00-\u9fffA-Za-z]/.test(part) && !/^[\u3040-\u309f]/.test(part),
+  );
+}
+
+/**
+ * The company's name when the site and the console's page agree on it: a name the site gives itself
+ * that the text of the program's page in the console also has. The console may name the operating
+ * company and the site the service, but neither source alone is taken for the other's word.
+ */
+function nameBothSidesGive(names: readonly string[], programText: string): string | undefined {
+  const program = comparable(programText);
+  for (const name of names) {
+    const hit = brandParts(name)
+      .sort((a, b) => b.length - a.length)
+      .find((part) => program.includes(comparable(part)));
+    if (!hit) continue;
+    const cleaned = withoutPageWords(name);
+    return cleaned.length >= hit.length && cleaned.length <= MAX_SELF_NAME_CHARS ? cleaned : hit;
+  }
+  return undefined;
+}
+
 const SELLS_WATER = /ウォーターサーバー|宅配水|天然水|ミネラルウォーター|宅配ウォーター/;
 
 /** How much of the name's letter pairs the page has, in four steps. */
@@ -187,32 +303,47 @@ function overlapStep(name: string, pageText: string): number {
  * text the page had (`lt1k`/`lt3k`/`ge3k`), the kind of letters the name uses, how many distinctive
  * parts it had (none: the console named what is sold, not who sells it), whether the page is about
  * water at all (`v`), how much of the name's letter pairs it has (`o0`..`o3`) and whether its title is
- * in Latin letters (`tlatin`), Japanese (`tjp`) or missing (`tnone`).
+ * in Latin letters (`tlatin`), Japanese (`tjp`) or missing (`tnone`), and how many names the site gives
+ * itself that could stand for the company (`s0`..`s3`).
  */
-function nameMissNote(name: string, top: { text: string; html: string }): string {
+function nameMissNote(name: string, top: { text: string; html: string }, names: readonly string[]): string {
   const whole = siteNameOf(name);
   const size = top.text.length < 1000 ? "lt1k" : top.text.length < 3000 ? "lt3k" : "ge3k";
   const letters = /[\u30a0-\u30ff]/.test(whole) ? "kana" : /[\u4e00-\u9fff]/.test(whole) ? "kanji" : /[a-z]/i.test(whole) ? "latin" : "other";
   const title = titleOf(top.html);
   const titleKind = title === "" ? "none" : /[a-z]{3}/i.test(title) && !/[\u3040-\u30ff\u4e00-\u9fff]/.test(title) ? "latin" : "jp";
   const overlap = overlapStep(whole, `${top.text}\n${identityText(top.html)}`);
-  return `name_miss_${size}_${letters}_p${Math.min(distinctiveParts(whole).length, 9)}_v${SELLS_WATER.test(top.text) ? 1 : 0}_o${overlap}_t${titleKind}`;
+  return `name_miss_${size}_${letters}_p${Math.min(distinctiveParts(whole).length, 9)}_v${SELLS_WATER.test(top.text) ? 1 : 0}_o${overlap}_t${titleKind}_s${Math.min(names.filter((own) => brandParts(own).length > 0).length, 3)}`;
 }
 
 const MIN_TOP_TEXT = 200;
 
+/** What went wrong with a fetch, in a word that carries no address. */
+function whyUnavailable(error: unknown): string {
+  if (!(error instanceof FetchError)) return "error";
+  if (error.status === null) return /abort|timeout|timed out/i.test(error.message) ? "timeout" : "network";
+  return /exceeds/.test(error.message) ? "toolarge" : `http${error.status}`;
+}
+
 async function readPage(fetcher: Fetcher, url: string, host: string): Promise<ReadOutcome> {
-  if (registrableHost(new URL(url).hostname) !== host) return { unavailable: true };
+  if (registrableHost(new URL(url).hostname) !== host) return { unavailable: "offsite" };
   try {
     if ((await checkRobots(fetcher, url)).disallowsAll) return { robots: true };
     const page = await fetcher.fetch(url, { timeoutMs: FETCH_TIMEOUT_MS });
-    if (page.status < 200 || page.status >= 300 || !/html/i.test(page.contentType)) return { unavailable: true };
-    if (registrableHost(new URL(page.finalUrl).hostname) !== host) return { unavailable: true };
+    if (page.status < 200 || page.status >= 300) return { unavailable: `http${page.status}` };
+    if (!/html/i.test(page.contentType)) return { unavailable: "notHtml" };
+    if (registrableHost(new URL(page.finalUrl).hostname) !== host) return { unavailable: "offsite" };
     return { read: { url: page.finalUrl, html: page.body, text: htmlToVisibleText(page.body, page.contentType) } };
-  } catch {
-    return { unavailable: true };
+  } catch (error) {
+    return { unavailable: whyUnavailable(error) };
   }
 }
+
+/** "Not now", and which page (`top`, `terms`, `partner`, `price`) and why, so that the log can tell a blocked site from a slow one. */
+const unreachable = (page: string, why?: string): VetResult => ({
+  ok: false,
+  reasons: ["site_unreachable", why ? `unreachable_${page}_${why}` : `unreachable_${page}`],
+});
 
 function sameSiteLinks(links: readonly PageLink[], host: string): PageLink[] {
   return links.filter((link) => registrableHost(new URL(link.url).hostname) === host);
@@ -223,6 +354,8 @@ interface Linked {
   robots: boolean;
   /** Links that matched but whose page could not be read now. */
   unreadable: number;
+  /** Why the first of them could not be read. */
+  why?: string;
 }
 
 /** Pages behind the links whose text matches, in the order of the page, at most `limit` that can be read. */
@@ -230,16 +363,21 @@ async function readLinked(fetcher: Fetcher, links: readonly PageLink[], pattern:
   const pages: Read[] = [];
   const seen = new Set<string>();
   let unreadable = 0;
+  let why: string | undefined;
   for (const link of links) {
     if (pages.length >= limit) break;
     if (!pattern.test(link.text) || seen.has(link.url)) continue;
     seen.add(link.url);
     const outcome = await readPage(fetcher, link.url, host);
     if ("robots" in outcome) return { pages, robots: true, unreadable };
-    if ("read" in outcome) pages.push(outcome.read);
-    else unreadable += 1;
+    if ("read" in outcome) {
+      pages.push(outcome.read);
+    } else {
+      unreadable += 1;
+      why ??= outcome.unavailable;
+    }
   }
-  return { pages, robots: false, unreadable };
+  return { pages, robots: false, unreadable, ...(why ? { why } : {}) };
 }
 
 function priceCandidates(links: readonly PageLink[], used: ReadonlySet<string>): string[] {
@@ -257,6 +395,7 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
   const { host } = candidate;
 
   let top: Read | undefined;
+  const whys: string[] = [];
   for (const origin of [`https://${host}/`, `https://www.${host}/`]) {
     const outcome = await readPage(deps.fetcher, origin, host);
     if ("robots" in outcome) return { ok: false, reasons: ["robots_disallow"] };
@@ -264,20 +403,24 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
       top = outcome.read;
       break;
     }
+    if (!whys.includes(outcome.unavailable)) whys.push(outcome.unavailable);
   }
+  if (!top) return unreachable("top", whys.join("_"));
   // A front page with almost no text is probably drawn by script: not this check's to judge.
-  if (!top || top.text.length < MIN_TOP_TEXT) return { ok: false, reasons: ["site_unreachable"] };
-  const brandName = nameOnSite(candidate.name, `${top.text}\n${identityText(top.html)}`);
-  if (!brandName) return { ok: false, reasons: ["name_not_on_site", nameMissNote(candidate.name, top)] };
+  if (top.text.length < MIN_TOP_TEXT) return unreachable("top", "thin");
+  const names = selfNames(top.html);
+  const brandName =
+    nameOnSite(candidate.name, `${top.text}\n${identityText(top.html)}`) ?? (candidate.programText ? nameBothSidesGive(names, candidate.programText) : undefined);
+  if (!brandName) return { ok: false, reasons: ["name_not_on_site", nameMissNote(candidate.name, top, names)] };
 
   const links = sameSiteLinks(linksOfHtml(top.html, top.url), host);
   const terms = await readLinked(deps.fetcher, links, TERMS_LINK, host, MAX_RULE_PAGES);
   if (terms.robots) return { ok: false, reasons: ["robots_disallow"] };
-  if (terms.pages.length === 0) return { ok: false, reasons: [terms.unreadable > 0 ? "site_unreachable" : "terms_not_found"] };
+  if (terms.pages.length === 0) return terms.unreadable > 0 ? unreachable("terms", terms.why) : { ok: false, reasons: ["terms_not_found"] };
   const partner = await readLinked(deps.fetcher, links, PARTNER_LINK, host, MAX_RULE_PAGES);
   if (partner.robots) return { ok: false, reasons: ["robots_disallow"] };
   // A rules page for partners that is there but cannot be read now is not "no rules for partners".
-  if (partner.pages.length === 0 && partner.unreadable > 0) return { ok: false, reasons: ["site_unreachable"] };
+  if (partner.pages.length === 0 && partner.unreadable > 0) return unreachable("partner", partner.why);
 
   const reasons = new Set<string>();
   if (terms.pages.some((page) => automationBan(page.text)) || partner.pages.some((page) => automationBan(page.text))) {
@@ -295,12 +438,14 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
   let sawPage = false;
   let failedListing = false;
   let unreadable = 0;
+  let unreadableWhy: string | undefined;
   for (const url of [...new Set(pricePages)]) {
     // The same guards as every other page: robots.txt, the host the page really came from, and prices on it.
     const outcome = await readPage(deps.fetcher, url, host);
     if ("robots" in outcome) continue;
     if (!("read" in outcome)) {
       unreadable += 1;
+      unreadableWhy ??= outcome.unavailable;
       continue;
     }
     if (!YEN_AMOUNT.test(outcome.read.text)) continue;
@@ -335,7 +480,7 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
     failedListing ||= (found.summary.skipped.listing_failed ?? 0) > 0;
   }
   if (failedListing && !sawPage) return { ok: false, reasons: ["listing_failed"] };
-  if (!sawPage && unreadable > 0) return { ok: false, reasons: ["site_unreachable"] };
+  if (!sawPage && unreadable > 0) return unreachable("price", unreadableWhy);
   return { ok: false, reasons: [sawPage ? "no_services" : "no_price_page"] };
 }
 

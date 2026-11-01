@@ -68,6 +68,8 @@ export interface ReadCandidate {
   site: SiteHost;
   /** What the page was about, as counts: whether the rules had anything to find. */
   signals: { chars: number; prohibitions: number; topics: string[]; rules: boolean };
+  /** The page's text, kept in memory for the site check to compare names with; never stored or printed. */
+  detailText?: string;
 }
 
 /** The headings of the part of a program's page that states its conditions; a page without them was not read as a program's page. */
@@ -146,6 +148,7 @@ export async function readCandidates(console: ScoutConsole, candidates: readonly
       gate: programGate(page.text),
       site: siteHostFromDetail(page),
       signals: { chars: page.text.length, ...signals, rules: RULES_HEADING.test(page.text) },
+      detailText: page.text,
     });
   }
   return read;

@@ -85,6 +85,18 @@ describe("registerCandidates", () => {
     expect((await repo.scout.get("s0002"))?.reasons).toEqual(["terms_ban_automation"]);
   });
 
+  it("hands the site check the text of the console's page, and treats a note on why a site was out of reach as a transient reason", async () => {
+    const seen: (string | undefined)[] = [];
+    const { repo, deps } = setup((candidate) => {
+      seen.push(candidate.programText);
+      return { ok: false, reasons: ["site_unreachable", "unreachable_top_http403"] };
+    });
+    const entry = { ...passed("s0001", "A社", "down.com"), detailText: "ブランドAの案内" };
+    expect(await registerCandidates([entry], deps)).toEqual({ retry_later: 1 });
+    expect(seen).toEqual(["ブランドAの案内"]);
+    expect((await repo.scout.get("s0001"))?.reasons).toEqual(["site_unreachable", "unreachable_top_http403"]);
+  });
+
   it("gives up on a site that takes too long, to look again tomorrow, and keeps going past one that throws", async () => {
     const slow = setup(() => new Promise<VetResult>(() => undefined));
     const counts = await registerCandidates([passed("s0001", "A社", "slow.com")], { ...slow.deps, vetTimeoutMs: 20 });

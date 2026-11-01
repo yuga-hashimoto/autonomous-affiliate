@@ -77,6 +77,17 @@ describe("readCandidates and summarize", () => {
     expect(JSON.stringify(report)).not.toMatch(/コスモ|クリクラ|アクアクララ|cosmo|s0001/);
   });
 
+  it("keeps each page's text with its candidate for the site check, and the report has none of it", async () => {
+    const { console } = fakeConsole(
+      { "ウォーターサーバー": [card("s0001", "コスモウォーター")] },
+      { s0001: { text: "比較サイトでの掲載は可能です。サービス名はひみつの名前です。", links: [] } },
+    );
+    const gathered = await gatherCandidates(console, []);
+    const read = await readCandidates(console, gathered.candidates);
+    expect(read[0]?.detailText).toBe("比較サイトでの掲載は可能です。サービス名はひみつの名前です。");
+    expect(JSON.stringify(summarize(gathered, read))).not.toContain("ひみつの名前");
+  });
+
   it("reads at most a fixed number of pages in one run", async () => {
     const rows = Array.from({ length: MAX_DETAIL_READS + 5 }, (_, i) => card(`s${String(i).padStart(4, "0")}`, `ウォーター${i}号`));
     const { console, calls } = fakeConsole({ "ウォーターサーバー": rows }, {});

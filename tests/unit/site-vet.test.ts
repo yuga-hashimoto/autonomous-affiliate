@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryRepository } from "@aff/db";
 import { parsePolicyText, type PolicyConfig } from "@aff/domain";
-import { MapFetcher } from "@aff/integrations";
-import { identityText, termsFingerprint, vetAdvertiserSite, type ListRequest, type PlanLister } from "@aff/agents";
+import { FetchError, MapFetcher } from "@aff/integrations";
+import { identityText, isTransientReason, selfNames, termsFingerprint, vetAdvertiserSite, type ListRequest, type PlanLister } from "@aff/agents";
 import { readFileSync } from "./helpers.js";
 
 const HOST = "brand-a.com";
@@ -79,7 +79,7 @@ describe("vetAdvertiserSite", () => {
 
   it("rejects a site that cannot be reached", async () => {
     const result = await vetAdvertiserSite(candidate, deps(site({ [`${ORIGIN}/`]: undefined })));
-    expect(result).toEqual({ ok: false, reasons: ["site_unreachable"] });
+    expect(result).toEqual({ ok: false, reasons: ["site_unreachable", "unreachable_top_http404"] });
   });
 
   it("rejects a site whose robots.txt keeps everything out", async () => {
@@ -97,10 +97,16 @@ describe("vetAdvertiserSite", () => {
   it("does not judge a front page with almost no text, and treats unreadable rules pages as not now", async () => {
     expect(await vetAdvertiserSite(candidate, deps(site({ [`${ORIGIN}/`]: page(["ブランドA"], TOP_LINKS) })))).toEqual({
       ok: false,
-      reasons: ["site_unreachable"],
+      reasons: ["site_unreachable", "unreachable_top_thin"],
     });
-    expect(await vetAdvertiserSite(candidate, deps(site({ [`${ORIGIN}/terms/`]: undefined })))).toEqual({ ok: false, reasons: ["site_unreachable"] });
-    expect(await vetAdvertiserSite(candidate, deps(site({ [`${ORIGIN}/affiliate/`]: undefined })))).toEqual({ ok: false, reasons: ["site_unreachable"] });
+    expect(await vetAdvertiserSite(candidate, deps(site({ [`${ORIGIN}/terms/`]: undefined })))).toEqual({
+      ok: false,
+      reasons: ["site_unreachable", "unreachable_terms_http404"],
+    });
+    expect(await vetAdvertiserSite(candidate, deps(site({ [`${ORIGIN}/affiliate/`]: undefined })))).toEqual({
+      ok: false,
+      reasons: ["site_unreachable", "unreachable_partner_http404"],
+    });
   });
 
   it("needs a price page that shows prices and is read like every other page", async () => {
@@ -112,9 +118,9 @@ describe("vetAdvertiserSite", () => {
 
   it("rejects a site that does not show the advertiser's name, and says what kind of miss it was without the name", async () => {
     const result = await vetAdvertiserSite({ ...candidate, name: "別の会社" }, deps(site()));
-    expect(result).toEqual({ ok: false, reasons: ["name_not_on_site", "name_miss_lt1k_kanji_p1_v0_o0_tjp"] });
+    expect(result).toEqual({ ok: false, reasons: ["name_not_on_site", "name_miss_lt1k_kanji_p1_v0_o0_tjp_s1"] });
     const generic = await vetAdvertiserSite({ ...candidate, name: "ウォーターサーバー宅配水" }, deps(site()));
-    expect(generic).toEqual({ ok: false, reasons: ["name_not_on_site", "name_miss_lt1k_kana_p0_v0_o0_tjp"] });
+    expect(generic).toEqual({ ok: false, reasons: ["name_not_on_site", "name_miss_lt1k_kana_p0_v0_o0_tjp_s1"] });
   });
 
   it("finds the name in what the site says about itself besides its text: a logo's alternative text, its meta names", async () => {
@@ -141,10 +147,10 @@ describe("vetAdvertiserSite", () => {
   it("says, without the name, how near a miss was: what the page sells, whether its title is in Latin letters, how much of the name is on it", async () => {
     const latin = `<html><head><title>BRAND A Official</title></head><body><p>ウォーターサーバーの宅配です。</p><p>${FILLER}</p>${TOP_LINKS}</body></html>`;
     const result = await vetAdvertiserSite({ ...candidate, name: "ゆゆゆゆ" }, deps(site({ [`${ORIGIN}/`]: latin })));
-    expect(result).toEqual({ ok: false, reasons: ["name_not_on_site", "name_miss_lt1k_other_p1_v1_o0_tlatin"] });
+    expect(result).toEqual({ ok: false, reasons: ["name_not_on_site", "name_miss_lt1k_other_p1_v1_o0_tlatin_s1"] });
     const near = page(["ぶらんど", FILLER], TOP_LINKS).replace("<title>ブランドA</title>", "<title>ようこそ</title>");
     const partly = await vetAdvertiserSite({ ...candidate, name: "ブランドエクセル" }, deps(site({ [`${ORIGIN}/`]: near })));
-    expect(partly).toMatchObject({ ok: false, reasons: ["name_not_on_site", expect.stringMatching(/_o[12]_tjp$/)] });
+    expect(partly).toMatchObject({ ok: false, reasons: ["name_not_on_site", expect.stringMatching(/_o[12]_tjp_s0$/)] });
   });
 
   it("reads what a page says about itself in time proportional to its size, however it is broken", () => {
@@ -196,6 +202,67 @@ describe("vetAdvertiserSite", () => {
       },
     };
     const result = await vetAdvertiserSite(candidate, { ...deps(site()), fetcher: redirecting });
-    expect(result).toEqual({ ok: false, reasons: ["site_unreachable"] });
+    expect(result).toEqual({ ok: false, reasons: ["site_unreachable", "unreachable_top_offsite"] });
+  });
+
+  it("says, without the address, why a page could not be read: the status it answered with, a page that is not HTML, a timeout", async () => {
+    const answering = (status: number, contentType = "text/html") => ({
+      async fetch(url: string) {
+        if (url.endsWith("/robots.txt")) return { status: 404, body: "", contentType: "text/plain", finalUrl: url };
+        return { status, body: page(["ブランドA", FILLER], TOP_LINKS), contentType, finalUrl: url };
+      },
+    });
+    const run = (fetcher: { fetch: MapFetcher["fetch"] }) => vetAdvertiserSite(candidate, { ...deps(site()), fetcher });
+    expect(await run(answering(403))).toEqual({ ok: false, reasons: ["site_unreachable", "unreachable_top_http403"] });
+    expect(await run(answering(503))).toEqual({ ok: false, reasons: ["site_unreachable", "unreachable_top_http503"] });
+    expect(await run(answering(200, "application/pdf"))).toEqual({ ok: false, reasons: ["site_unreachable", "unreachable_top_notHtml"] });
+    const timingOut = { async fetch(url: string): Promise<never> { throw new FetchError(url, null, "AbortError: This operation was aborted"); } };
+    expect(await run(timingOut)).toEqual({ ok: false, reasons: ["site_unreachable", "unreachable_top_timeout"] });
+    const broken = { async fetch(url: string): Promise<never> { throw new FetchError(url, null, "TypeError: fetch failed"); } };
+    expect(await run(broken)).toEqual({ ok: false, reasons: ["site_unreachable", "unreachable_top_network"] });
+  });
+
+  it("is not now, not never, when a page could not be read, however the reason is told", () => {
+    expect(isTransientReason("site_unreachable")).toBe(true);
+    expect(isTransientReason("unreachable_top_http403")).toBe(true);
+    expect(isTransientReason("name_not_on_site")).toBe(false);
+    expect(isTransientReason("name_miss_lt1k_kanji_p1_v0_o0_tjp_s1")).toBe(false);
+  });
+});
+
+describe("a name the site gives itself, checked against the console's own page", () => {
+  const operator = { ...candidate, name: "運営会社", programText: "プログラムの概要\nブランドAは、ご家庭にお水を届けるサービスです。" };
+  const shell = (head: string): string => `<html><head>${head}</head><body><p>${FILLER}</p>${TOP_LINKS}</body></html>`;
+
+  it("accepts a site whose own name the console's page also gives, though the console names the operating company", async () => {
+    expect(await vetAdvertiserSite(operator, deps(site()))).toMatchObject({ ok: true, brandName: "ブランドA" });
+    const meta = shell(`<title>ようこそ</title><meta property="og:site_name" content="ブランドA">`);
+    expect(await vetAdvertiserSite(operator, deps(site({ [`${ORIGIN}/`]: meta })))).toMatchObject({ ok: true, brandName: "ブランドA" });
+    const structured = shell(`<title>ようこそ</title><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"ブランドA"}]}</script>`);
+    expect(await vetAdvertiserSite(operator, deps(site({ [`${ORIGIN}/`]: structured })))).toMatchObject({ ok: true, brandName: "ブランドA" });
+    const titled = shell(`<title>ウォーターサーバーの宅配 | ブランドA 公式サイト</title>`);
+    expect(await vetAdvertiserSite(operator, deps(site({ [`${ORIGIN}/`]: titled })))).toMatchObject({ ok: true, brandName: "ブランドA" });
+  });
+
+  it("does not accept it when the console's page does not give that name, or gives no page text at all", async () => {
+    const other = { ...operator, programText: "プログラムの概要\n別のサービスです。" };
+    expect(await vetAdvertiserSite(other, deps(site()))).toMatchObject({ ok: false, reasons: ["name_not_on_site", expect.any(String)] });
+    const { programText: _unused, ...bare } = operator;
+    expect(await vetAdvertiserSite(bare, deps(site()))).toMatchObject({ ok: false, reasons: ["name_not_on_site", expect.any(String)] });
+  });
+
+  it("does not take words for what is sold, or for what a page is, as the site's name", async () => {
+    const generic = { ...operator, programText: "ウォーターサーバー 公式サイト 料金 比較 トップページ ブランド" };
+    for (const title of ["ウォーターサーバー公式サイト", "料金比較 | トップページ", "ようこそ", "水"]) {
+      const result = await vetAdvertiserSite(generic, deps(site({ [`${ORIGIN}/`]: shell(`<title>${title}</title>`) })));
+      expect(result, title).toMatchObject({ ok: false, reasons: ["name_not_on_site", expect.any(String)] });
+    }
+  });
+
+  it("lists what the page calls itself, once each and not too many", () => {
+    const html = `<title>A社の宅配水 | ブランドA</title><meta property="og:site_name" content="ブランドA"><meta name="application-name" content="ブランドA">`;
+    expect(selfNames(html)).toEqual(["ブランドA", "A社の宅配水"]);
+    expect(selfNames(`<meta property="og:site_name" content="ブランドA">`.repeat(5_000)).length).toBeLessThanOrEqual(12);
+    expect(selfNames("<script type=\"application/ld+json\">{broken</script>")).toEqual([]);
   });
 });

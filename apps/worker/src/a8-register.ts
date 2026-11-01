@@ -1,6 +1,6 @@
 import type { Repository, ScoutedBrand } from "@aff/db";
 import type { Fetcher } from "@aff/integrations";
-import { TRANSIENT_REASONS, rereadTerms, slugForHost, type TermsState, type VetCandidate, type VetResult } from "@aff/agents";
+import { isTransientReason, rereadTerms, slugForHost, type TermsState, type VetCandidate, type VetResult } from "@aff/agents";
 import { READABLE_CHARS, type ReadCandidate } from "./a8-scout.js";
 
 /**
@@ -68,7 +68,7 @@ export async function registerCandidates(read: readonly ReadCandidate[], deps: R
       checkedAt,
     };
     await repo.scout.upsert(brand);
-    return reasons.every((reason) => TRANSIENT_REASONS.has(reason)) ? "retry_later" : "rejected";
+    return reasons.every(isTransientReason) ? "retry_later" : "rejected";
   };
 
   for (const entry of read) {
@@ -100,7 +100,7 @@ export async function registerCandidates(read: readonly ReadCandidate[], deps: R
       continue;
     }
     vets += 1;
-    const result = await vetWithin(deps.vet, { name: candidate.name, host: site.host, brandSlug }, deps.vetTimeoutMs ?? DEFAULT_VET_TIMEOUT_MS);
+    const result = await vetWithin(deps.vet, { name: candidate.name, host: site.host, brandSlug, programText: entry.detailText }, deps.vetTimeoutMs ?? DEFAULT_VET_TIMEOUT_MS);
     if (!result.ok) {
       timedOut ||= result.reasons.includes("vet_timeout");
       labels.push(await refuse(entry, result.reasons));
@@ -180,7 +180,7 @@ export async function renewScoutedTerms(
     if (result.ok) {
       await repo.scout.upsert({ ...brand, termsSha256: result.termsSha256 });
       labels.push("renewed");
-    } else if (result.reasons.every((reason) => TRANSIENT_REASONS.has(reason) || reason === "terms_unreadable")) {
+    } else if (result.reasons.every((reason) => isTransientReason(reason) || reason === "terms_unreadable")) {
       labels.push("unreadable");
     } else {
       await repo.scout.upsert({ ...brand, state: "retired", reasons: result.reasons, checkedAt: now.toISOString() });
