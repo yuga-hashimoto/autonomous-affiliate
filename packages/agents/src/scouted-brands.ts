@@ -83,13 +83,15 @@ export function withScoutedDomains(policy: PolicyConfig, scouted: readonly Scout
 export function knownProgramIds(scouted: readonly ScoutedBrand[], now: Date): Set<string> {
   const known = new Set<string>();
   for (const brand of scouted) {
-    if (brand.state !== "rejected") {
+    const undraftable = brand.reasons.includes("plan_not_draftable");
+    // One let go of because its plans could not be drafted is looked at again like one refused for that.
+    if (brand.state !== "rejected" && !(brand.state === "retired" && undraftable)) {
       known.add(brand.programId);
       continue;
     }
     const transient = brand.reasons.length > 0 && brand.reasons.every(isTransientReason);
     const days = (now.getTime() - Date.parse(brand.checkedAt)) / DAY_MS;
-    const window = transient ? RETRY_TRANSIENT_DAYS : brand.reasons.includes("plan_not_draftable") ? RECHECK_UNDRAFTABLE_DAYS : RECHECK_REFUSED_DAYS;
+    const window = transient ? RETRY_TRANSIENT_DAYS : undraftable ? RECHECK_UNDRAFTABLE_DAYS : RECHECK_REFUSED_DAYS;
     if (days < window) known.add(brand.programId);
   }
   return known;

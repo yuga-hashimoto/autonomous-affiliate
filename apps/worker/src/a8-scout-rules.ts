@@ -12,7 +12,7 @@ import { pickDetailPath } from "./a8-inspect.js";
 
 /** What to search for in the console, by vertical. Only a vertical the content path can write about is listed (docs/18). */
 export const SCOUT_SEARCHES: Readonly<Record<string, readonly string[]>> = {
-  water_delivery: ["ウォーターサーバー", "宅配水"],
+  water_delivery: ["ウォーターサーバー", "宅配水", "天然水", "浄水型ウォーターサーバー", "ミネラルウォーター 宅配"],
 };
 
 /** The keyword that finds a program on the console is the advertiser's name, so it has to fit the brand schema. */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MAX_DETAIL_READS, gatherCandidates, readCandidates, summarize, type DetailPage, type ScoutConsole } from "../../apps/worker/src/a8-scout.js";
 import type { RawProgramRow } from "../../apps/worker/src/a8-programs.js";
+import { SCOUT_SEARCHES } from "../../apps/worker/src/a8-scout-rules.js";
 
 const card = (id: string, name: string, extra = "ウォーターサーバー"): RawProgramRow => ({
   programId: id,
@@ -35,7 +36,7 @@ describe("gatherCandidates", () => {
       {},
     );
     const gathered = await gatherCandidates(console, ["プレミアムウォーター"]);
-    expect(calls.search).toEqual(["ウォーターサーバー", "宅配水"]);
+    expect(calls.search).toEqual([...SCOUT_SEARCHES.water_delivery!]);
     expect(gathered.cards).toBe(3);
     expect(gathered.candidates.map((c) => c.programId)).toEqual(["s0001", "s0003"]);
     expect(gathered.unrecognized).toBe(false);
@@ -64,7 +65,7 @@ describe("readCandidates and summarize", () => {
     const read = await readCandidates(console, gathered.candidates);
     const report = summarize(gathered, read);
     expect(report).toEqual({
-      searches: 2,
+      searches: SCOUT_SEARCHES.water_delivery!.length,
       cards: 3,
       candidates: 3,
       joined: 0,
