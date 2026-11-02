@@ -28,6 +28,11 @@ export function brandOfScouted(brand: ScoutedBrand): A8Brand | undefined {
   };
 }
 
+/** Every word that would tell who a picked advertiser is, for the logs to leave out (docs/21): all of them, whatever the state. */
+export function scoutedTerms(scouted: readonly ScoutedBrand[]): string[] {
+  return scouted.flatMap((entry) => [entry.programId, entry.brandSlug, entry.keyword, entry.brandName, entry.host]);
+}
+
 /** The scouted advertisers that are registered (vetted or joined) and do not take a written brand's slug or name, once each. */
 export function scoutedInUse(config: A8ProgramsConfig, scouted: readonly ScoutedBrand[]): ScoutedBrand[] {
   const slugs = new Set(config.brands.map((brand) => brand.brandSlug));

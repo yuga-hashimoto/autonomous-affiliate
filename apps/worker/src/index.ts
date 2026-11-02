@@ -6,7 +6,9 @@ import { z } from "zod";
 import {
   createLogger,
   dayKeyInTz,
+  maskTerms,
   parsePolicyText,
+  setMaskedTerms,
   type AffiliateOffer,
   type PolicyConfig,
   type SerpObservation,
@@ -37,6 +39,7 @@ import {
   activeScoutedSources,
   vetAdvertiserSite,
   scoutedInUse,
+  scoutedTerms,
   withScoutedBrands,
   withScoutedDomains,
   parseDiscoveryFile,
@@ -420,7 +423,10 @@ export async function runLivePipeline(
     options.a8ProgramsPath === undefined
       ? undefined
       : parseA8ProgramsFile(await readFile(resolveInputPath(options.a8ProgramsPath), "utf8"));
-  const scouted = writtenA8 && scoutingEnabled(env) ? scoutedInUse(writtenA8, await repo.scout.list()) : [];
+  const pickedRows = writtenA8 && scoutingEnabled(env) ? await repo.scout.list() : [];
+  // Their names stay in the database: the logs and the printed result of a public run show none (docs/21).
+  setMaskedTerms(scoutedTerms(pickedRows));
+  const scouted = writtenA8 ? scoutedInUse(writtenA8, pickedRows) : [];
   const policy = withScoutedDomains(policyFromFile, scouted);
   const logger = options.logger ?? createLogger({ level: "info" });
 
@@ -882,7 +888,7 @@ if (isMain()) {
       const result = values.live
         ? await runLivePipeline(options, values.plans ?? "config/plans.live.json")
         : await runDryRunPipeline(options);
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      process.stdout.write(`${maskTerms(JSON.stringify(result, null, 2))}\n`);
     } else if (command === "plans-status") {
       process.stdout.write(
         `${JSON.stringify(await runPlansStatus(options, values.plans ?? "config/plans.live.json"), null, 2)}\n`,
@@ -974,8 +980,10 @@ if (isMain()) {
       );
       const repo = await loadRepository(options, { requirePg: true });
       const submitEnv = options.env ?? process.env;
+      const pickedRows = scoutingEnabled(submitEnv) ? await repo.scout.list() : [];
+      setMaskedTerms(scoutedTerms(pickedRows));
       const report = await runA8SubmitUrls(submitEnv, {
-        config: scoutingEnabled(submitEnv) ? withScoutedBrands(written, await repo.scout.list()) : written,
+        config: withScoutedBrands(written, pickedRows),
         distDir: resolveInputPath(values.dist ?? "apps/site/dist"),
       });
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

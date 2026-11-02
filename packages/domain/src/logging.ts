@@ -46,8 +46,32 @@ export function redactUrl(value: string): string {
   }
 }
 
-export function redactString(value: string): string {
+const MASKED = "[SCOUTED]";
+/** A shorter word is more likely to be part of ordinary text than to name anyone. */
+const MIN_MASKED_TERM_LENGTH = 3;
+
+let maskedPatterns: readonly RegExp[] = [];
+
+/**
+ * Words the logs and the printed results must not show: the names, slugs, sites and program ids of the
+ * advertisers the run picked itself (docs/21), which belong in the database only. Replaces the earlier list;
+ * the terms are matched literally, whatever the case, the longest first.
+ */
+export function setMaskedTerms(terms: Iterable<string>): void {
+  const unique = [...new Set([...terms].map((term) => term.trim()).filter((term) => term.length >= MIN_MASKED_TERM_LENGTH))];
+  maskedPatterns = unique
+    .sort((a, b) => b.length - a.length)
+    .map((term) => new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"));
+}
+
+export function maskTerms(value: string): string {
   let out = value;
+  for (const pattern of maskedPatterns) out = out.replace(pattern, MASKED);
+  return out;
+}
+
+export function redactString(value: string): string {
+  let out = maskTerms(value);
   for (const pattern of SECRET_VALUE_PATTERNS) {
     out = out.replace(pattern, (match) => {
       // Keep a short prefix so logs remain greppable without leaking the secret.
