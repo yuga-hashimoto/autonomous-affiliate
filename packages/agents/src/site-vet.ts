@@ -3,6 +3,8 @@ import type { PolicyConfig } from "@aff/domain";
 import { FetchError, checkRobots, htmlToVisibleText, linksOfHtml, type Fetcher, type PageLink } from "@aff/integrations";
 import { termsFingerprint } from "./a8-offers.js";
 import { discoverPlans, type DiscoverySource, type PlanLister } from "./plan-discovery.js";
+import type { DraftResult } from "./plan-draft.js";
+import type { ArticlePlan } from "./pipeline.js";
 import { automationBan, restrictionReasons } from "./rule-text.js";
 import { registrableHost } from "./site-host.js";
 
@@ -52,6 +54,8 @@ export interface VetDeps {
   clock: () => Date;
   /** Reads the price pages; without it a site cannot be checked. */
   lister?: PlanLister | undefined;
+  /** Tries to draft a plan from the pages it rests on (docs/18); without it the site is registered without that trial. */
+  draft?: ((plan: ArticlePlan, policy: PolicyConfig) => Promise<DraftResult>) | undefined;
 }
 
 export type VetResult =
@@ -442,7 +446,7 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
   let unreadable = 0;
   let unreadableWhy: string | undefined;
   // What the first page that lists servers gave, kept while the other price pages are read for their prices only.
-  let listing: { source: DiscoverySource; services: number } | undefined;
+  let listing: { source: DiscoverySource; services: number; plans: ArticlePlan[] } | undefined;
   const pagesWithPrices: string[] = [];
   for (const url of [...new Set(pricePages)]) {
     // The same guards as every other page: robots.txt, the host the page really came from, and prices on it.
@@ -473,26 +477,96 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
       lister: deps.lister,
     });
     if (found.plans.length > 0) {
-      listing = { source, services: found.plans.length };
+      listing = { source, services: found.plans.length, plans: found.plans };
       continue;
     }
     sawPage ||= (found.summary.skipped.no_services ?? 0) > 0;
     failedListing ||= (found.summary.skipped.listing_failed ?? 0) > 0;
   }
   if (listing) {
+    const sourceUrls = withMorePages(listing.source.listUrls, pagesWithPrices);
+    if (deps.draft) {
+      const refusal = await undraftable(listing.plans, sourceUrls, (plan) => deps.draft!(plan, approvedPolicy));
+      if (refusal) return refusal;
+    }
     return {
       ok: true,
       brandName,
       termsUrl: rules.url,
       termsSha256: termsFingerprint(rules.text),
       listUrls: listing.source.listUrls,
-      sourceUrls: withMorePages(listing.source.listUrls, pagesWithPrices),
+      sourceUrls,
       services: listing.services,
     };
   }
   if (failedListing && !sawPage) return { ok: false, reasons: ["listing_failed"] };
   if (!sawPage && unreadable > 0) return unreachable("price", unreadableWhy);
   return { ok: false, reasons: [sawPage ? "no_services" : "no_price_page"] };
+}
+
+/** How many of a site's services are tried before it is said that none can be drafted. */
+const MAX_TRIAL_PLANS = 2;
+
+/** The amount a drafting issue is about, in a word that carries nothing the page said. */
+function draftIssueCode(issue: string): string {
+  if (issue.startsWith("水代")) return "draft_water";
+  if (issue.startsWith("送料")) return "draft_shipping";
+  if (issue.startsWith("電気代")) return "draft_electricity";
+  if (issue.startsWith("初回費用")) return "draft_initial";
+  if (issue.startsWith("サーバーレンタル料")) return "draft_rental";
+  if (issue.startsWith("source_unavailable")) return "draft_source";
+  return "draft_other";
+}
+
+/**
+ * A site is of no use if none of its services can be drafted into a plan from the pages it would rest on: the
+ * advertiser would hold a place and be applied to for articles that cannot be written. Undefined when one can;
+ * the reasons carry which amounts were missing, never the words of the page. A model that fails is not a verdict.
+ */
+async function undraftable(
+  plans: readonly ArticlePlan[],
+  sourceUrls: readonly string[],
+  draft: (plan: ArticlePlan) => Promise<DraftResult>,
+): Promise<VetResult | undefined> {
+  const missing = new Set<string>();
+  for (const plan of plans.slice(0, MAX_TRIAL_PLANS)) {
+    let result: DraftResult;
+    try {
+      result = await draft({ ...plan, sourceUrls: [...sourceUrls] });
+    } catch {
+      return { ok: false, reasons: ["listing_failed"] };
+    }
+    if (result.ok) return undefined;
+    for (const issue of result.issues) missing.add(draftIssueCode(issue));
+  }
+  return { ok: false, reasons: ["plan_not_draftable", ...[...missing].sort()] };
+}
+
+/**
+ * The same trial for an advertiser that is already registered, from the pages it has now: its services are listed
+ * again and drafted from its source pages. A site where nothing could be listed today is not judged.
+ */
+export async function trialRegistered(
+  brand: { brandSlug: string; brandName: string; host: string; listUrls: readonly string[]; sourceUrls: readonly string[] },
+  deps: VetDeps,
+): Promise<{ ok: true } | { ok: false; reasons: string[] }> {
+  if (!deps.lister || !deps.draft) return { ok: false, reasons: ["no_lister"] };
+  const approved: PolicyConfig = { ...deps.policy, security: { ...deps.policy.security, allowed_source_domains: [brand.host] } };
+  const source: DiscoverySource = {
+    verticalId: "water_delivery",
+    brandSlug: brand.brandSlug,
+    brandName: brand.brandName,
+    listUrls: [...brand.listUrls],
+    sourceUrls: [...brand.sourceUrls],
+    months: 24,
+    monthlyLiters: 25,
+  };
+  const found = await discoverPlans([source], { repo: deps.repo, policy: approved, clock: deps.clock, fetcher: deps.fetcher, lister: deps.lister });
+  if (found.plans.length === 0) return { ok: false, reasons: ["listing_failed"] };
+  const draft = deps.draft;
+  const refusal = await undraftable(found.plans, brand.sourceUrls, (plan) => draft(plan, approved));
+  if (!refusal) return { ok: true };
+  return refusal.ok ? { ok: true } : { ok: false, reasons: refusal.reasons };
 }
 
 /** The pages the list came from first, then the other price pages, each once, at most `MAX_SOURCE_PAGES`. */

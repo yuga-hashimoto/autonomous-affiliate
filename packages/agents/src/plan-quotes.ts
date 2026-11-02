@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { LLMGateway } from "@aff/llm";
 import { newId, type Fact, type PolicyConfig } from "@aff/domain";
-import type { Repository } from "@aff/db";
+import { createMemoryRepository, type Repository } from "@aff/db";
 import {
   MapFetcher,
   createFreshnessPolicy,
@@ -223,4 +223,16 @@ export async function draftPlanFromPages(plan: ArticlePlan, deps: QuoteDraftDeps
     saved.push(await deps.repo.facts.save(toFact({ text: fact.text, claimType: fact.claimType, confidence: 1 }, source.id, source.fetchedAt, expiresAt, newId)));
   }
   return { ok: true, plan: read.plan, facts: saved };
+}
+
+/**
+ * Whether a plan could be drafted from the pages it rests on, tried once and on a scratch repository, so that
+ * nothing it fetches or reads is kept (docs/21: an advertiser is registered only if its plans can be drafted).
+ */
+export async function trialDraft(
+  plan: ArticlePlan,
+  deps: { policy: PolicyConfig; clock: () => Date; fetcher: Fetcher; selector: QuoteSelector },
+): Promise<DraftResult> {
+  const once: PolicyConfig = { ...deps.policy, limits: { ...deps.policy.limits, task_retry_attempts: 1 } };
+  return draftPlanFromPages(plan, { repo: createMemoryRepository(), policy: once, clock: deps.clock, selector: deps.selector, fetcher: deps.fetcher });
 }

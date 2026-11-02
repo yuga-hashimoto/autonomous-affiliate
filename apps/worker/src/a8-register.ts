@@ -24,7 +24,7 @@ export interface RegisterDeps {
   vetTimeoutMs?: number;
 }
 
-export const DEFAULT_VET_TIMEOUT_MS = 240_000;
+export const DEFAULT_VET_TIMEOUT_MS = 480_000;
 
 async function vetWithin(vet: RegisterDeps["vet"], candidate: VetCandidate, timeoutMs: number): Promise<VetResult> {
   let timer: NodeJS.Timeout | undefined;
@@ -133,6 +133,8 @@ export const GIVE_UP_AFTER_DAYS = 30;
 /** A joined advertiser that still has no published article after this long frees its place (its price pages give no article). */
 export const UNPRODUCTIVE_AFTER_DAYS = 21;
 const PUBLISHED_STATES: ReadonlySet<string> = new Set(["PUBLISHED", "MEASURING", "UPDATE_CANDIDATE"]);
+/** A joined advertiser whose every plan has been stopped (none drafted, none published) is let go after this many days from its registration. */
+export const STOPPED_AFTER_DAYS = 3;
 
 /** Moves registered advertisers along by what the console showed for them today. */
 export async function advanceScouted(
@@ -147,10 +149,15 @@ export async function advanceScouted(
     if (brand.state !== "vetted" && brand.state !== "active") continue;
     const label = labelOf.get(brand.brandSlug) ?? "";
     const waitedDays = (now.getTime() - Date.parse(brand.checkedAt)) / DAY_MS;
-    const hasArticle = articles.some((article) => article.slug.startsWith(`${brand.brandSlug}-`) && PUBLISHED_STATES.has(article.state));
+    const mine = articles.filter((article) => article.slug.startsWith(`${brand.brandSlug}-`));
+    const hasArticle = mine.some((article) => PUBLISHED_STATES.has(article.state));
+    const allStopped = mine.length > 0 && mine.every((article) => article.state === "QUARANTINED");
     if (label === "linked" && brand.state === "vetted") {
       await repo.scout.upsert({ ...brand, state: "active" });
       labels.push("activated");
+    } else if (brand.state === "active" && allStopped && waitedDays > STOPPED_AFTER_DAYS) {
+      await repo.scout.upsert({ ...brand, state: "retired", reasons: ["articles_stopped"] });
+      labels.push("retired");
     } else if (brand.state === "active" && !hasArticle && waitedDays > UNPRODUCTIVE_AFTER_DAYS) {
       await repo.scout.upsert({ ...brand, state: "retired", reasons: ["no_articles"] });
       labels.push("retired");
@@ -205,6 +212,41 @@ export async function refreshScoutedSources(repo: Repository, fetcher: Fetcher, 
     } else if (refreshed.length > brand.sourceUrls.length) {
       await repo.scout.upsert({ ...brand, sourceUrls: refreshed });
       labels.push("extended");
+    }
+  }
+  return tally(labels);
+}
+
+/**
+ * Tries again to draft a plan for every registered advertiser that has no article out yet, and lets go of the ones
+ * whose plans cannot be drafted from the pages they have now: their place goes to a candidate that can write
+ * (docs/21). A trial that could not be made today (the model failed, nothing could be listed) judges nothing.
+ */
+export async function retrialScouted(
+  repo: Repository,
+  scouted: readonly ScoutedBrand[],
+  articles: readonly { slug: string; state: string }[],
+  trial: (brand: ScoutedBrand) => Promise<{ ok: true } | { ok: false; reasons: string[] }>,
+  now: Date,
+): Promise<Record<string, number>> {
+  const labels: string[] = [];
+  for (const brand of scouted) {
+    if (brand.state !== "vetted" && brand.state !== "active") continue;
+    if (articles.some((article) => article.slug.startsWith(`${brand.brandSlug}-`) && PUBLISHED_STATES.has(article.state))) continue;
+    let result: Awaited<ReturnType<typeof trial>>;
+    try {
+      result = await trial(brand);
+    } catch {
+      labels.push("unsure");
+      continue;
+    }
+    if (result.ok) {
+      labels.push("drafted");
+    } else if (result.reasons.includes("plan_not_draftable")) {
+      await repo.scout.upsert({ ...brand, state: "retired", reasons: result.reasons, checkedAt: now.toISOString() });
+      labels.push("retired");
+    } else {
+      labels.push("unsure");
     }
   }
   return tally(labels);

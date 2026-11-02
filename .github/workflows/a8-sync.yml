@@ -29,7 +29,7 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
     environment: a8
     steps:
       - uses: actions/checkout@v4

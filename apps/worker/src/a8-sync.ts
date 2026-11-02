@@ -1,5 +1,5 @@
 import type { Page } from "playwright";
-import type { Repository } from "@aff/db";
+import type { Repository, ScoutedBrand } from "@aff/db";
 import {
   applyBrandObservation,
   knownProgramIds,
@@ -16,7 +16,7 @@ import {
 import { setMaskedTerms } from "@aff/domain";
 import { checkRobots, htmlToVisibleText, type Fetcher } from "@aff/integrations";
 import { startApplication } from "./a8-apply.js";
-import { advanceScouted, refreshScoutedSources, registerCandidates, renewScoutedTerms } from "./a8-register.js";
+import { advanceScouted, refreshScoutedSources, registerCandidates, renewScoutedTerms, retrialScouted } from "./a8-register.js";
 import { gatherCandidates, readCandidates, scoutConsoleOver, type ReadCandidate } from "./a8-scout.js";
 import { harvestTrackingUrl, type HarvestOutcome } from "./a8-harvest.js";
 import { pickCreateLinkPath } from "./a8-linkpage.js";
@@ -151,6 +151,8 @@ export interface SyncReport {
     terms: Record<string, number>;
     /** The price pages added to the picked advertisers' plans today, and the sites that could not be read. */
     sources: Record<string, number>;
+    /** Registered advertisers tried again: those whose plans could be drafted, those let go of, those not judged today. */
+    trial: Record<string, number>;
     failed?: boolean;
   };
 }
@@ -158,6 +160,8 @@ export interface SyncReport {
 export interface ScoutDeps {
   /** Looks at an advertiser's own site (docs/21). */
   vet: (candidate: VetCandidate) => Promise<VetResult>;
+  /** Tries to draft a plan for an advertiser already registered, from the pages it has now. */
+  trial: (brand: ScoutedBrand) => Promise<{ ok: true } | { ok: false; reasons: string[] }>;
   /** Sites looked at in one run. */
   maxVets: number;
   /** Advertisers in use at the most. */
@@ -191,9 +195,14 @@ export async function runA8Sync(env: NodeJS.ProcessEnv, deps: SyncDeps): Promise
   const scoutedBefore = deps.scout ? await repo.scout.list() : [];
   const scoutedBrands = withScoutedBrands({ ...config, brands: [] }, scoutedBefore).brands;
   const renewed = await renewScoutedTerms(repo, fetcher, scoutedBefore, await termsOf(fetcher, scoutedBrands), clock());
-  const scouted = deps.scout ? await repo.scout.list() : [];
+  let scouted = deps.scout ? await repo.scout.list() : [];
   setMaskedTerms(scoutedTerms(scouted));
   const sources = deps.scout ? await refreshScoutedSources(repo, fetcher, scouted) : {};
+  // An advertiser whose plans cannot be drafted from its pages is let go of here, before the console is read, so that
+  // its place can go to a new candidate in this run.
+  const articles = deps.scout ? (await repo.content.listAll()).map((item) => ({ slug: item.slug, state: item.state })) : [];
+  const trial = deps.scout ? await retrialScouted(repo, await repo.scout.list(), articles, deps.scout.trial, clock()) : {};
+  if (deps.scout) scouted = await repo.scout.list();
   const effective = withScoutedBrands(config, scouted);
   const terms = await termsOf(fetcher, effective.brands);
 
@@ -242,7 +251,6 @@ export async function runA8Sync(env: NodeJS.ProcessEnv, deps: SyncDeps): Promise
     applications: value.applications,
   };
   if (deps.scout) {
-    const articles = (await repo.content.listAll()).map((item) => ({ slug: item.slug, state: item.state }));
     const advanced = await advanceScouted(repo, scouted, labelOf, clock(), articles);
     const since = clock().toISOString();
     const registered = value.read
@@ -266,6 +274,7 @@ export async function runA8Sync(env: NodeJS.ProcessEnv, deps: SyncDeps): Promise
       advanced,
       terms: renewed,
       sources,
+      trial,
       ...(value.scoutFailed ? { failed: true } : {}),
     };
   }

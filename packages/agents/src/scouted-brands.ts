@@ -14,6 +14,8 @@ const DAY_MS = 86_400_000;
 /** A refusal that is about the site is looked at again after this long; one about the moment, after `RETRY_TRANSIENT_DAYS`. */
 export const RECHECK_REFUSED_DAYS = 30;
 export const RETRY_TRANSIENT_DAYS = 0.5;
+/** A site whose plans could not be drafted is looked at again sooner: the way the amounts are read gets better. */
+export const RECHECK_UNDRAFTABLE_DAYS = 7;
 
 export function brandOfScouted(brand: ScoutedBrand): A8Brand | undefined {
   if (!brand.termsUrl || !brand.termsSha256) return undefined;
@@ -87,7 +89,8 @@ export function knownProgramIds(scouted: readonly ScoutedBrand[], now: Date): Se
     }
     const transient = brand.reasons.length > 0 && brand.reasons.every(isTransientReason);
     const days = (now.getTime() - Date.parse(brand.checkedAt)) / DAY_MS;
-    if (days < (transient ? RETRY_TRANSIENT_DAYS : RECHECK_REFUSED_DAYS)) known.add(brand.programId);
+    const window = transient ? RETRY_TRANSIENT_DAYS : brand.reasons.includes("plan_not_draftable") ? RECHECK_UNDRAFTABLE_DAYS : RECHECK_REFUSED_DAYS;
+    if (days < window) known.add(brand.programId);
   }
   return known;
 }
