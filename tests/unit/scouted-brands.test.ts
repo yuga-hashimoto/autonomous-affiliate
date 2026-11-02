@@ -133,10 +133,12 @@ describe("knownProgramIds", () => {
         scouted({ programId: "rej-old", state: "rejected", reasons: ["robots_disallow"], checkedAt: daysAgo(31) }),
         scouted({ programId: "soon", state: "rejected", reasons: ["site_unreachable"], checkedAt: new Date(NOW.getTime() - 20 * 3_600_000).toISOString() }),
         scouted({ programId: "now", state: "rejected", reasons: ["site_unreachable"], checkedAt: new Date(NOW.getTime() - 3_600_000).toISOString() }),
+        scouted({ programId: "noted", state: "rejected", reasons: ["site_unreachable", "unreachable_top_http403"], checkedAt: new Date(NOW.getTime() - 20 * 3_600_000).toISOString() }),
+        scouted({ programId: "noted-now", state: "rejected", reasons: ["site_unreachable", "unreachable_top_http403"], checkedAt: new Date(NOW.getTime() - 3_600_000).toISOString() }),
       ],
       NOW,
     );
-    expect([...known].sort()).toEqual(["a", "now", "r", "rej-new", "v"]);
+    expect([...known].sort()).toEqual(["a", "noted-now", "now", "r", "rej-new", "v"]);
   });
 });
 

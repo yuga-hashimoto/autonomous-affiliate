@@ -2,7 +2,7 @@ import type { ScoutedBrand } from "@aff/db";
 import type { PolicyConfig } from "@aff/domain";
 import type { A8Brand, A8ProgramsConfig } from "./a8-offers.js";
 import type { DiscoverySource } from "./plan-discovery.js";
-import { TRANSIENT_REASONS } from "./site-vet.js";
+import { isTransientReason } from "./site-vet.js";
 
 /**
  * Advertisers the daily run picked itself (docs/21), seen by the rest of the run as if they had been
@@ -80,7 +80,7 @@ export function knownProgramIds(scouted: readonly ScoutedBrand[], now: Date): Se
       known.add(brand.programId);
       continue;
     }
-    const transient = brand.reasons.length > 0 && brand.reasons.every((reason) => TRANSIENT_REASONS.has(reason));
+    const transient = brand.reasons.length > 0 && brand.reasons.every(isTransientReason);
     const days = (now.getTime() - Date.parse(brand.checkedAt)) / DAY_MS;
     if (days < (transient ? RETRY_TRANSIENT_DAYS : RECHECK_REFUSED_DAYS)) known.add(brand.programId);
   }
