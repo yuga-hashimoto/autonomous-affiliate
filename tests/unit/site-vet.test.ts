@@ -366,6 +366,22 @@ describe("a site whose plans cannot be drafted", () => {
     expect(result).toEqual({ ok: false, reasons: ["plan_not_draftable", "draft_electricity", "draft_initial", "draft_water", DRAFT_RULES_MARK] });
   });
 
+  it("tells apart an amount no fact had, one with only facts that did not fit, and one that was ambiguous", async () => {
+    const { draft } = draftOf({
+      ok: false,
+      issues: [
+        "水代: 月25Lあたりの金額を示す公式Factが見つかりません（該当するFactがありません）",
+        "電気代: 金額が一意に決まりません（669円・583円の記載があります）",
+        "送料: 公式Factに金額が見つかりません",
+      ],
+    });
+    const result = await vetAdvertiserSite(candidate, { ...deps(site()), draft });
+    expect(result).toEqual({
+      ok: false,
+      reasons: ["plan_not_draftable", "draft_electricity_conflict", "draft_shipping", "draft_water_nofact", DRAFT_RULES_MARK],
+    });
+  });
+
   it("tries a second service before it gives up", async () => {
     const attempts: number[] = [];
     const draft = async (plan: { slug: string }) => {
