@@ -2,7 +2,7 @@ import type { ScoutedBrand } from "@aff/db";
 import type { PolicyConfig } from "@aff/domain";
 import type { A8Brand, A8ProgramsConfig } from "./a8-offers.js";
 import type { DiscoverySource } from "./plan-discovery.js";
-import { isTransientReason } from "./site-vet.js";
+import { DRAFT_RULES_MARK, isTransientReason } from "./site-vet.js";
 
 /**
  * Advertisers the daily run picked itself (docs/21), seen by the rest of the run as if they had been
@@ -89,6 +89,8 @@ export function knownProgramIds(scouted: readonly ScoutedBrand[], now: Date): Se
       known.add(brand.programId);
       continue;
     }
+    // Judged before the amounts were read as they are now: the reading is the thing that has changed, so look again at once.
+    if (undraftable && !brand.reasons.includes(DRAFT_RULES_MARK)) continue;
     const transient = brand.reasons.length > 0 && brand.reasons.every(isTransientReason);
     const days = (now.getTime() - Date.parse(brand.checkedAt)) / DAY_MS;
     const window = transient ? RETRY_TRANSIENT_DAYS : undraftable ? RECHECK_UNDRAFTABLE_DAYS : RECHECK_REFUSED_DAYS;

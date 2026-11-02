@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ScoutedBrand } from "@aff/db";
 import { parsePolicyText } from "@aff/domain";
 import {
+  DRAFT_RULES_MARK,
   activeScoutedSources,
   brandOfScouted,
   knownProgramIds,
@@ -181,19 +182,32 @@ describe("scoutedTerms", () => {
 
 describe("knownProgramIds for a site whose plans cannot be drafted", () => {
   it("looks at it again after a week, not a month, because the reading improves", () => {
-    const brand = (days: number) => scouted({ state: "rejected", reasons: ["plan_not_draftable", "draft_water"], checkedAt: daysAgo(days) });
+    const brand = (days: number) => scouted({ state: "rejected", reasons: ["plan_not_draftable", "draft_water", DRAFT_RULES_MARK], checkedAt: daysAgo(days) });
     expect(knownProgramIds([brand(6)], NOW).has("s0001")).toBe(true);
     expect(knownProgramIds([brand(8)], NOW).has("s0001")).toBe(false);
   });
 });
 
 describe("knownProgramIds for an advertiser let go of because its plans could not be drafted", () => {
-  const letGo = (days: number, reasons = ["plan_not_draftable", "draft_water"]) => scouted({ state: "retired", reasons, checkedAt: daysAgo(days) });
+  const letGo = (days: number, reasons = ["plan_not_draftable", "draft_water", DRAFT_RULES_MARK]) => scouted({ state: "retired", reasons, checkedAt: daysAgo(days) });
 
   it("is looked at again after a week, so that a better reading can take it back; other retired ones are not", () => {
     expect(knownProgramIds([letGo(6)], NOW).has("s0001")).toBe(true);
     expect(knownProgramIds([letGo(8)], NOW).has("s0001")).toBe(false);
     expect(knownProgramIds([letGo(30, ["no_articles"])], NOW).has("s0001")).toBe(true);
     expect(knownProgramIds([scouted({ state: "active", reasons: [], checkedAt: daysAgo(30) })], NOW).has("s0001")).toBe(true);
+  });
+});
+
+describe("knownProgramIds for a site judged by an older way of reading amounts", () => {
+  it("looks at a site refused as undraftable again at once when it was judged without the current reading", () => {
+    const older = ["plan_not_draftable", "draft_water"];
+    expect(knownProgramIds([scouted({ state: "rejected", reasons: older, checkedAt: daysAgo(1) })], NOW).has("s0001")).toBe(false);
+    expect(knownProgramIds([scouted({ state: "retired", reasons: older, checkedAt: daysAgo(1) })], NOW).has("s0001")).toBe(false);
+  });
+
+  it("does not look again at once at one judged with the current reading, or at one refused for another reason", () => {
+    expect(knownProgramIds([scouted({ state: "retired", reasons: ["plan_not_draftable", DRAFT_RULES_MARK], checkedAt: daysAgo(1) })], NOW).has("s0001")).toBe(true);
+    expect(knownProgramIds([scouted({ state: "rejected", reasons: ["no_affiliate_page"], checkedAt: daysAgo(1) })], NOW).has("s0001")).toBe(true);
   });
 });

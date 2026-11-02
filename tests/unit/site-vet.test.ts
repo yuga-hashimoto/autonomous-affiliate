@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryRepository } from "@aff/db";
 import { parsePolicyText, type PolicyConfig } from "@aff/domain";
 import { FetchError, MapFetcher } from "@aff/integrations";
-import { identityText, isTransientReason, refreshSourcePages, selfNames, termsFingerprint, trialRegistered, vetAdvertiserSite, type ListRequest, type PlanLister } from "@aff/agents";
+import { DRAFT_RULES_MARK, identityText, isTransientReason, refreshSourcePages, selfNames, termsFingerprint, trialRegistered, vetAdvertiserSite, type ListRequest, type PlanLister } from "@aff/agents";
 import { readFileSync } from "./helpers.js";
 
 const HOST = "brand-a.com";
@@ -363,7 +363,7 @@ describe("a site whose plans cannot be drafted", () => {
   it("is refused, with which amounts were missing and none of the page's words, when no plan can be", async () => {
     const { draft } = draftOf({ ok: false, issues: ["水代: 月25Lあたりの金額を示す公式Factが見つかりません（候補: 「ミニサーバー 3,000円」）", "電気代: 公式Factに金額が見つかりません", "初回費用: 公式Factに金額が見つかりません"] });
     const result = await vetAdvertiserSite(candidate, { ...deps(site()), draft });
-    expect(result).toEqual({ ok: false, reasons: ["plan_not_draftable", "draft_electricity", "draft_initial", "draft_water"] });
+    expect(result).toEqual({ ok: false, reasons: ["plan_not_draftable", "draft_electricity", "draft_initial", "draft_water", DRAFT_RULES_MARK] });
   });
 
   it("tries a second service before it gives up", async () => {
@@ -404,7 +404,7 @@ describe("trialRegistered", () => {
 
   it("refuses with the amounts that were missing", async () => {
     const result = await trialRegistered(brand, make(async () => ({ ok: false, issues: ["電気代: 公式Factに金額が見つかりません"] })));
-    expect(result).toEqual({ ok: false, reasons: ["plan_not_draftable", "draft_electricity"] });
+    expect(result).toEqual({ ok: false, reasons: ["plan_not_draftable", "draft_electricity", DRAFT_RULES_MARK] });
   });
 
   it("does not judge when no service could be listed today", async () => {

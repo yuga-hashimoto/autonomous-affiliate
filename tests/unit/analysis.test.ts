@@ -203,6 +203,20 @@ describe("fiber / water / buyback calculators", () => {
       expect(note).not.toContain("36L");
     });
 
+    it("says the electricity figure is for eco-mode use, and that it is higher without it", () => {
+      const calc = calculateWaterServerCost({
+        ...base,
+        cancellationFeeJpy: 0,
+        minimumTermMonths: 24,
+        electricityIsEstimate: true,
+        electricityIsEcoMode: true,
+      });
+      const note = calc.assumptions.find((a) => a.includes("電気代")) ?? "";
+      expect(note).toContain("エコモード");
+      expect(note).toContain("高くなる");
+      expect(note).not.toContain("算出条件は確認できておらず");
+    });
+
     it("adds no electricity note when the amount is not an estimate", () => {
       const calc = calculateWaterServerCost({ ...base, cancellationFeeJpy: 0, minimumTermMonths: 24 });
       expect(calc.assumptions.some((a) => a.includes("電気代"))).toBe(false);

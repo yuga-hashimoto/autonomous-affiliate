@@ -15,6 +15,9 @@ function yenText(amount: number): string {
 
 function electricityNote(input: WaterServerOfferInput): string | undefined {
   if (!input.electricityIsEstimate) return undefined;
+  if (input.electricityIsEcoMode) {
+    return "電気代は公式が示すエコモード使用時の目安を使用しています。エコモードを使わない場合は電気代が高くなることがあります。実際の電気代は使い方で変わります。";
+  }
   const basis = input.electricityBasisLiters;
   if (basis === undefined) {
     return "電気代は公式が示す目安を使用しています。算出条件は確認できておらず、実際の電気代は使い方で変わります。";
