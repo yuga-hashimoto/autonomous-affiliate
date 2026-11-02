@@ -41,10 +41,21 @@ describe("linksOfHtml", () => {
 
 describe("linksOfHtml on hostile input", () => {
   it("reads many unclosed anchors in time proportional to the page", () => {
-    const html = "<a href=x>".repeat(100_000);
-    const started = Date.now();
-    linksOfHtml(html, BASE);
-    expect(Date.now() - started).toBeLessThan(2_000);
+    // The best of a few runs, so that a slow moment of a shared machine does not count.
+    const timeOf = (anchors: number): number => {
+      const html = "<a href=x>".repeat(anchors);
+      let best = Number.POSITIVE_INFINITY;
+      for (let run = 0; run < 3; run += 1) {
+        const started = performance.now();
+        linksOfHtml(html, BASE);
+        best = Math.min(best, performance.now() - started);
+      }
+      return best;
+    };
+    const small = timeOf(10_000);
+    const large = timeOf(40_000);
+    // Four times the page takes about four times as long; a scan that restarts from each anchor takes about sixteen.
+    expect(large).toBeLessThan(small * 10 + 50);
   });
 
   it("takes the text of an anchor that is closed, and stops an unclosed one at the next anchor", () => {
