@@ -16,7 +16,7 @@ import {
 import { setMaskedTerms } from "@aff/domain";
 import { checkRobots, htmlToVisibleText, type Fetcher } from "@aff/integrations";
 import { startApplication } from "./a8-apply.js";
-import { advanceScouted, registerCandidates, renewScoutedTerms } from "./a8-register.js";
+import { advanceScouted, refreshScoutedSources, registerCandidates, renewScoutedTerms } from "./a8-register.js";
 import { gatherCandidates, readCandidates, scoutConsoleOver, type ReadCandidate } from "./a8-scout.js";
 import { harvestTrackingUrl, type HarvestOutcome } from "./a8-harvest.js";
 import { pickCreateLinkPath } from "./a8-linkpage.js";
@@ -149,6 +149,8 @@ export interface SyncReport {
     refused: Record<string, number>;
     advanced: Record<string, number>;
     terms: Record<string, number>;
+    /** The price pages added to the picked advertisers' plans today, and the sites that could not be read. */
+    sources: Record<string, number>;
     failed?: boolean;
   };
 }
@@ -191,6 +193,7 @@ export async function runA8Sync(env: NodeJS.ProcessEnv, deps: SyncDeps): Promise
   const renewed = await renewScoutedTerms(repo, fetcher, scoutedBefore, await termsOf(fetcher, scoutedBrands), clock());
   const scouted = deps.scout ? await repo.scout.list() : [];
   setMaskedTerms(scoutedTerms(scouted));
+  const sources = deps.scout ? await refreshScoutedSources(repo, fetcher, scouted) : {};
   const effective = withScoutedBrands(config, scouted);
   const terms = await termsOf(fetcher, effective.brands);
 
@@ -262,6 +265,7 @@ export async function runA8Sync(env: NodeJS.ProcessEnv, deps: SyncDeps): Promise
       refused,
       advanced,
       terms: renewed,
+      sources,
       ...(value.scoutFailed ? { failed: true } : {}),
     };
   }

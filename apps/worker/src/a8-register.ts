@@ -1,6 +1,6 @@
 import type { Repository, ScoutedBrand } from "@aff/db";
 import type { Fetcher } from "@aff/integrations";
-import { isTransientReason, rereadTerms, slugForHost, type TermsState, type VetCandidate, type VetResult } from "@aff/agents";
+import { isTransientReason, refreshSourcePages, rereadTerms, slugForHost, type TermsState, type VetCandidate, type VetResult } from "@aff/agents";
 import { READABLE_CHARS, type ReadCandidate } from "./a8-scout.js";
 
 /**
@@ -185,6 +185,26 @@ export async function renewScoutedTerms(
     } else {
       await repo.scout.upsert({ ...brand, state: "retired", reasons: result.reasons, checkedAt: now.toISOString() });
       labels.push("retired");
+    }
+  }
+  return tally(labels);
+}
+
+/**
+ * Looks again at the pages the plans of a registered advertiser take their amounts from: a plan drafted from the one
+ * page that lists the servers cannot find the electricity, the rental fee and the first costs that the site shows
+ * on its other pages (docs/18). Pages are added, never removed; a site that cannot be read now changes nothing.
+ */
+export async function refreshScoutedSources(repo: Repository, fetcher: Fetcher, scouted: readonly ScoutedBrand[]): Promise<Record<string, number>> {
+  const labels: string[] = [];
+  for (const brand of scouted) {
+    if (brand.state !== "vetted" && brand.state !== "active") continue;
+    const refreshed = await refreshSourcePages(fetcher, brand.host, brand.sourceUrls, brand.termsUrl ? [brand.termsUrl] : []);
+    if (!refreshed) {
+      labels.push("unreadable");
+    } else if (refreshed.length > brand.sourceUrls.length) {
+      await repo.scout.upsert({ ...brand, sourceUrls: refreshed });
+      labels.push("extended");
     }
   }
   return tally(labels);

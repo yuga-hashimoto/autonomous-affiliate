@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryRepository } from "@aff/db";
 import { parsePolicyText, type PolicyConfig } from "@aff/domain";
 import { FetchError, MapFetcher } from "@aff/integrations";
-import { identityText, isTransientReason, selfNames, termsFingerprint, vetAdvertiserSite, type ListRequest, type PlanLister } from "@aff/agents";
+import { identityText, isTransientReason, refreshSourcePages, selfNames, termsFingerprint, vetAdvertiserSite, type ListRequest, type PlanLister } from "@aff/agents";
 import { readFileSync } from "./helpers.js";
 
 const HOST = "brand-a.com";
@@ -264,5 +264,79 @@ describe("a name the site gives itself, checked against the console's own page",
     expect(selfNames(html)).toEqual(["ブランドA", "A社の宅配水"]);
     expect(selfNames(`<meta property="og:site_name" content="ブランドA">`.repeat(5_000)).length).toBeLessThanOrEqual(12);
     expect(selfNames("<script type=\"application/ld+json\">{broken</script>")).toEqual([]);
+  });
+});
+
+describe("the pages a plan takes its amounts from", () => {
+  const MORE_LINKS = `${TOP_LINKS}<a href="/fee/">ご利用料金</a><a href="/server/">サーバー一覧</a>`;
+  const withFees = (overrides: Record<string, string | undefined> = {}) =>
+    site({
+      [`${ORIGIN}/`]: page(["ブランドAへようこそ", FILLER], MORE_LINKS),
+      [`${ORIGIN}/fee/`]: page(["送料 無料", "初回費用 3,300円", "電気代 月 400円"]),
+      [`${ORIGIN}/server/`]: page(["レンタル料 無料", "サーバー一覧"]),
+      ...overrides,
+    });
+
+  it("keeps every page of the site that shows prices, the one that lists the servers first, because the amounts of one service are spread over several pages", async () => {
+    const result = await vetAdvertiserSite(candidate, deps(withFees()));
+    expect(result, JSON.stringify(result)).toMatchObject({
+      ok: true,
+      listUrls: [`${ORIGIN}/price/`],
+      sourceUrls: [`${ORIGIN}/price/`, `${ORIGIN}/fee/`],
+    });
+  });
+
+  it("leaves out a page that shows no price, one that robots.txt keeps out, and one that is not on the site", async () => {
+    const result = await vetAdvertiserSite(
+      candidate,
+      deps(withFees({ [`${ORIGIN}/server/`]: page(["サーバー一覧"]), [`${ORIGIN}/robots.txt`]: "User-agent: *\nDisallow: /fee" })),
+    );
+    expect(result, JSON.stringify(result)).toMatchObject({ ok: true, sourceUrls: [`${ORIGIN}/price/`] });
+  });
+
+  it("takes the front page too when it shows prices, at most four pages in all", async () => {
+    const result = await vetAdvertiserSite(
+      candidate,
+      deps(
+        withFees({
+          [`${ORIGIN}/`]: page(["ブランドAへようこそ 月 1,000円から", FILLER], `${MORE_LINKS}<a href="/plan/">プラン</a><a href="/line/">ラインナップ</a>`),
+          [`${ORIGIN}/server/`]: page(["サーバー一覧 レンタル料 500円"]),
+          [`${ORIGIN}/plan/`]: page(["プラン 2,000円"]),
+          [`${ORIGIN}/line/`]: page(["ラインナップ 3,000円"]),
+        }),
+      ),
+    );
+    expect(result.ok && result.sourceUrls).toEqual([`${ORIGIN}/price/`, `${ORIGIN}/fee/`, `${ORIGIN}/server/`, `${ORIGIN}/`]);
+  });
+});
+
+describe("refreshSourcePages", () => {
+  const MORE_LINKS = `${TOP_LINKS}<a href="/fee/">ご利用料金</a>`;
+  const fetcher = () =>
+    site({
+      [`${ORIGIN}/`]: page(["ブランドAへようこそ", FILLER], MORE_LINKS),
+      [`${ORIGIN}/fee/`]: page(["送料 無料", "初回費用 3,300円"]),
+    });
+
+  it("adds the price pages the site has now to the ones a brand already has, and keeps the ones it has first", async () => {
+    expect(await refreshSourcePages(fetcher(), HOST, [`${ORIGIN}/price/`], [`${ORIGIN}/affiliate/`])).toEqual([
+      `${ORIGIN}/price/`,
+      `${ORIGIN}/fee/`,
+    ]);
+  });
+
+  it("never takes a page away, however the site looks today", async () => {
+    const known = [`${ORIGIN}/price/`, `${ORIGIN}/gone/`];
+    const refreshed = await refreshSourcePages(fetcher(), HOST, known, []);
+    expect(refreshed?.slice(0, 2)).toEqual(known);
+  });
+
+  it("stops at four pages", async () => {
+    const known = [1, 2, 3, 4].map((n) => `${ORIGIN}/p${n}/`);
+    expect(await refreshSourcePages(fetcher(), HOST, known, [])).toEqual(known);
+  });
+
+  it("says nothing when the front page cannot be read now, so that a bad day changes nothing", async () => {
+    expect(await refreshSourcePages(new MapFetcher(new Map()), HOST, [`${ORIGIN}/price/`], [])).toBeUndefined();
   });
 });
