@@ -20,6 +20,8 @@ const PARTNER_LINK = /アフィリエイト|パートナー募集|パートナ�
 const PRICE_LINK = /料金|価格|プラン|ラインナップ|商品|サーバー|機種|ご利用料金/;
 const NOT_PRICE_LINK = /規約|プライバシー|個人情報|会社|採用|お問い合わせ|ログイン|アフィリエイト|パートナー|特定商取引|サイトマップ/;
 const MAX_PRICE_PAGES = 3;
+/** The pages a plan takes its amounts from: the one that lists the servers and the other pages of the site that show prices. */
+const MAX_SOURCE_PAGES = 4;
 const MAX_RULE_PAGES = 2;
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -439,6 +441,9 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
   let failedListing = false;
   let unreadable = 0;
   let unreadableWhy: string | undefined;
+  // What the first page that lists servers gave, kept while the other price pages are read for their prices only.
+  let listing: { source: DiscoverySource; services: number } | undefined;
+  const pagesWithPrices: string[] = [];
   for (const url of [...new Set(pricePages)]) {
     // The same guards as every other page: robots.txt, the host the page really came from, and prices on it.
     const outcome = await readPage(deps.fetcher, url, host);
@@ -449,6 +454,8 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
       continue;
     }
     if (!YEN_AMOUNT.test(outcome.read.text)) continue;
+    pagesWithPrices.push(outcome.read.url);
+    if (listing) continue;
     const source: DiscoverySource = {
       verticalId: "water_delivery",
       brandSlug: candidate.brandSlug,
@@ -466,22 +473,56 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
       lister: deps.lister,
     });
     if (found.plans.length > 0) {
-      return {
-        ok: true,
-        brandName,
-        termsUrl: rules.url,
-        termsSha256: termsFingerprint(rules.text),
-        listUrls: source.listUrls,
-        sourceUrls: source.sourceUrls ?? source.listUrls,
-        services: found.plans.length,
-      };
+      listing = { source, services: found.plans.length };
+      continue;
     }
     sawPage ||= (found.summary.skipped.no_services ?? 0) > 0;
     failedListing ||= (found.summary.skipped.listing_failed ?? 0) > 0;
   }
+  if (listing) {
+    return {
+      ok: true,
+      brandName,
+      termsUrl: rules.url,
+      termsSha256: termsFingerprint(rules.text),
+      listUrls: listing.source.listUrls,
+      sourceUrls: withMorePages(listing.source.listUrls, pagesWithPrices),
+      services: listing.services,
+    };
+  }
   if (failedListing && !sawPage) return { ok: false, reasons: ["listing_failed"] };
   if (!sawPage && unreadable > 0) return unreachable("price", unreadableWhy);
   return { ok: false, reasons: [sawPage ? "no_services" : "no_price_page"] };
+}
+
+/** The pages the list came from first, then the other price pages, each once, at most `MAX_SOURCE_PAGES`. */
+function withMorePages(first: readonly string[], others: readonly string[]): string[] {
+  return [...new Set([...first, ...others])].slice(0, MAX_SOURCE_PAGES);
+}
+
+/**
+ * The pages a registered advertiser's plans take their amounts from, looked at again: the pages it already has,
+ * then any page of the site that now shows prices and passes the same guards (robots.txt, the site, prices on it).
+ * Pages are only added, never taken away. Undefined when the front page cannot be read now: not today's to judge.
+ */
+export async function refreshSourcePages(fetcher: Fetcher, host: string, known: readonly string[], rulesPages: readonly string[]): Promise<string[] | undefined> {
+  let top: Read | undefined;
+  for (const origin of [`https://${host}/`, `https://www.${host}/`]) {
+    const outcome = await readPage(fetcher, origin, host);
+    if ("read" in outcome) {
+      top = outcome.read;
+      break;
+    }
+  }
+  if (!top || top.text.length < MIN_TOP_TEXT) return undefined;
+  const candidates = [...priceCandidates(sameSiteLinks(linksOfHtml(top.html, top.url), host), new Set(rulesPages)), top.url];
+  const pagesWithPrices: string[] = [];
+  for (const url of [...new Set(candidates)]) {
+    if (known.includes(url)) continue;
+    const outcome = await readPage(fetcher, url, host);
+    if ("read" in outcome && YEN_AMOUNT.test(outcome.read.text)) pagesWithPrices.push(outcome.read.url);
+  }
+  return withMorePages(known, pagesWithPrices);
 }
 
 export type RereadResult = { ok: true; termsSha256: string } | { ok: false; reasons: string[] };

@@ -8,6 +8,7 @@ import {
   type QaCheck,
   type QualityDecision,
 } from "@aff/domain";
+import { createHash } from "node:crypto";
 import type { Repository } from "@aff/db";
 import { QaEngine, DraftRejectedError } from "@aff/content";
 import { createFreshnessPolicy, MapFetcher, type CollectedSource, type Fetcher } from "@aff/integrations";
@@ -168,8 +169,34 @@ export async function runArticlePipeline(
   }
 
   // B003 idempotency: re-running the same plan does not duplicate work.
-  const jobKey = `pipeline|${plan.slug}|${policy.version}`;
-  const { record: job, created } = await repo.jobs.enqueue({ jobKey, jobType: "article_pipeline", traceId: trace.traceId });
+  const baseKey = `pipeline|${plan.slug}|${policy.version}`;
+  const sourcesDigest = digestOfPages(plan.sourceUrls);
+  let jobKey = baseKey;
+  let { record: job, created } = await repo.jobs.enqueue({
+    jobKey,
+    jobType: "article_pipeline",
+    payload: { sources: sourcesDigest },
+    traceId: trace.traceId,
+  });
+  // A plan that could not be drafted from its pages is tried again when the pages it rests on are not the
+  // ones it failed on (a registered advertiser's plan gains pages as the site shows more prices, docs/21):
+  // once for each set of pages, so that a plan the pages cannot support is not asked about every day. One
+  // stopped for any other reason stays stopped.
+  const draftRetry =
+    !created &&
+    job.state === "SUCCEEDED" &&
+    item.state === "QUARANTINED" &&
+    job.lastError === DRAFT_FAILED &&
+    job.payload["sources"] !== sourcesDigest;
+  if (draftRetry) {
+    jobKey = `${baseKey}|draft:${sourcesDigest}`;
+    ({ record: job, created } = await repo.jobs.enqueue({
+      jobKey,
+      jobType: "article_pipeline",
+      payload: { sources: sourcesDigest },
+      traceId: trace.traceId,
+    }));
+  }
   if (!created && job.state === "SUCCEEDED") {
     trace.info("pipeline already completed for this plan; skipping", { job_key: jobKey });
     const qa = await repo.content.getLatestQaReport(item.id);
@@ -195,7 +222,7 @@ export async function runArticlePipeline(
 
     // --- Stage: research (B006/B008) ---
     let collectedPages: CollectedSource[] | undefined;
-    if (current.state === "ELIGIBILITY_CHECKED") {
+    if (current.state === "ELIGIBILITY_CHECKED" || (draftRetry && current.state === "QUARANTINED")) {
       const { collected, unavailable } = await collectPlanSources(plan, {
         repo,
         policy,
@@ -222,7 +249,7 @@ export async function runArticlePipeline(
     });
     if (!drafted.ok) {
       current = await transition(repo, current, "QUARANTINED", runId, policy.version);
-      await repo.jobs.update({ ...jobRecord, state: "SUCCEEDED", lastError: "plan_draft_failed" });
+      await repo.jobs.update({ ...jobRecord, state: "SUCCEEDED", lastError: DRAFT_FAILED });
       trace.warn("plan could not be drafted from the official page", { issues: drafted.issues });
       return {
         itemId: item.id,
@@ -389,6 +416,13 @@ export async function runArticlePipeline(
     trace.error("pipeline failed", { error });
     throw error;
   }
+}
+
+const DRAFT_FAILED = "plan_draft_failed";
+
+/** A short name for the set of pages a plan rests on, whatever their order. */
+function digestOfPages(urls: readonly string[]): string {
+  return createHash("sha1").update([...new Set(urls)].sort().join("\n")).digest("hex").slice(0, 8);
 }
 
 /** Guard for budget-aware scheduling (docs/07). */

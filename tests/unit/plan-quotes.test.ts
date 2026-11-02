@@ -434,3 +434,63 @@ describe("a quote-drafted plan in the pipeline", () => {
     expect(result).toMatchObject({ finalState: "QUARANTINED", publishReason: "plan_draft_failed" });
   });
 });
+
+describe("a plan that could not be drafted, tried again when its pages change", () => {
+  const MORE = `${PAGE}/fees`;
+  const withMorePages = (): ArticlePlan => ({ ...planOf(), sourceUrls: [PAGE, MORE] });
+  const baseKey = `pipeline|quoted-water-a|${policy.version}`;
+
+  it("publishes once the plan rests on more pages that carry what the first lacked", async () => {
+    const env = setup(pageHtml({ omit: ["electricity"] }));
+    const first = await runArticlePipeline(planOf(), env.services);
+    expect(first).toMatchObject({ finalState: "QUARANTINED", publishReason: "plan_draft_failed" });
+
+    env.page.html = pageHtml();
+    const second = await runArticlePipeline(withMorePages(), env.services);
+
+    expect(second).toMatchObject({ finalState: "PUBLISHED", qaStatus: "PASS", published: true });
+    expect(env.site.files.get("content/articles/quoted-water-a.ja-JP.md")).toContain("119,916");
+  });
+
+  it("does not try again with the pages it already failed on, nor again after a retry that failed on these pages", async () => {
+    const env = setup(pageHtml({ omit: ["electricity"] }));
+    await runArticlePipeline(planOf(), env.services);
+    env.page.html = pageHtml();
+
+    const same = await runArticlePipeline(planOf(), env.services);
+    expect(same).toMatchObject({ finalState: "QUARANTINED", published: false, reasons: ["already_completed"] });
+
+    env.page.html = pageHtml({ omit: ["electricity"] });
+    const failedRetry = await runArticlePipeline(withMorePages(), env.services);
+    expect(failedRetry).toMatchObject({ finalState: "QUARANTINED", publishReason: "plan_draft_failed" });
+    env.page.html = pageHtml();
+    const again = await runArticlePipeline(withMorePages(), env.services);
+    expect(again).toMatchObject({ finalState: "QUARANTINED", published: false, reasons: ["already_completed"] });
+  });
+
+  it("tries once more a plan that failed before the pages were recorded with it", async () => {
+    const env = setup(pageHtml({ omit: ["electricity"] }));
+    await runArticlePipeline(planOf(), env.services);
+    const job = (await env.repo.jobs.getByJobKey(baseKey))!;
+    const { sources: _recorded, ...payload } = job.payload;
+    // A job written by the earlier version: the same failure, with no record of the pages.
+    (job as { payload: Record<string, unknown> }).payload = payload;
+    env.page.html = pageHtml();
+
+    const result = await runArticlePipeline(planOf(), env.services);
+
+    expect(result).toMatchObject({ finalState: "PUBLISHED", published: true });
+  });
+
+  it("leaves alone a plan that was stopped for another reason, whatever its pages", async () => {
+    const env = setup(pageHtml({ omit: ["electricity"] }));
+    await runArticlePipeline(planOf(), env.services);
+    const job = (await env.repo.jobs.getByJobKey(baseKey))!;
+    (job as { lastError?: string }).lastError = "qa_UNKNOWN";
+    env.page.html = pageHtml();
+
+    const result = await runArticlePipeline(withMorePages(), env.services);
+
+    expect(result).toMatchObject({ finalState: "QUARANTINED", published: false, reasons: ["already_completed"] });
+  });
+});

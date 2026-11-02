@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryRepository, type ScoutedBrand } from "@aff/db";
 import { MapFetcher } from "@aff/integrations";
 import { termsFingerprint, type VetCandidate, type VetResult } from "@aff/agents";
-import { advanceScouted, registerCandidates, renewScoutedTerms } from "../../apps/worker/src/a8-register.js";
+import { advanceScouted, refreshScoutedSources, registerCandidates, renewScoutedTerms } from "../../apps/worker/src/a8-register.js";
 import type { ReadCandidate } from "../../apps/worker/src/a8-scout.js";
 
 const NOW = new Date("2026-10-30T00:00:00.000Z");
@@ -273,5 +273,40 @@ describe("renewScoutedTerms", () => {
     await repo.scout.upsert(brand);
     expect(await renewScoutedTerms(repo, new MapFetcher(new Map()), [brand, other], new Map([["brand-a", "changed"], ["brand-b", "unchanged"]]), NOW)).toEqual({ unreadable: 1 });
     expect((await repo.scout.get("s0001"))?.termsSha256).toBe("a".repeat(64));
+  });
+});
+
+describe("refreshScoutedSources", () => {
+  const ORIGIN = "https://brand-a.com";
+  const html = (lines: string[], links = "") =>
+    ({ body: `<html><head><title>ブランドA</title></head><body>${lines.map((l) => `<p>${l}</p>`).join("")}${links}</body></html>` });
+  const fetcher = () =>
+    new MapFetcher(
+      new Map([
+        [`${ORIGIN}/`, html(["ブランドAへようこそ。".repeat(30)], `<a href="/price/">料金プラン</a><a href="/fee/">ご利用料金</a>`)],
+        [`${ORIGIN}/price/`, html(["ミニサーバー 月額 3,000円"])],
+        [`${ORIGIN}/fee/`, html(["送料 無料", "初回費用 3,300円"])],
+      ]),
+    );
+
+  it("adds the site's other price pages to a registered advertiser, once, and counts it", async () => {
+    const repo = createMemoryRepository();
+    const brand = stored({ state: "active" });
+    await repo.scout.upsert(brand);
+    expect(await refreshScoutedSources(repo, fetcher(), [brand])).toEqual({ extended: 1 });
+    expect((await repo.scout.get("s0001"))?.sourceUrls).toEqual([`${ORIGIN}/price/`, `${ORIGIN}/fee/`]);
+    const again = (await repo.scout.get("s0001"))!;
+    expect(await refreshScoutedSources(repo, fetcher(), [again])).toEqual({});
+  });
+
+  it("leaves a brand alone when the site cannot be read now, and passes by advertisers that are not in use", async () => {
+    const repo = createMemoryRepository();
+    const active = stored({ state: "active" });
+    const retired = stored({ programId: "s0002", brandSlug: "brand-b", host: "brand-b.com", state: "retired" });
+    await repo.scout.upsert(active);
+    await repo.scout.upsert(retired);
+    expect(await refreshScoutedSources(repo, new MapFetcher(new Map()), [active, retired])).toEqual({ unreadable: 1 });
+    expect((await repo.scout.get("s0001"))?.sourceUrls).toEqual([`${ORIGIN}/price/`]);
+    expect((await repo.scout.get("s0002"))?.sourceUrls).toEqual(["https://brand-a.com/price/"]);
   });
 });
