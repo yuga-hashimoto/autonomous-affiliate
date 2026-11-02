@@ -510,13 +510,22 @@ export const DRAFT_RULES_MARK = `draft_rules_${DRAFT_RULES_VERSION}`;
 /** How many of a site's services are tried before it is said that none can be drafted. */
 const MAX_TRIAL_PLANS = 2;
 
-/** The amount a drafting issue is about, in a word that carries nothing the page said. */
+/**
+ * How an amount fell short, in a word that carries nothing the page said: `_nofact` when no fact had any yen
+ * amount to read, `_conflict` when the facts gave it two answers, nothing when facts had amounts but none fit.
+ */
+function draftIssueShortfall(issue: string): string {
+  if (!issue.includes("見つかりません")) return "_conflict";
+  return issue.includes("該当するFactがありません") ? "_nofact" : "";
+}
+
+/** The amount a drafting issue is about, and how it fell short, in words that carry nothing the page said. */
 function draftIssueCode(issue: string): string {
-  if (issue.startsWith("水代")) return "draft_water";
-  if (issue.startsWith("送料")) return "draft_shipping";
-  if (issue.startsWith("電気代")) return "draft_electricity";
-  if (issue.startsWith("初回費用")) return "draft_initial";
-  if (issue.startsWith("サーバーレンタル料")) return "draft_rental";
+  if (issue.startsWith("水代")) return `draft_water${draftIssueShortfall(issue)}`;
+  if (issue.startsWith("送料")) return `draft_shipping${draftIssueShortfall(issue)}`;
+  if (issue.startsWith("電気代")) return `draft_electricity${draftIssueShortfall(issue)}`;
+  if (issue.startsWith("初回費用")) return `draft_initial${draftIssueShortfall(issue)}`;
+  if (issue.startsWith("サーバーレンタル料")) return `draft_rental${draftIssueShortfall(issue)}`;
   if (issue.startsWith("source_unavailable")) return "draft_source";
   return "draft_other";
 }
