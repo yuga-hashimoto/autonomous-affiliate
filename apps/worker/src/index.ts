@@ -40,6 +40,7 @@ import {
   vetAdvertiserSite,
   scoutedInUse,
   scoutedTerms,
+  trialDraft,
   withScoutedBrands,
   withScoutedDomains,
   parseDiscoveryFile,
@@ -76,7 +77,7 @@ function scoutingEnabled(env: NodeJS.ProcessEnv): boolean {
 }
 
 /** New advertisers: sites looked at per run, and advertisers in use at the most (docs/21). */
-const SCOUT_MAX_VETS = 2;
+const SCOUT_MAX_VETS = 1;
 /** A manual run may look at more sites at once (`A8_SCOUT_MAX_VETS`); the daily run keeps the default, so its step stays inside its time limit. */
 const SCOUT_MAX_VETS_CEILING = 6;
 export function scoutMaxVets(env: NodeJS.ProcessEnv): number {
@@ -801,14 +802,29 @@ async function buildScoutDeps(
   if (!provider) throw new Error("--scout needs the model: LLM_API_KEY / LLM_MODEL / LLM_INPUT_COST_JPY_PER_1M / LLM_OUTPUT_COST_JPY_PER_1M");
   const ledger = await createLedger(repo, policy, clock);
   const spendBefore = ledger.spentJpy;
-  const lister = new LlmPlanLister(createGateway({ primary: provider }, ledger), {
+  const gateway = createGateway({ primary: provider }, ledger);
+  const lister = new LlmPlanLister(gateway, {
+    timeoutMs: extractTimeoutMs(env),
+    maxCostJpy: policy.limits.max_job_cost_jpy,
+    attempts: policy.limits.task_retry_attempts,
+  });
+  const selector = new LlmQuoteSelector(gateway, {
     timeoutMs: extractTimeoutMs(env),
     maxCostJpy: policy.limits.max_job_cost_jpy,
     attempts: policy.limits.task_retry_attempts,
   });
   return {
     deps: {
-      vet: (candidate) => vetAdvertiserSite(candidate, { fetcher, repo, policy, clock, lister }),
+      // A site is registered only if a plan can be drafted from its pages by the same reading the pipeline uses (docs/21).
+      vet: (candidate) =>
+        vetAdvertiserSite(candidate, {
+          fetcher,
+          repo,
+          policy,
+          clock,
+          lister,
+          draft: (plan, approved) => trialDraft(plan, { policy: approved, clock, fetcher, selector }),
+        }),
       maxVets: scoutMaxVets(env),
       maxRegistered: SCOUT_MAX_REGISTERED,
     },

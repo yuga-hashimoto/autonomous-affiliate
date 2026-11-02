@@ -8,6 +8,7 @@ import {
   draftPlanFromPages,
   runArticlePipeline,
   runPlan,
+  trialDraft,
   verifyQuotes,
   type ArticlePlan,
   type PlanDraft,
@@ -492,5 +493,37 @@ describe("a plan that could not be drafted, tried again when its pages change", 
     const result = await runArticlePipeline(withMorePages(), env.services);
 
     expect(result).toMatchObject({ finalState: "QUARANTINED", published: false, reasons: ["already_completed"] });
+  });
+});
+
+describe("trialDraft", () => {
+  const trial = (html: string, selector: QuoteSelector = new PatternSelector()) => {
+    const env = setup(html);
+    return { env, run: () => trialDraft(planOf(), { policy, clock: () => NOW, fetcher: env.services.fetcher, selector }) };
+  };
+
+  it("drafts a plan that its pages support, and says so", async () => {
+    const result = await trial(pageHtml()).run();
+    expect(result.ok).toBe(true);
+  });
+
+  it("says why a plan the pages do not support cannot be drafted", async () => {
+    const result = await trial(pageHtml({ omit: ["electricity"] })).run();
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.issues.join("\n")).toContain("電気代");
+  });
+
+  it("asks the model once, however many tries the policy allows", async () => {
+    const selector = new PatternSelector();
+    await trial(pageHtml({ omit: ["electricity"] }), selector).run();
+    expect(policy.limits.task_retry_attempts).toBeGreaterThan(1);
+    expect(selector.calls.length).toBe(1);
+  });
+
+  it("writes nothing to any repository the caller holds", async () => {
+    const { env, run } = trial(pageHtml());
+    await run();
+    expect(await env.repo.facts.listAll()).toEqual([]);
+    expect(await env.repo.sources.list()).toEqual([]);
   });
 });

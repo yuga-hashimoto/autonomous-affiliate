@@ -178,3 +178,11 @@ describe("scoutedTerms", () => {
     expect(scoutedTerms([])).toEqual([]);
   });
 });
+
+describe("knownProgramIds for a site whose plans cannot be drafted", () => {
+  it("looks at it again after a week, not a month, because the reading improves", () => {
+    const brand = (days: number) => scouted({ state: "rejected", reasons: ["plan_not_draftable", "draft_water"], checkedAt: daysAgo(days) });
+    expect(knownProgramIds([brand(6)], NOW).has("s0001")).toBe(true);
+    expect(knownProgramIds([brand(8)], NOW).has("s0001")).toBe(false);
+  });
+});

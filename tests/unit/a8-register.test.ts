@@ -215,7 +215,7 @@ describe("advanceScouted", () => {
     for (const brand of [idle, writing, young]) await repo.scout.upsert(brand);
     const articles = [
       { slug: "brand-b-model-x-24month", state: "PUBLISHED" },
-      { slug: "brand-a-model-y-24month", state: "QUARANTINED" },
+      { slug: "brand-a-model-y-24month", state: "DRAFTED" },
     ];
     const labels = new Map([["brand-a", "linked"], ["brand-b", "linked"], ["brand-c", "linked"]]);
     expect(await advanceScouted(repo, [idle, writing, young], labels, NOW, articles)).toEqual({ retired: 1 });
@@ -223,6 +223,27 @@ describe("advanceScouted", () => {
     expect((await repo.scout.get("s0001"))?.reasons).toEqual(["no_articles"]);
     expect((await repo.scout.get("s0002"))?.state).toBe("active");
     expect((await repo.scout.get("s0003"))?.state).toBe("active");
+  });
+
+  it("frees the place of a joined advertiser whose every plan is stopped, after a few days, and not before any plan was tried", async () => {
+    const repo = createMemoryRepository();
+    const stuck = stored({ state: "active", checkedAt: "2026-10-20T00:00:00.000Z" });
+    const untried = stored({ programId: "s0002", brandSlug: "brand-b", state: "active", checkedAt: "2026-10-20T00:00:00.000Z" });
+    const mixed = stored({ programId: "s0003", brandSlug: "brand-c", state: "active", checkedAt: "2026-10-20T00:00:00.000Z" });
+    const fresh = stored({ programId: "s0004", brandSlug: "brand-d", state: "active", checkedAt: "2026-10-29T00:00:00.000Z" });
+    for (const brand of [stuck, untried, mixed, fresh]) await repo.scout.upsert(brand);
+    const articles = [
+      { slug: "brand-a-model-x-24month", state: "QUARANTINED" },
+      { slug: "brand-a-model-y-24month", state: "QUARANTINED" },
+      { slug: "brand-c-model-x-24month", state: "QUARANTINED" },
+      { slug: "brand-c-model-y-24month", state: "DRAFTED" },
+      { slug: "brand-d-model-x-24month", state: "QUARANTINED" },
+    ];
+    const labels = new Map([["brand-a", "linked"], ["brand-b", "linked"], ["brand-c", "linked"], ["brand-d", "linked"]]);
+    expect(await advanceScouted(repo, [stuck, untried, mixed, fresh], labels, NOW, articles)).toEqual({ retired: 1 });
+    const after = Object.fromEntries((await repo.scout.list()).map((brand) => [brand.brandSlug, brand.state]));
+    expect(after).toEqual({ "brand-a": "retired", "brand-b": "active", "brand-c": "active", "brand-d": "active" });
+    expect((await repo.scout.get("s0001"))?.reasons).toEqual(["articles_stopped"]);
   });
 
   it("gives up on an advertiser that never joined", async () => {

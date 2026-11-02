@@ -340,3 +340,50 @@ describe("refreshSourcePages", () => {
     expect(await refreshSourcePages(new MapFetcher(new Map()), HOST, [`${ORIGIN}/price/`], [])).toBeUndefined();
   });
 });
+
+describe("a site whose plans cannot be drafted", () => {
+  const draftOf = (outcome: { ok: true } | { ok: false; issues: string[] }) => {
+    const seen: string[][] = [];
+    return {
+      seen,
+      draft: async (plan: { sourceUrls: string[] }) => {
+        seen.push(plan.sourceUrls);
+        return outcome.ok ? { ok: true as const, plan: plan as never } : { ok: false as const, issues: outcome.issues };
+      },
+    };
+  };
+
+  it("is registered when a plan can be drafted from the pages it would rest on", async () => {
+    const { seen, draft } = draftOf({ ok: true });
+    const result = await vetAdvertiserSite(candidate, { ...deps(site()), draft });
+    expect(result.ok).toBe(true);
+    expect(seen).toEqual([[`${ORIGIN}/price/`]]);
+  });
+
+  it("is refused, with which amounts were missing and none of the page's words, when no plan can be", async () => {
+    const { draft } = draftOf({ ok: false, issues: ["水代: 月25Lあたりの金額を示す公式Factが見つかりません（候補: 「ミニサーバー 3,000円」）", "電気代: 公式Factに金額が見つかりません", "初回費用: 公式Factに金額が見つかりません"] });
+    const result = await vetAdvertiserSite(candidate, { ...deps(site()), draft });
+    expect(result).toEqual({ ok: false, reasons: ["plan_not_draftable", "draft_electricity", "draft_initial", "draft_water"] });
+  });
+
+  it("tries a second service before it gives up", async () => {
+    const attempts: number[] = [];
+    const draft = async (plan: { slug: string }) => {
+      attempts.push(attempts.length);
+      return attempts.length === 1 ? { ok: false as const, issues: ["電気代: 公式Factに金額が見つかりません"] } : { ok: true as const, plan: plan as never };
+    };
+    const twoServices = site({ [`${ORIGIN}/price/`]: page(["ミニサーバー", "月額 3,000円", "ミニサーバー", "スリムサーバー", "月額 2,000円", "スリムサーバー"]) });
+    const result = await vetAdvertiserSite(candidate, { ...deps(twoServices, new FakeLister(["ミニサーバー", "スリムサーバー"])), draft });
+    expect(result.ok).toBe(true);
+    expect(attempts.length).toBe(2);
+  });
+
+  it("is not now, not never, when the model failed while drafting", async () => {
+    const draft = async () => {
+      throw new Error("model down");
+    };
+    const result = await vetAdvertiserSite(candidate, { ...deps(site()), draft });
+    expect(result).toEqual({ ok: false, reasons: ["listing_failed"] });
+    expect(isTransientReason("listing_failed")).toBe(true);
+  });
+});
