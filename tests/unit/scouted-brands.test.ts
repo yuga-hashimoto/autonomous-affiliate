@@ -186,3 +186,14 @@ describe("knownProgramIds for a site whose plans cannot be drafted", () => {
     expect(knownProgramIds([brand(8)], NOW).has("s0001")).toBe(false);
   });
 });
+
+describe("knownProgramIds for an advertiser let go of because its plans could not be drafted", () => {
+  const letGo = (days: number, reasons = ["plan_not_draftable", "draft_water"]) => scouted({ state: "retired", reasons, checkedAt: daysAgo(days) });
+
+  it("is looked at again after a week, so that a better reading can take it back; other retired ones are not", () => {
+    expect(knownProgramIds([letGo(6)], NOW).has("s0001")).toBe(true);
+    expect(knownProgramIds([letGo(8)], NOW).has("s0001")).toBe(false);
+    expect(knownProgramIds([letGo(30, ["no_articles"])], NOW).has("s0001")).toBe(true);
+    expect(knownProgramIds([scouted({ state: "active", reasons: [], checkedAt: daysAgo(30) })], NOW).has("s0001")).toBe(true);
+  });
+});
