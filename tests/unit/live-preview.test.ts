@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MapFetcher } from "@aff/integrations";
 import { FixtureFactExtractor } from "@aff/agents";
 import { createMemoryRepository } from "@aff/db";
+import { createLogger, setMaskedTerms } from "@aff/domain";
 import { extractTimeoutMs, parseTemplateRevision, runLivePipeline, runPlansStatus } from "../../apps/worker/src/index.js";
 import { readFileSync } from "./helpers.js";
 
@@ -578,6 +579,45 @@ describe("A8 offers in the live pipeline worker", () => {
     const { result } = await runWith("a8-bad-title-sim", "ブランドA SIM A 20GBの24ヶ月総額", true);
     expect(result.results[0]).toMatchObject({ qaStatus: "FAIL", published: false });
     expect(result.results[0]!.qaFailures?.map((failure) => failure.id)).toContain("offer_title_rule");
+  });
+
+  it("keeps the name of an advertiser the run picked out of the log lines, though the plan's slug carries it", async () => {
+    const repo = createMemoryRepository();
+    await repo.scout.upsert({
+      programId: "s0042",
+      brandSlug: "zeta-brand",
+      state: "retired",
+      keyword: "ゼータブランド",
+      host: "zeta-brand.example.jp",
+      brandName: "ゼータブランド",
+      listUrls: [],
+      sourceUrls: [],
+      reasons: [],
+      checkedAt: new Date().toISOString(),
+    });
+    await writeFile(plansPath, JSON.stringify(planWith("zeta-brand-sim-24month", "SIM A 20GBの24ヶ月総額（ブランドA）")), "utf8");
+    const lines: string[] = [];
+    try {
+      const result = await runLivePipeline(
+        {
+          policyPath,
+          outDir: ".tmp/unused",
+          env: { ...LLM_ENV, A8_SCOUT_ENABLED: "true" },
+          preview: true,
+          repo,
+          a8ProgramsPath: a8Path,
+          logger: createLogger({ sink: (line) => lines.push(line) }),
+          ...seams,
+        },
+        plansPath,
+      );
+      expect(result.results[0]!.slug).toBe("zeta-brand-sim-24month");
+      expect(lines.length).toBeGreaterThan(0);
+      expect(lines.join("\n")).toContain("[SCOUTED]-sim-24month");
+      expect(lines.join("\n")).not.toContain("zeta-brand");
+    } finally {
+      setMaskedTerms([]);
+    }
   });
 
   it("changes nothing without the A8 file", async () => {

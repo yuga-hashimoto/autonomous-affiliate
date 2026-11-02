@@ -3,6 +3,7 @@ import type { Repository } from "@aff/db";
 import {
   applyBrandObservation,
   knownProgramIds,
+  scoutedTerms,
   termsFingerprint,
   withScoutedBrands,
   type A8Brand,
@@ -12,6 +13,7 @@ import {
   type VetCandidate,
   type VetResult,
 } from "@aff/agents";
+import { setMaskedTerms } from "@aff/domain";
 import { checkRobots, htmlToVisibleText, type Fetcher } from "@aff/integrations";
 import { startApplication } from "./a8-apply.js";
 import { advanceScouted, registerCandidates, renewScoutedTerms } from "./a8-register.js";
@@ -188,6 +190,7 @@ export async function runA8Sync(env: NodeJS.ProcessEnv, deps: SyncDeps): Promise
   const scoutedBrands = withScoutedBrands({ ...config, brands: [] }, scoutedBefore).brands;
   const renewed = await renewScoutedTerms(repo, fetcher, scoutedBefore, await termsOf(fetcher, scoutedBrands), clock());
   const scouted = deps.scout ? await repo.scout.list() : [];
+  setMaskedTerms(scoutedTerms(scouted));
   const effective = withScoutedBrands(config, scouted);
   const terms = await termsOf(fetcher, effective.brands);
 

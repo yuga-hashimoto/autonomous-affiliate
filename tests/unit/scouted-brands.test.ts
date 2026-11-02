@@ -7,6 +7,7 @@ import {
   knownProgramIds,
   registrableHost,
   scoutedInUse,
+  scoutedTerms,
   withScoutedBrands,
   withScoutedDomains,
   type A8ProgramsConfig,
@@ -159,5 +160,21 @@ describe("shared hosting", () => {
     expect(registrableHost("shop.shop-pro.jp")).toBeUndefined();
     expect(registrableHost("brand.tokyo.jp")).toBeUndefined();
     expect(registrableHost("www.brand-a.com")).toBe("brand-a.com");
+  });
+});
+
+describe("scoutedTerms", () => {
+  it("names every word that would identify a picked advertiser, whatever its state", () => {
+    const terms = scoutedTerms([
+      scouted({ state: "active" }),
+      scouted({ programId: "s0002", brandSlug: "brand-b", keyword: "ブランドB【水】", brandName: "ブランドB", host: "brand-b.example.jp", state: "rejected" }),
+    ]);
+    for (const word of ["s0001", "brand-a", "ブランドA", "brand-a.com", "s0002", "brand-b", "ブランドB【水】", "ブランドB", "brand-b.example.jp"]) {
+      expect(terms).toContain(word);
+    }
+  });
+
+  it("has nothing to say about an empty list", () => {
+    expect(scoutedTerms([])).toEqual([]);
   });
 });

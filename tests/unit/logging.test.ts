@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { createLogger, redactString, redactValue, redactUrl } from "@aff/domain";
+import { afterEach, describe, expect, it } from "vitest";
+import { createLogger, maskTerms, redactString, redactValue, redactUrl, setMaskedTerms } from "@aff/domain";
 
 function collect(): { lines: string[]; sink: (line: string) => void } {
   const lines: string[] = [];
@@ -69,5 +69,42 @@ describe("B004 secret redaction", () => {
     }>;
     expect(out[0]!.api_key).toBe("[REDACTED]");
     expect(out[0]!.note).not.toContain("yu@example.com");
+  });
+});
+
+describe("masked terms (the advertisers the run picked itself, docs/21)", () => {
+  afterEach(() => setMaskedTerms([]));
+
+  it("replaces the terms in every log field, whatever the case", () => {
+    setMaskedTerms(["o-ken", "オーケン水"]);
+    const { lines, sink } = collect();
+    const log = createLogger({ sink });
+    log.child({ slug: "o-ken-model-e32c2a-24month" }).warn("plan could not be drafted", {
+      issues: ["候補: 「O-KEN の水」", "オーケン水のページ"],
+    });
+    const all = lines.join("\n");
+    expect(all).not.toMatch(/o-ken/i);
+    expect(all).not.toContain("オーケン水");
+    expect(all).toContain("[SCOUTED]-model-e32c2a-24month");
+  });
+
+  it("masks the longer term first, so no half of a name is left behind", () => {
+    setMaskedTerms(["acme", "acme-water-server"]);
+    expect(maskTerms("see acme-water-server and acme")).toBe("see [SCOUTED] and [SCOUTED]");
+  });
+
+  it("takes terms literally, not as patterns, and ignores words too short to be a name", () => {
+    setMaskedTerms(["a.b(c", "ab", " ", ""]);
+    expect(maskTerms("a.b(c ab axbxc")).toBe("[SCOUTED] ab axbxc");
+  });
+
+  it("is replaced, not added to, by the next call", () => {
+    setMaskedTerms(["first-name"]);
+    setMaskedTerms(["second-name"]);
+    expect(maskTerms("first-name second-name")).toBe("first-name [SCOUTED]");
+  });
+
+  it("leaves text alone when there is nothing to mask", () => {
+    expect(maskTerms("premium-water-aura-24month")).toBe("premium-water-aura-24month");
   });
 });
