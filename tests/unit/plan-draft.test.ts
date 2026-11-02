@@ -500,3 +500,115 @@ describe("completeDraftedPlan: the amounts come from the official facts, or the 
     expect(completeDraftedPlan(both, [], [])).toEqual({ ok: true, plan: both });
   });
 });
+
+describe("a site that sells 12L bottles and states its costs in its own words", () => {
+  // Wording of a page that prices a 12L bottle once for every server, with the costs on neighbouring lines.
+  const BOTTLE_PAGE: Fact[] = [
+    fact("ボトル単価 12L 2,000円（税込2,160円）"),
+    fact("天然水を月2本（24L） ご利用の場合 月々 4,000円〜（税込4,320円〜）"),
+    fact("サーバーレンタル0円 すべてのウォーターサーバーが レンタル無料でご利用いただけます。"),
+    fact("送料0円 ウォーターサーバー、お水は 送料無料でお届けします。"),
+    fact("ウォーターC 初回登録事務手数料 無料"),
+    fact("ウォーターC 1か月の電気代（※1） 709円 （エコモード1日2回使用時）"),
+  ];
+  const draftC = (facts: Fact[], draft: Partial<PlanDraft> = {}) =>
+    draftOf(facts, { evidenceTerms: ["ウォーターC"], priceTerms: ["ウォーターC"], ...draft });
+  const inputOf = (result: ReturnType<typeof draftOf>) => (result.ok ? result.plan.calculators[0]?.input : undefined);
+
+  it("reads the page-wide bottle price for the whole bottles that come to about the plan's volume, and says the volume it used", () => {
+    const plan = { ...planOf({ evidenceTerms: ["ウォーターC"], priceTerms: ["ウォーターC"] }), purpose: "公式の料金から、月25Lを24ヶ月使った場合の総額を試算します。" };
+    const result = completeDraftedPlan(plan, BOTTLE_PAGE, [SOURCE]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [entry] = result.plan.calculators;
+    expect(entry?.input.waterChargeJpy).toBe(4320);
+    expect(entry?.input.monthlyLiters).toBe(24);
+    expect(entry?.derivedAmounts).toEqual({ waterChargeJpy: [{ amountJpy: 2160, times: 2 }] });
+    expect(result.plan.purpose).toContain("月24L");
+    expect(result.plan.purpose).not.toContain("月25L");
+    expect(checkPlanEvidence(result.plan, BOTTLE_PAGE, [SOURCE])).toEqual([]);
+  });
+
+  it("reads a rental written as サーバーレンタル0円, with no 料", () => {
+    expect(inputOf(draftC(BOTTLE_PAGE))?.serverRentalFeeJpy).toBe(0);
+  });
+
+  it("reads an electricity figure that is given for eco-mode use only, and marks it so", () => {
+    const input = inputOf(draftC(BOTTLE_PAGE));
+
+    expect(input?.electricityFeeJpy).toBe(709);
+    expect(input?.electricityIsEcoMode).toBe(true);
+    expect(input?.electricityIsEstimate).toBe(true);
+  });
+
+  it("does not mark a normal-use electricity figure as eco-mode, even when the page also gives an eco-mode one", () => {
+    const withBoth = BOTTLE_PAGE.map((f) =>
+      f.text.includes("電気代") ? fact("ウォーターC の電気代は通常使用時約669円（エコモード使用時 約583円）") : f,
+    );
+    const input = inputOf(draftC(withBoth));
+
+    expect(input?.electricityFeeJpy).toBe(669);
+    expect(input?.electricityIsEcoMode).toBeUndefined();
+  });
+
+  it("does not take a starting price (円〜) for the monthly charge", () => {
+    const onlyFrom = BOTTLE_PAGE.filter((f) => !f.text.includes("ボトル単価"));
+
+    const result = draftC(onlyFrom);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.join("\n")).toContain("水代");
+  });
+
+  it("reads a stated monthly price for a stated number of bottles and litres, when it is not a starting price", () => {
+    const facts = [...BOTTLE_PAGE.filter((f) => !f.text.includes("ボトル単価") && !f.text.includes("月々")), fact("ウォーターC 月2本（24L）ご利用の場合 月々4,320円（税込）")];
+
+    const input = inputOf(draftC(facts));
+
+    expect(input?.waterChargeJpy).toBe(4320);
+    expect(input?.monthlyLiters).toBe(24);
+  });
+
+  it("keeps the volume of the plan when the page states a price for exactly that volume", () => {
+    const facts = [...BOTTLE_PAGE, fact("ウォーターC 12.5L×2本 月額4,190円（税込）")];
+
+    const input = inputOf(draftC(facts));
+
+    expect(input?.waterChargeJpy).toBe(4190);
+    expect(input?.monthlyLiters).toBe(25);
+  });
+
+  it("does not stretch the volume to bottles that come to much more or less than the plan's", () => {
+    const facts = BOTTLE_PAGE.map((f) => (f.text.includes("ボトル単価") ? fact("ボトル単価 7L 1,500円（税込1,620円）") : f));
+
+    const result = draftC(facts);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.join("\n")).toContain("水代");
+  });
+
+  it("uses a page-wide bottle price only when no line names the server; a line that names it wins", () => {
+    const named = [...BOTTLE_PAGE, fact("ウォーターC ボトル単価 12L 2,400円（税込2,592円）")];
+
+    expect(inputOf(draftC(named))?.waterChargeJpy).toBe(5184);
+  });
+
+  it("does not read a page-wide set price for a particular server", () => {
+    const facts = BOTTLE_PAGE.map((f) => (f.text.includes("ボトル単価") ? fact("12.5L×2本 月額4,190円（税込）") : f));
+
+    expect(draftC(facts).ok).toBe(false);
+  });
+
+  it("refuses two different page-wide bottle prices", () => {
+    const facts = [...BOTTLE_PAGE, fact("ボトル単価 12L 2,400円（税込2,592円）")];
+
+    const result = draftC(facts);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.join("\n")).toMatch(/水代.*複数/);
+  });
+});

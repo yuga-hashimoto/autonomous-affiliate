@@ -55,6 +55,8 @@ export interface WaterServerOfferInput {
   electricityIsEstimate?: boolean;
   /** Monthly water volume the provider used to compute that estimate, when it says so. */
   electricityBasisLiters?: number;
+  /** The provider gives the electricity amount only for eco-mode use; without eco-mode it is higher. */
+  electricityIsEcoMode?: boolean;
 }
 
 export interface BuybackOfferInput {

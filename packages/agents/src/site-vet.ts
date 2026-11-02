@@ -3,7 +3,7 @@ import type { PolicyConfig } from "@aff/domain";
 import { FetchError, checkRobots, htmlToVisibleText, linksOfHtml, type Fetcher, type PageLink } from "@aff/integrations";
 import { termsFingerprint } from "./a8-offers.js";
 import { discoverPlans, type DiscoverySource, type PlanLister } from "./plan-discovery.js";
-import type { DraftResult } from "./plan-draft.js";
+import { DRAFT_RULES_VERSION, type DraftResult } from "./plan-draft.js";
 import type { ArticlePlan } from "./pipeline.js";
 import { automationBan, restrictionReasons } from "./rule-text.js";
 import { registrableHost } from "./site-host.js";
@@ -504,6 +504,9 @@ export async function vetAdvertiserSite(candidate: VetCandidate, deps: VetDeps):
   return { ok: false, reasons: [sawPage ? "no_services" : "no_price_page"] };
 }
 
+/** The reading of amounts a site was judged undraftable by, kept with its reasons (see `DRAFT_RULES_VERSION`). */
+export const DRAFT_RULES_MARK = `draft_rules_${DRAFT_RULES_VERSION}`;
+
 /** How many of a site's services are tried before it is said that none can be drafted. */
 const MAX_TRIAL_PLANS = 2;
 
@@ -539,7 +542,7 @@ async function undraftable(
     if (result.ok) return undefined;
     for (const issue of result.issues) missing.add(draftIssueCode(issue));
   }
-  return { ok: false, reasons: ["plan_not_draftable", ...[...missing].sort()] };
+  return { ok: false, reasons: ["plan_not_draftable", ...[...missing].sort(), DRAFT_RULES_MARK] };
 }
 
 /**

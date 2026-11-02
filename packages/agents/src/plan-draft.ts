@@ -17,6 +17,12 @@ import type { ArticlePlan, CalculatorEntry, PlanDraft } from "./pipeline.js";
  */
 export type DraftResult = { ok: true; plan: ArticlePlan; facts?: Fact[] } | { ok: false; issues: string[] };
 
+/**
+ * Raised whenever the rules read more of what pages say. A site refused because its plans could not be drafted
+ * carries the version it was judged by (`DRAFT_RULES_MARK`), and is looked at again when the rules have moved on.
+ */
+export const DRAFT_RULES_VERSION = 2;
+
 type Tier = readonly Fact[];
 
 const norm = (text: string): string => text.normalize("NFKC");
@@ -64,8 +70,8 @@ const FEE_PATTERNS = {
   initial: { label: /(?:初回|登録|初期|契約)[^。、:：]{0,8}(?:手数料|費用)/g, skip: /設置/ },
   // The contract termination fee, not any sentence that says 解約 (a pause ends in 強制解約).
   cancellation: { label: /契約解除料|解約金|解約料|違約金|解除料/g },
-  // The server's own monthly rental ("サーバーレンタル料 無料"); "レンタル無料" without 料 names no figure.
-  rental: { label: /レンタル(?:料|費用)/g },
+  // The server's own monthly rental ("サーバーレンタル料 無料", "サーバーレンタル0円"); "レンタル無料" alone names no figure.
+  rental: { label: /レンタル(?:料|費用)|サーバーレンタル(?=\s*(?:\d|無料|ゼロ円))/g },
 } as const satisfies Record<string, { label: RegExp; skip?: RegExp }>;
 type FeeKey = keyof typeof FEE_PATTERNS;
 const FEE_KEYS = Object.keys(FEE_PATTERNS) as FeeKey[];
@@ -122,6 +128,15 @@ function withoutRental(text: string): string {
 /** An eco-mode figure in brackets is another way of using the product, not the figure. */
 const withoutEcoMode = (text: string): string => text.replace(/[（(][^）)]*エコ[^）)]*[）)]/g, " ");
 
+/**
+ * A figure the page gives only for eco-mode use ("709円（エコモード1日2回使用時）"): the words about
+ * eco-mode hide no other amount and no normal-use figure stands beside it. An article must say so.
+ */
+function ecoModeOnly(clause: string): boolean {
+  const t = norm(clause);
+  return /エコ/.test(t) && !/通常/.test(t) && yenAmounts(withoutEcoMode(t)).length === yenAmounts(t).length;
+}
+
 /** The tiers a field is read from: facts that name the service first, then the service's other page facts. */
 function tiersOf(draft: PlanDraft, facts: readonly Fact[], pageSourceIds: ReadonlySet<string>): Tier[] {
   const named = facts.filter((fact) => draft.evidenceTerms.some((term) => term.length > 0 && fact.text.includes(term)));
@@ -168,7 +183,15 @@ function figureOf(text: string): number | "ambiguous" | "silent" {
   return "ambiguous";
 }
 
-function readFee(key: FeeKey, tiers: readonly Tier[]): Read<{ amount: number; facts: Fact[]; clauses: string[] }> {
+interface FeeRead {
+  amount: number;
+  facts: Fact[];
+  clauses: string[];
+  /** Every clause that states the figure gives it for eco-mode use only. */
+  ecoMode: boolean;
+}
+
+function readFee(key: FeeKey, tiers: readonly Tier[]): Read<FeeRead> {
   for (const tier of tiers) {
     const figures = tier
       .flatMap((fact) => clausesOf(fact.text, key).map((clause) => ({ fact, clause, figure: figureOf(withoutEcoMode(clause)) })))
@@ -182,50 +205,91 @@ function readFee(key: FeeKey, tiers: readonly Tier[]): Read<{ amount: number; fa
     if (amounts.length > 1) {
       return { kind: "conflict", detail: `${amounts.map((a) => `${a}円`).join("・")}の記載があります。${examplesOf(figures.map((entry) => entry.fact))}` };
     }
-    return { kind: "value", value: { amount: amounts[0]!, facts: figures.map((entry) => entry.fact), clauses: figures.map((entry) => entry.clause) } };
+    return {
+      kind: "value",
+      value: {
+        amount: amounts[0]!,
+        facts: figures.map((entry) => entry.fact),
+        clauses: figures.map((entry) => entry.clause),
+        ecoMode: figures.every((entry) => ecoModeOnly(entry.clause)),
+      },
+    };
   }
   return { kind: "none" };
 }
 
 interface WaterCandidate {
   monthlyJpy: number;
+  /** The monthly volume the charge is for. */
+  liters: number;
   derived?: { amountJpy: number; times: number };
 }
 
 const sameLiters = (a: number, b: number): boolean => Math.abs(a - b) < 1e-9;
+const roundLiters = (liters: number): number => Math.round(liters * 100) / 100;
 
-/** The monthly charge a fact states for `monthlyLiters`: a set price (12.5L×2本) or a bottle price scaled up. */
-function waterCandidate(text: string, monthlyLiters: number): WaterCandidate | undefined {
+/**
+ * Sites sell bottles of 12L or 12.5L, and the comparison is for about 25L a month: two bottles of 12L
+ * (24L) stand for it, as their volume is within this many litres of the plan's. The volume actually
+ * priced is written into the plan, so the article states the volume its figures are for.
+ */
+const VOLUME_TOLERANCE_LITERS = 1.5;
+const volumeFits = (liters: number, monthlyLiters: number): boolean => Math.abs(liters - monthlyLiters) <= VOLUME_TOLERANCE_LITERS + 1e-9;
+
+/** "4,000円〜", "3,000円から": a starting price, not the amount a customer pays. */
+const STARTING_PRICE = /円\s*(?:[〜~]|から)/;
+
+/**
+ * The monthly charge a fact states for about `monthlyLiters`: a set price (12.5L×2本, 月2本（24L）) or
+ * a bottle price scaled up to whole bottles. `bottleOnly` reads a bottle price alone, for a price that
+ * the page gives once for every server.
+ */
+function waterCandidate(text: string, monthlyLiters: number, bottleOnly: boolean): WaterCandidate | undefined {
   const t = withoutRental(text);
   if (feeKeysOf(t).length > 0) return undefined;
   const amounts = yenAmounts(t);
   if (amounts.length !== 1) return undefined;
   const amount = amounts[0]!;
-  const set = t.match(/(\d+(?:\.\d+)?)\s*L\s*[×x*]\s*(\d+)\s*本/i);
-  if (set) {
-    return sameLiters(Number(set[1]) * Number(set[2]), monthlyLiters) ? { monthlyJpy: amount } : undefined;
+  if (!bottleOnly) {
+    const set = t.match(/(\d+(?:\.\d+)?)\s*L\s*[×x*]\s*(\d+)\s*本/i);
+    if (set) {
+      const liters = roundLiters(Number(set[1]) * Number(set[2]));
+      return volumeFits(liters, monthlyLiters) ? { monthlyJpy: amount, liters } : undefined;
+    }
+    const monthly = t.match(/月\s*\d+\s*本\s*[（(]\s*(\d+(?:\.\d+)?)\s*L\s*[）)]/i);
+    if (monthly) {
+      const liters = Number(monthly[1]);
+      return !STARTING_PRICE.test(t) && volumeFits(liters, monthlyLiters) ? { monthlyJpy: amount, liters } : undefined;
+    }
   }
   const bottle = t.match(/(\d+(?:\.\d+)?)\s*L/i);
-  if (bottle && /1\s*本|1\s*パック|1\s*ボトル|あたり|単価/.test(t)) {
-    const times = monthlyLiters / Number(bottle[1]);
-    if (Number.isInteger(times) && times >= 1) {
-      return { monthlyJpy: amount * times, derived: { amountJpy: amount, times } };
+  if (bottle && /1\s*本|1\s*パック|1\s*ボトル|あたり|単価/.test(t) && !STARTING_PRICE.test(t)) {
+    const size = Number(bottle[1]);
+    const times = Math.round(monthlyLiters / size);
+    const liters = roundLiters(times * size);
+    if (size > 0 && times >= 1 && volumeFits(liters, monthlyLiters)) {
+      return { monthlyJpy: amount * times, liters, derived: { amountJpy: amount, times } };
     }
   }
   return undefined;
 }
 
-
-function readWater(tiers: readonly Tier[], monthlyLiters: number): Read<WaterCandidate> {
+function readWater(tiers: readonly Tier[], monthlyLiters: number, bottleOnly = false): Read<WaterCandidate> {
   for (const tier of tiers) {
     const candidates = tier.flatMap((fact) => {
-      const candidate = waterCandidate(fact.text, monthlyLiters);
+      const candidate = waterCandidate(fact.text, monthlyLiters, bottleOnly);
       return candidate ? [candidate] : [];
     });
     if (candidates.length === 0) continue;
-    const monthly = distinctOf(candidates.map((c) => c.monthlyJpy));
-    if (monthly.length > 1) return { kind: "conflict", detail: `月${monthlyLiters}Lの金額が複数あります（${monthly.map((m) => `${m}円`).join("・")}）` };
-    return { kind: "value", value: candidates[0]! };
+    // A price for exactly the plan's volume decides; a nearby volume only stands in for it when there is none.
+    const exact = candidates.filter((candidate) => sameLiters(candidate.liters, monthlyLiters));
+    const pool = exact.length > 0 ? exact : candidates;
+    const monthly = distinctOf(pool.map((c) => c.monthlyJpy));
+    const volumes = distinctOf(pool.map((c) => c.liters));
+    if (monthly.length > 1 || volumes.length > 1) {
+      return { kind: "conflict", detail: `月${monthlyLiters}L前後の金額が複数あります（${monthly.map((m) => `${m}円`).join("・")}）` };
+    }
+    return { kind: "value", value: pool[0]! };
   }
   return { kind: "none" };
 }
@@ -272,7 +336,12 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
   const missing = (name: string): void => void issues.push(`${name}: 公式Factに金額が見つかりません`);
   const conflicting = (name: string, detail: string): void => void issues.push(`${name}: 金額が一意に決まりません（${detail}）`);
 
-  const water = readWater(selected(draft.priceTerms, facts, tiers), draft.monthlyLiters);
+  let water = readWater(selected(draft.priceTerms, facts, tiers), draft.monthlyLiters);
+  if (water.kind === "none" && draft.priceTerms && draft.priceTerms.length > 0) {
+    // Many sites price a bottle once for every server, in words that name none: that price is the server's too.
+    const everyServer = readWater(tiers, draft.monthlyLiters, true);
+    if (everyServer.kind !== "none") water = everyServer;
+  }
   if (water.kind === "none") {
     issues.push(
       `${FIELD_NAME.water}: 月${draft.monthlyLiters}Lあたりの金額を示す公式Factが見つかりません（${nearMisses(selected(draft.priceTerms, facts, tiers))}）`,
@@ -282,7 +351,7 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
 
   const fees = Object.fromEntries(
     (["shipping", "electricity", "initial", "rental", "cancellation"] as const).map((key) => [key, readFee(key, tiers)]),
-  ) as Record<FeeKey, Read<{ amount: number; facts: Fact[]; clauses: string[] }>>;
+  ) as Record<FeeKey, Read<FeeRead>>;
   for (const key of ["shipping", "electricity", "rental", "initial"] as const) {
     const read = fees[key];
     if (read.kind === "none") missing(FIELD_NAME[key]);
@@ -317,9 +386,10 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
     months: draft.months,
     initialFeeJpy: fees.initial.value.amount,
     cancellationFeeJpy: fees.cancellation.kind === "value" ? fees.cancellation.value.amount : "UNKNOWN",
-    monthlyLiters: draft.monthlyLiters,
+    monthlyLiters: water.value.liters,
     ...(term.kind === "value" ? { minimumTermMonths: term.value } : {}),
-    ...(fees.electricity.value.clauses.some((clause) => ESTIMATE.test(clause)) ? { electricityIsEstimate: true } : {}),
+    ...(fees.electricity.value.ecoMode || fees.electricity.value.clauses.some((clause) => ESTIMATE.test(clause)) ? { electricityIsEstimate: true } : {}),
+    ...(fees.electricity.value.ecoMode ? { electricityIsEcoMode: true } : {}),
     ...(bases.length === 1 ? { electricityBasisLiters: bases[0] } : {}),
   };
   return {
@@ -341,5 +411,11 @@ export function draftWaterEntry(draft: PlanDraft, facts: readonly Fact[], pageSo
 export function completeDraftedPlan(plan: ArticlePlan, facts: readonly Fact[], sources: readonly SourceRecord[]): DraftResult {
   if (!plan.draft || plan.calculators.length > 0) return { ok: true, plan };
   const drafted = draftWaterEntry(plan.draft, facts, sourceIdsOfPages(plan.sourceUrls, sources));
-  return drafted.ok ? { ok: true, plan: { ...plan, calculators: [drafted.entry] } } : drafted;
+  if (!drafted.ok) return drafted;
+  // The brief states the volume it aimed at; the plan states the volume its prices are for.
+  const liters = drafted.entry.input["monthlyLiters"];
+  const purpose = typeof liters === "number" && liters !== plan.draft.monthlyLiters
+    ? plan.purpose.replace(`月${plan.draft.monthlyLiters}L`, `月${liters}L`)
+    : plan.purpose;
+  return { ok: true, plan: { ...plan, purpose, calculators: [drafted.entry] } };
 }
