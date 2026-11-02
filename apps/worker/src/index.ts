@@ -41,6 +41,7 @@ import {
   scoutedInUse,
   scoutedTerms,
   trialDraft,
+  trialRegistered,
   withScoutedBrands,
   withScoutedDomains,
   parseDiscoveryFile,
@@ -813,18 +814,19 @@ async function buildScoutDeps(
     maxCostJpy: policy.limits.max_job_cost_jpy,
     attempts: policy.limits.task_retry_attempts,
   });
+  const vetDeps = {
+    fetcher,
+    repo,
+    policy,
+    clock,
+    lister,
+    // A site is registered only if a plan can be drafted from its pages by the same reading the pipeline uses (docs/21).
+    draft: (plan: Parameters<typeof trialDraft>[0], approved: PolicyConfig) => trialDraft(plan, { policy: approved, clock, fetcher, selector }),
+  };
   return {
     deps: {
-      // A site is registered only if a plan can be drafted from its pages by the same reading the pipeline uses (docs/21).
-      vet: (candidate) =>
-        vetAdvertiserSite(candidate, {
-          fetcher,
-          repo,
-          policy,
-          clock,
-          lister,
-          draft: (plan, approved) => trialDraft(plan, { policy: approved, clock, fetcher, selector }),
-        }),
+      vet: (candidate) => vetAdvertiserSite(candidate, vetDeps),
+      trial: (brand) => trialRegistered(brand, vetDeps),
       maxVets: scoutMaxVets(env),
       maxRegistered: SCOUT_MAX_REGISTERED,
     },

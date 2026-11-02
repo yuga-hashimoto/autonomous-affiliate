@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryRepository, type ScoutedBrand } from "@aff/db";
 import { MapFetcher } from "@aff/integrations";
 import { termsFingerprint, type VetCandidate, type VetResult } from "@aff/agents";
-import { advanceScouted, refreshScoutedSources, registerCandidates, renewScoutedTerms } from "../../apps/worker/src/a8-register.js";
+import { advanceScouted, refreshScoutedSources, registerCandidates, renewScoutedTerms, retrialScouted } from "../../apps/worker/src/a8-register.js";
 import type { ReadCandidate } from "../../apps/worker/src/a8-scout.js";
 
 const NOW = new Date("2026-10-30T00:00:00.000Z");
@@ -329,5 +329,50 @@ describe("refreshScoutedSources", () => {
     expect(await refreshScoutedSources(repo, new MapFetcher(new Map()), [active, retired])).toEqual({ unreadable: 1 });
     expect((await repo.scout.get("s0001"))?.sourceUrls).toEqual([`${ORIGIN}/price/`]);
     expect((await repo.scout.get("s0002"))?.sourceUrls).toEqual(["https://brand-a.com/price/"]);
+  });
+});
+
+describe("retrialScouted", () => {
+  const refuse = async () => ({ ok: false as const, reasons: ["plan_not_draftable", "draft_water"] });
+  const pass = async () => ({ ok: true as const });
+
+  it("lets go of a registered advertiser whose plans cannot be drafted, with the reasons, and keeps one whose can", async () => {
+    const repo = createMemoryRepository();
+    const stuck = stored({ state: "active" });
+    const fine = stored({ programId: "s0002", brandSlug: "brand-b", state: "vetted" });
+    for (const brand of [stuck, fine]) await repo.scout.upsert(brand);
+    const trial = async (brand: ScoutedBrand) => (brand.brandSlug === "brand-a" ? refuse() : pass());
+    expect(await retrialScouted(repo, [stuck, fine], [], trial, NOW)).toEqual({ retired: 1, drafted: 1 });
+    const after = await repo.scout.get("s0001");
+    expect(after?.state).toBe("retired");
+    expect(after?.reasons).toEqual(["plan_not_draftable", "draft_water"]);
+    expect((await repo.scout.get("s0002"))?.state).toBe("vetted");
+  });
+
+  it("does not try an advertiser that already has an article out, nor one that is not in use", async () => {
+    const repo = createMemoryRepository();
+    const writing = stored({ state: "active" });
+    const gone = stored({ programId: "s0002", brandSlug: "brand-b", state: "retired" });
+    for (const brand of [writing, gone]) await repo.scout.upsert(brand);
+    const calls: string[] = [];
+    const trial = async (brand: ScoutedBrand) => {
+      calls.push(brand.brandSlug);
+      return refuse();
+    };
+    expect(await retrialScouted(repo, [writing, gone], [{ slug: "brand-a-model-x-24month", state: "PUBLISHED" }], trial, NOW)).toEqual({});
+    expect(calls).toEqual([]);
+  });
+
+  it("judges nothing when the trial could not be made today", async () => {
+    const repo = createMemoryRepository();
+    const brand = stored({ state: "active" });
+    await repo.scout.upsert(brand);
+    const unsure = async () => ({ ok: false as const, reasons: ["listing_failed"] });
+    expect(await retrialScouted(repo, [brand], [], unsure, NOW)).toEqual({ unsure: 1 });
+    const broken = async () => {
+      throw new Error("model down");
+    };
+    expect(await retrialScouted(repo, [brand], [], broken, NOW)).toEqual({ unsure: 1 });
+    expect((await repo.scout.get("s0001"))?.state).toBe("active");
   });
 });

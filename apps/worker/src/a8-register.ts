@@ -216,3 +216,38 @@ export async function refreshScoutedSources(repo: Repository, fetcher: Fetcher, 
   }
   return tally(labels);
 }
+
+/**
+ * Tries again to draft a plan for every registered advertiser that has no article out yet, and lets go of the ones
+ * whose plans cannot be drafted from the pages they have now: their place goes to a candidate that can write
+ * (docs/21). A trial that could not be made today (the model failed, nothing could be listed) judges nothing.
+ */
+export async function retrialScouted(
+  repo: Repository,
+  scouted: readonly ScoutedBrand[],
+  articles: readonly { slug: string; state: string }[],
+  trial: (brand: ScoutedBrand) => Promise<{ ok: true } | { ok: false; reasons: string[] }>,
+  now: Date,
+): Promise<Record<string, number>> {
+  const labels: string[] = [];
+  for (const brand of scouted) {
+    if (brand.state !== "vetted" && brand.state !== "active") continue;
+    if (articles.some((article) => article.slug.startsWith(`${brand.brandSlug}-`) && PUBLISHED_STATES.has(article.state))) continue;
+    let result: Awaited<ReturnType<typeof trial>>;
+    try {
+      result = await trial(brand);
+    } catch {
+      labels.push("unsure");
+      continue;
+    }
+    if (result.ok) {
+      labels.push("drafted");
+    } else if (result.reasons.includes("plan_not_draftable")) {
+      await repo.scout.upsert({ ...brand, state: "retired", reasons: result.reasons, checkedAt: now.toISOString() });
+      labels.push("retired");
+    } else {
+      labels.push("unsure");
+    }
+  }
+  return tally(labels);
+}

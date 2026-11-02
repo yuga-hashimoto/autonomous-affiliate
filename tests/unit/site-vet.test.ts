@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryRepository } from "@aff/db";
 import { parsePolicyText, type PolicyConfig } from "@aff/domain";
 import { FetchError, MapFetcher } from "@aff/integrations";
-import { identityText, isTransientReason, refreshSourcePages, selfNames, termsFingerprint, vetAdvertiserSite, type ListRequest, type PlanLister } from "@aff/agents";
+import { identityText, isTransientReason, refreshSourcePages, selfNames, termsFingerprint, trialRegistered, vetAdvertiserSite, type ListRequest, type PlanLister } from "@aff/agents";
 import { readFileSync } from "./helpers.js";
 
 const HOST = "brand-a.com";
@@ -385,5 +385,30 @@ describe("a site whose plans cannot be drafted", () => {
     const result = await vetAdvertiserSite(candidate, { ...deps(site()), draft });
     expect(result).toEqual({ ok: false, reasons: ["listing_failed"] });
     expect(isTransientReason("listing_failed")).toBe(true);
+  });
+});
+
+describe("trialRegistered", () => {
+  const brand = { brandSlug: "brand-a", brandName: "ブランドA", host: HOST, listUrls: [`${ORIGIN}/price/`], sourceUrls: [`${ORIGIN}/price/`, `${ORIGIN}/fee/`] };
+  const make = (draft: (plan: { sourceUrls: string[] }) => Promise<{ ok: true; plan: never } | { ok: false; issues: string[] }>, names = ["ミニサーバー"]) => ({
+    ...deps(site(), new FakeLister(names)),
+    draft: draft as never,
+  });
+
+  it("drafts the services of a registered advertiser from all the pages it rests on", async () => {
+    const seen: string[][] = [];
+    const result = await trialRegistered(brand, make(async (plan) => (seen.push(plan.sourceUrls), { ok: true, plan: plan as never })));
+    expect(result).toEqual({ ok: true });
+    expect(seen).toEqual([brand.sourceUrls]);
+  });
+
+  it("refuses with the amounts that were missing", async () => {
+    const result = await trialRegistered(brand, make(async () => ({ ok: false, issues: ["電気代: 公式Factに金額が見つかりません"] })));
+    expect(result).toEqual({ ok: false, reasons: ["plan_not_draftable", "draft_electricity"] });
+  });
+
+  it("does not judge when no service could be listed today", async () => {
+    const result = await trialRegistered(brand, make(async () => ({ ok: false, issues: ["電気代: x"] }), []));
+    expect(result).toEqual({ ok: false, reasons: ["listing_failed"] });
   });
 });

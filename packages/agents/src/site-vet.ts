@@ -542,6 +542,33 @@ async function undraftable(
   return { ok: false, reasons: ["plan_not_draftable", ...[...missing].sort()] };
 }
 
+/**
+ * The same trial for an advertiser that is already registered, from the pages it has now: its services are listed
+ * again and drafted from its source pages. A site where nothing could be listed today is not judged.
+ */
+export async function trialRegistered(
+  brand: { brandSlug: string; brandName: string; host: string; listUrls: readonly string[]; sourceUrls: readonly string[] },
+  deps: VetDeps,
+): Promise<{ ok: true } | { ok: false; reasons: string[] }> {
+  if (!deps.lister || !deps.draft) return { ok: false, reasons: ["no_lister"] };
+  const approved: PolicyConfig = { ...deps.policy, security: { ...deps.policy.security, allowed_source_domains: [brand.host] } };
+  const source: DiscoverySource = {
+    verticalId: "water_delivery",
+    brandSlug: brand.brandSlug,
+    brandName: brand.brandName,
+    listUrls: [...brand.listUrls],
+    sourceUrls: [...brand.sourceUrls],
+    months: 24,
+    monthlyLiters: 25,
+  };
+  const found = await discoverPlans([source], { repo: deps.repo, policy: approved, clock: deps.clock, fetcher: deps.fetcher, lister: deps.lister });
+  if (found.plans.length === 0) return { ok: false, reasons: ["listing_failed"] };
+  const draft = deps.draft;
+  const refusal = await undraftable(found.plans, brand.sourceUrls, (plan) => draft(plan, approved));
+  if (!refusal) return { ok: true };
+  return refusal.ok ? { ok: true } : { ok: false, reasons: refusal.reasons };
+}
+
 /** The pages the list came from first, then the other price pages, each once, at most `MAX_SOURCE_PAGES`. */
 function withMorePages(first: readonly string[], others: readonly string[]): string[] {
   return [...new Set([...first, ...others])].slice(0, MAX_SOURCE_PAGES);
