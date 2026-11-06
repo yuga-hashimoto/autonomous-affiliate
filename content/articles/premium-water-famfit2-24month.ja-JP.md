@@ -1,7 +1,7 @@
 ---
 title: "ウォーターサーバー famfit2（プレミアムウォーター）の24ヶ月総額（公式料金ベースの試算）"
 description: "公式の料金ページに載る月額・送料・手数料・電気代の目安から、月25Lを24ヶ月使った場合の総額を試算します。"
-pubDate: "2026-10-30T08:32:14.179Z"
+pubDate: "2026-11-06T22:16:02.595Z"
 disclosure: "本記事にはプロモーション（PR）を含みます。"
 offerIds: ["offer-premium-water-famfit2"]
 heroImage: "/images/articles/premium-water-famfit2-24month/hero.webp"
@@ -17,7 +17,7 @@ heroImageHeight: 576
 この記事は**家庭でボトル型ウォーターサーバーの利用を検討している人**を対象に、公式一次情報のみに基づいて比較・試算します。
 公式の料金ページに載る月額・送料・手数料・電気代の目安から、月25Lを24ヶ月使った場合の総額を試算します。
 
-最終確認日: 2026-10-30。金額は公式ページの確認時点のものです。
+最終確認日: 2026-11-06。金額は公式ページの確認時点のものです。
 
 ## 総額比較（同一条件・同一通貨）
 
@@ -79,6 +79,6 @@ heroImageHeight: 576
 
 ## 出典
 
-- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-10-30T08:28:44.580Z（sha256: c183c92aee64…）
-- [公式](https://premium-water.net/price) — 確認日時: 2026-10-30T08:28:45.695Z（sha256: bcba5f31d142…）
+- [公式](https://premium-water.net/price/motto) — 確認日時: 2026-11-06T22:13:36.945Z（sha256: f6ab93324905…）
+- [公式](https://premium-water.net/price) — 確認日時: 2026-11-06T22:13:38.233Z（sha256: 80b757b37516…）
 
